@@ -1,153 +1,320 @@
+/* app/globals.css — the single source of truth for every colour, radius, shadow and motion value in AERIS.
+ *
+ * what  : Defines the AERIS raw palette, bridges it onto the shadcn/ui semantic token contract
+ *         (--background, --primary, --border, --sidebar-*, --chart-*), and exposes motion,
+ *         glass and glow primitives used by the app shell.
+ * where  : Imported once in app/layout.tsx. Every component in the app reads these tokens through
+ *          Tailwind utilities (bg-background, border-border, text-muted-foreground, ...). No component
+ *          may hardcode a raw colour — if a value is missing here, add it here.
+ * how   : Layer 1 = raw palette in @theme (emitted to :root, also generates bg-aeris-* utilities).
+ *         Layer 2 = :root semantic tokens composed from the raw palette.
+ *         Layer 3 = @theme inline maps semantic tokens onto the Tailwind/shadcn utility namespace.
+ *         AERIS ships a single dark "Common Operating Picture" theme, so there is no light palette —
+ *         that also removes any possibility of a light-theme flash on first paint.
+ *
+ * NOTE for WebGL: three.js materials need numeric hex, not CSS variables. Those live in
+ *      lib/constants/theme.ts and MUST be kept in sync with the raw palette below.
+ */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/* ── Layer 1: raw palette + typography scale ─────────────────────────────── */
 @theme {
-  --color-aeris-black: #0A0D14;
+  --color-aeris-void: #06080e;
+  --color-aeris-black: #0a0d14;
   --color-aeris-obsidian: #141824;
-  --color-aeris-teal: #00E5FF;
-  --color-aeris-blue: #3B82F6;
-  --color-aeris-orange: #F59E0B;
-  --color-aeris-red: #EF4444;
-  --color-aeris-white: #F3F4F6;
-  --color-aeris-gray: #9CA3AF;
-
-  --color-background: var(--color-aeris-black);
-  --color-foreground: var(--color-aeris-white);
+  --color-aeris-slate: #1b2030;
+  --color-aeris-stroke: #2a3143;
+  --color-aeris-teal: #00e5ff;
+  --color-aeris-blue: #3b82f6;
+  --color-aeris-orange: #f59e0b;
+  --color-aeris-amber: #f59e0b;
+  --color-aeris-red: #ef4444;
+  --color-aeris-green: #10b981;
+  --color-aeris-white: #f3f4f6;
+  --color-aeris-gray: #9ca3af;
+  --color-aeris-gray-dim: #6b7280;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-quart: cubic-bezier(0.76, 0, 0.24, 1);
+
+  --animate-pulse-glow: pulse-glow 2.6s var(--ease-quart) infinite;
+  --animate-sweep: sweep 2.2s linear infinite;
+  --animate-rise: rise var(--motion-slow) var(--ease-expo) both;
+
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 var(--pulse-color, rgb(0 229 255 / 0.5));
+    }
+    50% {
+      opacity: 0.72;
+      box-shadow: 0 0 0 6px rgb(0 229 255 / 0);
+    }
+  }
+
+  @keyframes sweep {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(200%);
+    }
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
-body {
-  background-color: var(--background);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ── Layer 2: semantic tokens (single dark theme) ────────────────────────── */
+:root {
+  --background: var(--color-aeris-black);
+  --foreground: var(--color-aeris-white);
+
+  /* Elevation ladder for panels floating over the 3D canvas. */
+  --surface-1: rgb(20 24 36 / 0.66);
+  --surface-2: rgb(27 32 48 / 0.82);
+  --surface-3: rgb(32 38 56 / 0.92);
+  --surface-solid: #11151f;
+
+  --card: var(--surface-1);
+  --card-foreground: var(--color-aeris-white);
+  --popover: var(--surface-solid);
+  --popover-foreground: var(--color-aeris-white);
+
+  --primary: var(--color-aeris-teal);
+  --primary-foreground: #04121a;
+  --secondary: rgb(59 130 246 / 0.16);
+  --secondary-foreground: #c3dbff;
+  --muted: rgb(42 49 67 / 0.4);
+  --muted-foreground: var(--color-aeris-gray);
+  --accent: rgb(0 229 255 / 0.12);
+  --accent-foreground: var(--color-aeris-teal);
+  --destructive: var(--color-aeris-red);
+  --destructive-foreground: #fff1f1;
+
+  --border: rgb(42 49 67 / 0.9);
+  --border-soft: rgb(42 49 67 / 0.5);
+  --input: rgb(42 49 67 / 0.7);
+  --ring: rgb(0 229 255 / 0.55);
+
+  --chart-1: var(--color-aeris-teal);
+  --chart-2: var(--color-aeris-blue);
+  --chart-3: var(--color-aeris-green);
+  --chart-4: var(--color-aeris-amber);
+  --chart-5: var(--color-aeris-red);
+
+  --sidebar: rgb(10 13 20 / 0.92);
+  --sidebar-foreground: var(--color-aeris-gray);
+  --sidebar-primary: var(--color-aeris-teal);
+  --sidebar-primary-foreground: #04121a;
+  --sidebar-accent: rgb(0 229 255 / 0.1);
+  --sidebar-accent-foreground: var(--color-aeris-teal);
+  --sidebar-border: rgb(42 49 67 / 0.7);
+  --sidebar-ring: rgb(0 229 255 / 0.4);
+
+  /* Design report: "sharp corners with very slight rounding". */
+  --radius: 0.5rem;
+
+  /* Motion scale — every transition in the app references one of these. */
+  --motion-instant: 90ms;
+  --motion-fast: 140ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+  --motion-cinematic: 900ms;
+
+  /* Glass + glow primitives. */
+  --panel-blur: 18px;
+  --shadow-panel: 0 24px 64px -16px rgb(0 0 0 / 0.8), 0 2px 8px -2px rgb(0 0 0 / 0.6);
+  --shadow-raised: 0 12px 32px -12px rgb(0 0 0 / 0.7);
+  --glow-teal: 0 0 24px rgb(0 229 255 / 0.28);
+  --glow-blue: 0 0 24px rgb(59 130 246 / 0.28);
+  --glow-red: 0 0 24px rgb(239 68 68 / 0.3);
 }
 
+/* ── Layer 3: Tailwind / shadcn utility namespace ────────────────────────── */
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-foreground: var(--foreground);
+
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --color-foreground: var(--foreground);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-solid: var(--surface-solid);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-}
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+  --shadow-panel: var(--shadow-panel);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-glow-teal: var(--glow-teal);
+  --shadow-glow-blue: var(--glow-blue);
+  --shadow-glow-red: var(--glow-red);
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --blur-panel: var(--panel-blur);
+
+  --duration-instant: var(--motion-instant);
+  --duration-fast: var(--motion-fast);
+  --duration-base: var(--motion-base);
+  --duration-slow: var(--motion-slow);
+  --duration-cinematic: var(--motion-cinematic);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+
   html {
     @apply font-sans;
+    height: 100%;
+    color-scheme: dark;
+    /* The shell owns its own scroll regions; the document itself never scrolls. */
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    height: 100%;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: rgb(0 229 255 / 0.28);
+    color: var(--color-aeris-teal);
+  }
+
+  /* Terminal-grade scrollbars — thin, dim, teal on hover. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-aeris-stroke) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-aeris-stroke);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(0 229 255 / 0.45);
+  }
+}
+
+@layer components {
+  /* Glassmorphic panel surface. Used exclusively through <GlassPanel>. */
+  .aeris-glass {
+    background-color: var(--surface-1);
+    backdrop-filter: blur(var(--panel-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(140%);
+    box-shadow: var(--shadow-panel);
+    border: 1px solid var(--border);
+    position: relative;
+  }
+
+  /* 1px inner highlight along the top edge — reads as light catching a glass lip. */
+  .aeris-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.14) 22%,
+      rgb(0 229 255 / 0.22) 50%,
+      rgb(255 255 255 / 0.14) 78%,
+      transparent
+    );
+    pointer-events: none;
+  }
+
+  /* Faint technical grid used behind the globe and empty states. */
+  .aeris-grid-backdrop {
+    background-image:
+      linear-gradient(rgb(42 49 67 / 0.28) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(42 49 67 / 0.28) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, black 10%, transparent 72%);
+  }
+
+  /* Monospaced technical metadata — coordinates, trace lines, model ids. */
+  .aeris-technical {
+    @apply font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground;
+  }
+}
+
+/* Users who ask for reduced motion get the full interface, instantly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

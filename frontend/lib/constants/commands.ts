@@ -1,0 +1,51 @@
+// lib/constants/commands.ts — canonical command identifiers for the agentic UI control layer.
+//
+// what  : Every command id the interface can execute, plus the palette group labels.
+// where : Used when defining commands in features/&ast;/hooks/use-&ast;-commands.ts and when dispatching from
+//         buttons, shortcuts or (in a later phase) a voice/agent intent.
+// how   : Ids are namespaced `domain.action`. They are a public contract: the agent layer will reference
+//         these strings, so renaming one is a breaking change and must be done here only.
+
+export const COMMAND_IDS = {
+  navigation: {
+    goto: "nav.goto",
+  },
+  interface: {
+    openPalette: "interface.openCommandPalette",
+    toggleDataPanel: "interface.toggleDataPanel",
+    toggleAssistantPanel: "interface.toggleAssistantPanel",
+    toggleNavigationRail: "interface.toggleNavigationRail",
+  },
+  globe: {
+    flyTo: "globe.flyTo",
+    resetView: "globe.resetView",
+    toggleLayer: "globe.toggleLayer",
+    toggleAutoRotate: "globe.toggleAutoRotate",
+  },
+  imagery: {
+    openUpload: "imagery.openUpload",
+    select: "imagery.select",
+    clearSelection: "imagery.clearSelection",
+    search: "imagery.search",
+  },
+  missions: {
+    open: "missions.open",
+  },
+  assistant: {
+    ask: "assistant.ask",
+    clear: "assistant.clear",
+    stop: "assistant.stop",
+    focusComposer: "assistant.focusComposer",
+  },
+} as const;
+
+export const COMMAND_GROUP_LABEL = {
+  navigation: "Navigate",
+  interface: "Interface",
+  globe: "Globe",
+  imagery: "Imagery",
+  missions: "Missions",
+  assistant: "Assistant",
+} as const;
+
+export type CommandGroup = keyof typeof COMMAND_GROUP_LABEL;

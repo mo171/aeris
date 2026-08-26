@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    // Generated foundation components. fcontext/ai-workflow-rules.md forbids modifying these, so linting
+    // them only produces errors nobody is permitted to fix. They are vendored third-party code, not ours.
+    "components/ui/**",
+    "hooks/use-mobile.ts",
   ]),
 ]);
 

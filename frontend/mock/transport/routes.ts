@@ -1,0 +1,177 @@
+// mock/transport/routes.ts — maps mock HTTP requests to generated data.
+//
+// PHASE 1 ONLY. This entire /mock folder is deleted in Phase 2.
+//
+// what  : The route table the mock axios adapter dispatches through, one entry per real endpoint.
+// where : Used only by mock/transport/mock-adapter.ts.
+// how   : Paths mirror lib/constants/rest.api.ts exactly, including query-parameter names and the
+//         cursor-page envelope, so services and hooks exercise the real request/response shape in Phase 1.
+//         When the live backend arrives nothing upstream changes — this table is simply deleted.
+
+import type { ImageryScene } from "@/features/missionCommand/types/imagery.types";
+import { REST_API } from "@/lib/constants/rest.api";
+
+import { MOCK_ASSISTANT_SUGGESTIONS } from "../data/assistant.data";
+import { insertUploadedScene, selectImageryPage } from "../data/imagery.data";
+import {
+  getGlobeMarkers,
+  getSatelliteTracks,
+  selectMissionPage,
+} from "../data/mission.data";
+import { MOCK_MODEL_STATUSES } from "../data/model.data";
+import { MOCK_NOTIFICATIONS, MOCK_UNREAD_NOTIFICATION_COUNT } from "../data/notification.data";
+
+export interface MockRequestContext {
+  pathname: string;
+  query: Record<string, string | undefined>;
+  body: unknown;
+  pathParameters: string[];
+}
+
+export interface MockResponse {
+  status: number;
+  data: unknown;
+}
+
+export interface MockRoute {
+  method: "GET" | "POST" | "PUT";
+  match: (pathname: string) => string[] | null;
+  handle: (context: MockRequestContext) => MockResponse;
+}
+
+const MOCK_STORAGE_PATH_PREFIX = "/mock-object-storage/";
+
+function exactPath(path: string): (pathname: string) => string[] | null {
+  return (pathname) => (pathname === path ? [] : null);
+}
+
+function patternPath(pattern: RegExp): (pathname: string) => string[] | null {
+  return (pathname) => {
+    const match = pattern.exec(pathname);
+    return match ? match.slice(1) : null;
+  };
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export const MOCK_ROUTES: readonly MockRoute[] = [
+  {
+    method: "GET",
+    match: exactPath(REST_API.imagery.list),
+    handle: ({ query }) => ({
+      status: 200,
+      data: selectImageryPage({
+        cursor: query.cursor ?? null,
+        limit: parsePositiveInteger(query.limit, 25),
+        search: query.search ?? null,
+      }),
+    }),
+  },
+  {
+    method: "POST",
+    match: exactPath(REST_API.imagery.createUploadTicket),
+    handle: ({ body }) => {
+      const request = body as { fileName?: string } | undefined;
+      const sceneId = `scn_upl_${Date.now().toString(36)}`;
+
+      return {
+        status: 201,
+        data: {
+          sceneId,
+          uploadUrl: `https://mock-object-storage.aeris.invalid${MOCK_STORAGE_PATH_PREFIX}${sceneId}`,
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+          requiredHeaders: { "x-aeris-mock-upload": request?.fileName ?? "scene" },
+        },
+      };
+    },
+  },
+  {
+    method: "PUT",
+    match: patternPath(new RegExp(`^${MOCK_STORAGE_PATH_PREFIX}(.+)$`)),
+    handle: () => ({ status: 200, data: null }),
+  },
+  {
+    method: "POST",
+    match: patternPath(/^\/api\/v1\/imagery\/([^/]+)\/confirm$/),
+    handle: ({ pathParameters }) => {
+      const sceneId = pathParameters[0];
+      insertUploadedScene(buildUploadedScene(sceneId));
+      return { status: 202, data: null };
+    },
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.missions.list),
+    handle: ({ query }) => ({
+      status: 200,
+      data: selectMissionPage(query.cursor ?? null, parsePositiveInteger(query.limit, 20)),
+    }),
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.globe.markers),
+    handle: () => ({
+      status: 200,
+      data: { markers: getGlobeMarkers(), generatedAt: new Date().toISOString() },
+    }),
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.globe.satelliteTracks),
+    handle: () => ({
+      status: 200,
+      data: { tracks: getSatelliteTracks(), generatedAt: new Date().toISOString() },
+    }),
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.models.status),
+    handle: () => ({
+      status: 200,
+      data: { models: MOCK_MODEL_STATUSES, checkedAt: new Date().toISOString() },
+    }),
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.assistant.suggestions),
+    handle: () => ({ status: 200, data: { suggestions: MOCK_ASSISTANT_SUGGESTIONS } }),
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.notifications.list),
+    handle: () => ({
+      status: 200,
+      data: {
+        notifications: MOCK_NOTIFICATIONS,
+        unreadCount: MOCK_UNREAD_NOTIFICATION_COUNT,
+      },
+    }),
+  },
+];
+
+/** Builds the scene record the backend would create once an upload finishes preprocessing. */
+function buildUploadedScene(sceneId: string): ImageryScene {
+  const now = new Date().toISOString();
+
+  return {
+    id: sceneId,
+    name: `Operator upload · ${now.slice(0, 10)}`,
+    capturedAt: now,
+    ingestedAt: now,
+    modality: "optical",
+    sensorPlatform: "Operator upload",
+    bandCount: 4,
+    groundSampleDistanceMeters: 3,
+    cloudCoverPercentage: 0,
+    coordinateReferenceSystem: "EPSG:4326",
+    boundingBox: { west: 72.7, south: 18.9, east: 73.0, north: 19.2 },
+    centroid: { latitude: 19.05, longitude: 72.85 },
+    fileSizeBytes: 268_435_456,
+    processingState: "processing",
+    temporalRole: "single",
+    thumbnailUrl: null,
+  };
+}
