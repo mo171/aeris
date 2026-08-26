@@ -1,0 +1,1372 @@
+# SATQUERY AI — AERIS
+## Agentic Earth Reasoning & Intelligence System
+
+> An intelligent remote-sensing analysis platform that allows users to interact with satellite imagery through natural language and voice, automatically selects the appropriate AI models and geospatial tools, performs single-image, cross-modal, and temporal analysis, produces visual evidence, and turns every investigation into an auditable intelligence workflow.
+
+---
+
+# 1. THE CORE IDEA
+
+AERIS transforms satellite imagery analysis from a collection of separate GIS/AI tools into one intelligent investigation system.
+
+Instead of the user needing to know:
+
+- which satellite dataset to use
+- which sensor is appropriate
+- whether an image is optical or SAR
+- which AI model to run
+- how to perform change detection
+- how to create a spatial mask
+- how to compare two observations
+- how to interpret the result
+
+the user simply asks:
+
+> "What changed in this area between these two dates?"
+
+or:
+
+> "Find all major built-up regions."
+
+or:
+
+> "Use the optical and SAR imagery together to identify water-covered areas."
+
+AERIS understands the request, inspects the available imagery, creates an execution plan, selects the appropriate specialist models/tools, executes them, validates the results, generates visual evidence, and explains the result.
+
+---
+
+# 2. PRODUCT PHILOSOPHY
+
+AERIS is not a satellite chatbot.
+
+It is an:
+
+> *Agentic Earth Observation Intelligence Platform*
+
+The system combines:
+
+- Remote Sensing
+- Computer Vision
+- Vision-Language Models
+- Multimodal AI
+- Geospatial Computing
+- Temporal Analysis
+- Optical-SAR Fusion
+- Agentic AI
+- Voice Interaction
+- 2D/3D Visualization
+- Evidence-Based Reasoning
+- Automated Reporting
+- Continuous Monitoring
+
+---
+
+# 3. COMPLETE USER JOURNEY
+
+```text
+USER
+  ↓
+Mission / Image / Voice Input
+  ↓
+AERIS understands the request
+  ↓
+Input & metadata inspection
+  ↓
+Task classification
+  ↓
+Mission planning
+  ↓
+Specialist model/tool selection
+  ↓
+Remote-sensing preprocessing
+  ↓
+AI inference
+  ↓
+Multimodal / temporal reasoning
+  ↓
+Evidence extraction
+  ↓
+Confidence estimation
+  ↓
+Result validation
+  ↓
+Visual explanation
+  ↓
+Natural-language answer
+  ↓
+Interactive investigation
+  ↓
+Report / export / save mission
+4. APPLICATION STRUCTURE
+
+The application consists of seven major pages.
+
+1. Mission Command Center
+2. Investigation Workspace
+3. Cross-Modal Analysis Lab
+4. Temporal Change Explorer
+5. Evidence Explorer
+6. Model Observatory
+7. Mission & Monitoring Center
+
+Additional global capabilities such as voice, 3D Earth visualization, reports, alerts, and the AI assistant are available throughout the application.
+
+5. PAGE 1 — MISSION COMMAND CENTER
+Purpose
+
+The main home screen and entry point into the system.
+
+The user can:
+
+upload satellite imagery
+upload multiple images
+enter a natural-language query
+speak a query
+start a new investigation
+open previous missions
+view active monitoring missions
+access the 3D Earth
+Layout
+┌───────────────────────────────────────────────────────────────┐
+│ SATQUERY / AERIS                              Profile / Alerts │
+├───────────────┬───────────────────────────────┬───────────────┤
+│               │                               │               │
+│   DATA        │        3D EARTH / MAP        │   AERIS       │
+│   SOURCES     │                               │   ASSISTANT   │
+│               │                               │               │
+│ Upload        │     Satellite imagery        │ "What would   │
+│ Images        │     / geographic context      │  you like to  │
+│               │                               │  investigate?"│
+│ Recent Data   │                               │               │
+│               │                               │               │
+├───────────────┴───────────────────────────────┴───────────────┤
+│                     MISSION INPUT                              │
+│                                                               │
+│ "Ask anything about your imagery..."        🎙️ Voice         │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+Main capabilities
+Image upload
+GeoTIFF/TIFF support
+PNG/JPEG benchmark support
+Metadata extraction
+Natural-language query
+Voice query
+Recent investigations
+Saved missions
+3D Earth entry
+Monitoring mission entry
+6. PAGE 2 — INVESTIGATION WORKSPACE
+Purpose
+
+The primary analysis interface.
+
+Every investigation happens here.
+
+The user sees:
+
+┌───────────────────────────────────────────────────────────────┐
+│ Investigation: Urban Expansion Analysis                       │
+├───────────────┬───────────────────────────────┬───────────────┤
+│               │                               │               │
+│ INPUTS        │        IMAGE / MAP            │   AERIS       │
+│               │                               │               │
+│ Image 1       │                               │ Query         │
+│ Image 2       │       Satellite Scene        │               │
+│               │                               │ Answer        │
+│ Optical       │       Bounding Boxes         │               │
+│ SAR           │       Segmentation Masks     │ Confidence    │
+│               │       Heatmaps               │               │
+│               │                               │               │
+├───────────────┴───────────────────────────────┴───────────────┤
+│ Execution Trace                                                 │
+│ ✓ Input validation                                              │
+│ ✓ Task identified                                               │
+│ ✓ Model selected                                                │
+│ ✓ Inference completed                                           │
+└───────────────────────────────────────────────────────────────┘
+Capabilities
+Interactive image viewer
+Zoom/pan
+Bounding boxes
+Segmentation masks
+Heatmaps
+Region selection
+Polygon selection
+Image comparison
+AI answer panel
+Confidence score
+Model information
+Execution trace
+Evidence links
+"Investigate" button
+"Ask this region" functionality
+7. PAGE 3 — CROSS-MODAL ANALYSIS LAB
+Purpose
+
+Dedicated environment for analysing multiple sensors together.
+
+The user can compare:
+
+OPTICAL
++
+SAR
+
+and allow AERIS to reason over both.
+
+Interface
+┌──────────────────────────────────────────────────────────────┐
+│ CROSS-MODAL ANALYSIS                                         │
+├──────────────────────────┬───────────────────────────────────┤
+│                          │                                   │
+│       OPTICAL            │              SAR                  │
+│                          │                                   │
+│     Satellite Image     │          SAR Image                │
+│                          │                                   │
+├──────────────────────────┴───────────────────────────────────┤
+│                       FUSION VIEW                             │
+│                                                               │
+│               Combined Information Map                        │
+│                                                               │
+├───────────────────────────────────────────────────────────────┤
+│ AERIS ANALYSIS                                                │
+│                                                               │
+│ "Identify built-up and water-covered regions."                │
+│                                                               │
+│ Result + Evidence + Confidence                                │
+└───────────────────────────────────────────────────────────────┘
+Capabilities
+Optical/SAR compatibility checking
+Co-registration verification
+Optical analysis
+SAR analysis
+Feature extraction
+Cross-modal fusion
+Built-up detection
+Water detection
+Complementary information extraction
+Joint reasoning
+Cross-modal evidence visualization
+8. PAGE 4 — TEMPORAL CHANGE EXPLORER
+Purpose
+
+Understand what changed between two observations.
+
+T0
+↓
+T1
+↓
+CHANGE
+Interface
+┌───────────────────────────────────────────────────────────────┐
+│ TEMPORAL CHANGE EXPLORER                                     │
+├───────────────────────────────┬───────────────────────────────┤
+│                               │                               │
+│           T0                  │            T1                 │
+│                               │                               │
+│      Satellite Image          │       Satellite Image         │
+│                               │                               │
+├───────────────────────────────┴───────────────────────────────┤
+│                       CHANGE MAP                               │
+│                                                               │
+│               Detected Change Regions                         │
+│                                                               │
+├───────────────────────────────────────────────────────────────┤
+│ TIMELINE                                                      │
+│                                                               │
+│ 2023 ───────── 2024 ───────── 2025 ───────── 2026             │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+Capabilities
+Bi-temporal image comparison
+Timeline
+Change detection
+Change segmentation
+Change classification
+Change description
+Change VQA
+Change heatmap
+Change mask
+Area calculation
+Region comparison
+Before/after slider
+Temporal animation
+Change confidence
+Largest-change identification
+"Investigate change" workflow
+
+Example:
+
+"Has the built-up area increased?"
+
+AERIS returns:
+
+Built-up area increased.
+
+Estimated change:
++18.4%
+
+Affected area:
+14.2 hectares
+
+Primary region:
+North-East
+
+Confidence:
+91%
+9. PAGE 5 — EVIDENCE EXPLORER
+Purpose
+
+Turn every AI answer into an auditable investigation.
+
+Every claim should be connected to evidence.
+
+ANSWER
+  │
+  ├── Image Evidence
+  ├── Spatial Evidence
+  ├── Temporal Evidence
+  ├── Model Evidence
+  ├── Confidence
+  └── Execution Trace
+Interface
+┌───────────────────────────────────────────────────────────────┐
+│ EVIDENCE EXPLORER                                             │
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│ CLAIM                                                         │
+│ "Built-up area increased."                                    │
+│                                                               │
+├───────────────────────┬───────────────────────────────────────┤
+│ VISUAL EVIDENCE       │ MODEL EVIDENCE                        │
+│                       │                                       │
+│ T0 → T1               │ Change Model                          │
+│ Change Mask           │ Confidence: 0.91                     │
+│ Bounding Region       │                                       │
+│                       │                                       │
+├───────────────────────┴───────────────────────────────────────┤
+│ EXECUTION TRACE                                               │
+│                                                               │
+│ Query → Planner → Model Router → Change Model → Evidence      │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+Capabilities
+Evidence graph
+Claim-to-region linking
+Source image linking
+Bounding box evidence
+Mask evidence
+Model evidence
+Confidence
+Execution trace
+Parameters
+Processing time
+Model version
+Downloadable evidence
+10. PAGE 6 — MODEL OBSERVATORY
+Purpose
+
+Expose the intelligence layer behind AERIS.
+
+The user can inspect which models were used and why.
+
+MODEL REGISTRY
+
+RS-VLM
+Capabilities:
+VQA / Captioning
+
+Grounding Model
+Capabilities:
+Text → Region
+
+Change Model
+Capabilities:
+Temporal Change
+
+Change-VQA
+Capabilities:
+Temporal Question Answering
+
+Optical-SAR Model
+Capabilities:
+Cross-modal Analysis
+Capabilities
+Model registry
+Model versions
+Model capabilities
+Task routing
+Model selection
+Latency
+Confidence
+Benchmark performance
+Inference history
+Model comparison
+Model health
+GPU/compute information
+Fine-tuned model information
+11. PAGE 7 — MISSION & MONITORING CENTER
+Purpose
+
+Turn one-time analysis into continuous Earth observation intelligence.
+
+The user can create a monitoring mission.
+
+Example:
+
+"Monitor this industrial corridor for construction."
+
+The system stores:
+
+AOI
++
+Baseline Image
++
+Monitoring Schedule
++
+Detection Rules
++
+Models
++
+Alert Conditions
+
+When a new observation becomes available:
+
+NEW IMAGE
+   ↓
+COMPARE WITH BASELINE
+   ↓
+CHANGE DETECTION
+   ↓
+CLASSIFICATION
+   ↓
+CONFIDENCE
+   ↓
+ALERT
+Capabilities
+Saved missions
+Areas of interest
+Baseline imagery
+Monitoring schedules
+Change thresholds
+Automated analysis
+Alerts
+Mission history
+Investigation history
+Timeline
+Report generation
+12. AERIS — THE AGENTIC AI ASSISTANT
+
+AERIS is available globally throughout the application.
+
+The user can communicate through:
+
+text
+voice
+map selection
+image selection
+region selection
+
+Examples:
+
+"What is in this image?"
+
+"Find the airport."
+
+"What changed?"
+
+"Compare these two images."
+
+"Use both sensors."
+
+"Highlight the largest change."
+
+"Zoom into that region."
+
+"Generate a report."
+
+"Monitor this area."
+
+13. AGENTIC EXECUTION ENGINE
+
+AERIS follows an agentic workflow.
+
+USER QUERY
+   ↓
+QUERY INTERPRETATION
+   ↓
+INPUT INSPECTION
+   ↓
+TASK CLASSIFICATION
+   ↓
+MISSION PLANNING
+   ↓
+MODEL / TOOL SELECTION
+   ↓
+PREPROCESSING
+   ↓
+MODEL EXECUTION
+   ↓
+RESULT VALIDATION
+   ↓
+EVIDENCE EXTRACTION
+   ↓
+CONFIDENCE ESTIMATION
+   ↓
+RESULT FUSION
+   ↓
+ANSWER SYNTHESIS
+   ↓
+EXECUTION TRACE
+14. QUERY UNDERSTANDING
+
+The system identifies:
+
+Intent
+Task
+Objects
+Spatial region
+Temporal range
+Required modality
+Number of images
+Requested output
+
+Example:
+
+"Has the built-up area increased between these two images?"
+
+Becomes:
+
+Task:
+CHANGE_VQA
+
+Images:
+2
+
+Temporal:
+T0 → T1
+
+Target:
+Built-up area
+
+Output:
+Answer + Change Map + Evidence
+15. INPUT INTELLIGENCE
+
+Every uploaded image is inspected.
+
+The system extracts:
+
+File format
+Sensor
+Modality
+Bands
+Resolution
+CRS
+Geographic bounds
+Acquisition date
+Spatial dimensions
+Metadata
+
+The system validates:
+
+Format compatibility
+Spatial compatibility
+Temporal compatibility
+Co-registration
+Modality compatibility
+Image quality
+16. REMOTE-SENSING MODEL ECOSYSTEM
+
+AERIS contains specialist models.
+
+REMOTE-SENSING VLM
+├── VQA
+├── Captioning
+└── Scene Understanding
+
+GROUNDING MODEL
+└── Text → Region
+
+CHANGE MODEL
+└── Temporal Change Detection
+
+CHANGE-VQA MODEL
+└── Temporal Question Answering
+
+OPTICAL-SAR MODEL
+└── Cross-Modal Reasoning
+
+SEGMENTATION MODELS
+└── Object / Land-Cover Segmentation
+
+OBJECT DETECTION MODELS
+└── Buildings / Roads / Vehicles / Infrastructure
+17. SINGLE-IMAGE INTELLIGENCE
+
+For a single image, AERIS can perform:
+
+Visual Question Answering
+
+"Is there a river?"
+
+Captioning
+
+"Describe this scene."
+
+Grounding
+
+"Highlight the airport."
+
+Object Detection
+
+Detect:
+
+buildings
+roads
+vehicles
+water bodies
+infrastructure
+agricultural areas
+Land-Cover Understanding
+
+Classify:
+
+vegetation
+water
+urban
+bare land
+agriculture
+infrastructure
+18. MULTITEMPORAL INTELLIGENCE
+
+For two observations:
+
+T0 + T1
+
+AERIS performs:
+
+change detection
+change segmentation
+change classification
+change description
+change VQA
+change area calculation
+change confidence
+spatial localization
+
+The user can visually scrub:
+
+T0 ─────────────── T1
+
+and see the transformation.
+
+19. CROSS-MODAL INTELLIGENCE
+
+For:
+
+OPTICAL + SAR
+
+AERIS combines complementary information.
+
+Optical contributes:
+
+spectral information
+vegetation
+water
+land cover
+contextual appearance
+
+SAR contributes:
+
+structure
+surface characteristics
+radar response
+cloud-independent observation
+built-environment information
+
+The system produces:
+
+Optical Evidence
++
+SAR Evidence
+↓
+Fusion
+↓
+Joint Interpretation
+↓
+Visual Evidence
+↓
+Answer
+20. GEO-SPATIAL INTELLIGENCE
+
+AERIS understands the geographic meaning of imagery.
+
+Capabilities:
+
+CRS handling
+reprojection
+georeferencing
+spatial bounds
+coordinates
+polygons
+bounding boxes
+raster operations
+vector operations
+area calculation
+spatial intersection
+region selection
+geospatial exports
+
+Large imagery is automatically tiled and processed.
+
+Large Raster
+     ↓
+Intelligent Tiling
+     ↓
+Relevant Tile Selection
+     ↓
+AI Inference
+     ↓
+Spatial Reconstruction
+     ↓
+Geospatial Result
+21. INTERACTIVE 3D EARTH
+
+AERIS provides an interactive Earth environment.
+
+The user can:
+
+rotate Earth
+zoom
+navigate to an AOI
+load satellite imagery
+overlay analysis
+display masks
+display detected objects
+display change maps
+display temporal layers
+select regions
+ask questions about selected regions
+
+The map becomes an AI interaction surface rather than merely a visualization.
+
+22. "ASK THIS REGION"
+
+The user selects any region on the map.
+
+AERIS automatically creates a contextual investigation.
+
+SELECT REGION
+     ↓
+Identify available imagery
+     ↓
+Identify modality
+     ↓
+Identify temporal data
+     ↓
+Prepare context
+     ↓
+Ask AI
+
+Example:
+
+"What changed here?"
+
+"Is this construction?"
+
+"Why is this region different?"
+
+"How much vegetation was lost?"
+
+23. "INVESTIGATE" MODE
+
+Every result has an:
+
+INVESTIGATE
+
+action.
+
+Example:
+
+Initial Question:
+"Has the built-up area increased?"
+
+             ↓
+
+Answer:
+"Yes."
+
+             ↓
+
+INVESTIGATE
+
+             ↓
+
+Change Detection
+             ↓
+Region Localization
+             ↓
+Optical Comparison
+             ↓
+SAR Comparison
+             ↓
+Object Detection
+             ↓
+Area Calculation
+             ↓
+Evidence Generation
+             ↓
+Detailed Explanation
+
+This turns simple questions into multi-step autonomous investigations.
+
+24. EVIDENCE-FIRST ANSWERS
+
+AERIS never treats the LLM as the source of truth.
+
+The pipeline is:
+
+SPECIALIST MODEL
+      ↓
+STRUCTURED RESULT
+      ↓
+SPATIAL / TEMPORAL EVIDENCE
+      ↓
+VALIDATION
+      ↓
+LLM EXPLANATION
+
+The LLM explains evidence rather than inventing evidence.
+
+Every answer can expose:
+
+Answer
+Confidence
+Evidence
+Source Image
+Region
+Model
+Parameters
+Execution Trace
+25. CONFIDENCE SYSTEM
+
+Every major result has confidence information.
+
+Example:
+
+BUILT-UP CHANGE
+
+Confidence
+█████████░ 91%
+
+Affected Area
+14.2 hectares
+
+Change
++18.4%
+
+Evidence
+T0 + T1 + SAR
+
+Model
+Change-VQA v1.2
+
+The system can flag uncertain results.
+
+LOW CONFIDENCE
+
+The available imagery does not provide
+sufficient evidence for a reliable conclusion.
+
+[Investigate] [Use Another Sensor]
+26. VOICE CONTROL
+
+Voice becomes a natural interface to AERIS.
+
+VOICE
+ ↓
+Speech Recognition
+ ↓
+Intent
+ ↓
+Agent
+ ↓
+Action
+
+Examples:
+
+"Compare these images."
+
+"Highlight the changes."
+
+"Zoom into the biggest change."
+
+"Use SAR to verify this."
+
+"Generate a report."
+
+"Create a monitoring mission."
+
+Voice can control both:
+
+AI analysis
+visual interface
+27. TEMPORAL TIMELINE
+
+Every location can have a temporal view.
+
+2022
+ │
+2023
+ │
+2024
+ │
+2025
+ │
+2026
+
+The user can scrub through time.
+
+AERIS can identify:
+
+newly built structures
+vegetation loss
+water expansion
+water reduction
+infrastructure changes
+land-use changes
+28. AUTOMATIC REPORT GENERATION
+
+Any investigation can become a professional report.
+
+SATQUERY INTELLIGENCE REPORT
+
+Mission
+
+Area of Interest
+
+Input Imagery
+
+Temporal Range
+
+Question
+
+Executive Summary
+
+Detected Objects
+
+Detected Changes
+
+Spatial Evidence
+
+Cross-Modal Evidence
+
+Confidence
+
+Models Used
+
+Execution Trace
+
+Visual Evidence
+
+Limitations
+
+Conclusion
+
+Export:
+
+PDF
+JSON
+GeoJSON
+analysis data
+29. MISSION SYSTEM
+
+Users can save complex investigations as missions.
+
+Example:
+
+MISSION:
+Industrial Expansion Monitoring
+
+AOI:
+Selected polygon
+
+Baseline:
+2024-01-01
+
+Monitoring:
+Monthly
+
+Models:
+Change + Grounding + Optical/SAR
+
+Alert:
+Built-up increase > 5%
+
+AERIS continuously evaluates the mission.
+
+30. ALERT SYSTEM
+
+When the monitoring engine detects a meaningful change:
+
+NEW OBSERVATION
+      ↓
+ANALYSIS
+      ↓
+CHANGE DETECTED
+      ↓
+CONFIDENCE CHECK
+      ↓
+THRESHOLD CHECK
+      ↓
+ALERT
+
+Example:
+
+Significant construction detected
+
+Area:
+14.2 hectares
+
+Change:
++18.4%
+
+Confidence:
+91%
+
+Location:
+North-East
+
+[Investigate]
+[View Evidence]
+[Generate Report]
+31. MISSION HISTORY
+
+Every analysis is stored.
+
+Users can revisit:
+
+previous questions
+previous imagery
+model outputs
+evidence
+reports
+timelines
+alerts
+monitoring missions
+
+This creates a persistent intelligence workspace rather than a temporary chatbot.
+
+32. MODEL OBSERVABILITY
+
+The system tracks:
+
+Model
+Version
+Task
+Input
+Latency
+GPU usage
+Confidence
+Output
+Errors
+Benchmark score
+
+This allows the system to become an actual ML platform.
+
+33. BENCHMARK / RESEARCH MODE
+
+AERIS contains an internal research environment.
+
+Researchers can compare:
+
+BASE MODEL
+vs
+ADAPTED MODEL
+
+and evaluate:
+
+VQA
+Captioning
+Grounding
+Change detection
+Change VQA
+Cross-modal analysis
+
+The system stores experiment results.
+
+34. REMOTE-SENSING ADAPTATION
+
+The intelligence layer is adapted to Earth-observation imagery.
+
+The system uses remote-sensing training data to improve:
+
+image-text alignment
+remote-sensing terminology
+scene understanding
+VQA
+captioning
+grounding
+
+The resulting model becomes the domain-adapted visual intelligence component of AERIS.
+
+35. FULL MODEL PIPELINE
+GENERAL VLM
+    ↓
+REMOTE-SENSING ADAPTATION
+    ↓
+DOMAIN-ADAPTED VLM
+    ↓
+VQA
+CAPTIONING
+GROUNDING
+    ↓
+SPECIALIST MODELS
+    ↓
+CHANGE
+OPTICAL-SAR
+SEGMENTATION
+DETECTION
+    ↓
+AGENTIC ROUTER
+    ↓
+MULTIMODAL REASONING
+    ↓
+EVIDENCE
+    ↓
+ANSWER
+36. COMPLETE AGENT GRAPH
+START
+  ↓
+INPUT VALIDATOR
+  ↓
+METADATA ANALYZER
+  ↓
+QUERY INTERPRETER
+  ↓
+TASK CLASSIFIER
+  ↓
+MISSION PLANNER
+  ↓
+MODEL REGISTRY
+  ↓
+MODEL ROUTER
+  │
+  ├──────── SINGLE IMAGE ────────┐
+  │                              │
+  │       ├── VQA                │
+  │       ├── Captioning         │
+  │       └── Grounding          │
+  │                              │
+  ├──────── TEMPORAL ────────────┤
+  │                              │
+  │       ├── Change Detection   │
+  │       ├── Change VQA         │
+  │       └── Change Description │
+  │                              │
+  └──────── CROSS MODAL ─────────┘
+                                 │
+          ├── Optical Analysis   │
+          ├── SAR Analysis       │
+          └── Fusion             │
+                                 ↓
+                       RESULT VALIDATION
+                                 ↓
+                       EVIDENCE ENGINE
+                                 ↓
+                      CONFIDENCE ENGINE
+                                 ↓
+                       ANSWER SYNTHESIS
+                                 ↓
+                         TRACE GENERATOR
+                                 ↓
+                               OUTPUT
+37. FINAL PRODUCT ECOSYSTEM
+                         SATQUERY AI
+                             │
+                            AERIS
+                             │
+       ┌─────────────────────┼─────────────────────┐
+       │                     │                     │
+   UNDERSTAND             ANALYZE              MONITOR
+       │                     │                     │
+ Natural Language       Computer Vision       Missions
+ Voice                  VLM                   Alerts
+ Query                  VQA                   Timeline
+ Intent                 Grounding             History
+       │                Change
+       │                Optical/SAR
+       │                     │
+       └─────────────────────┼─────────────────────┘
+                             │
+                          EVIDENCE
+                             │
+                 ┌───────────┼───────────┐
+                 │           │           │
+               Visual      Spatial     Temporal
+                 │           │           │
+                 └───────────┼───────────┘
+                             │
+                          REASON
+                             │
+                    ┌────────┴────────┐
+                    │                 │
+                  ANSWER            ACTION
+                    │                 │
+                 Explain          Investigate
+                    │                 │
+                    └────────┬────────┘
+                             │
+                          OUTPUT
+                             │
+          ┌──────────────────┼──────────────────┐
+          │                  │                  │
+        2D Map            3D Earth           Report
+          │                  │                  │
+          └──────────────────┼──────────────────┘
+                             │
+                       MISSION MEMORY
+                             │
+                      CONTINUOUS MONITORING
+38. THE FINAL USER EXPERIENCE
+
+The entire application should feel like this:
+
+User:
+
+"Compare these two satellite images and tell me
+whether the built-up area increased."
+
+                    ↓
+
+AERIS:
+
+"I detected two temporally corresponding images.
+
+I will perform:
+1. Temporal alignment
+2. Change detection
+3. Built-up segmentation
+4. Change quantification
+5. Evidence validation"
+
+                    ↓
+
+PROCESSING
+
+                    ↓
+
+AERIS:
+
+"Built-up area increased by approximately 18.4%.
+
+14.2 hectares of new built-up regions were detected,
+primarily in the north-eastern portion of the scene.
+
+Confidence: 91%."
+
+                    ↓
+
+USER:
+
+"Investigate."
+
+                    ↓
+
+AERIS:
+
+"Cross-modal evidence is available.
+I will compare the optical and SAR observations."
+
+                    ↓
+
+OPTICAL + SAR
+
+                    ↓
+
+AERIS:
+
+"The detected structures are supported by both
+optical and SAR observations."
+
+                    ↓
+
+USER:
+
+"Show me."
+
+                    ↓
+
+3D EARTH
++
+T0
++
+T1
++
+CHANGE MASK
++
+SAR
++
+OPTICAL
++
+EVIDENCE
+
+                    ↓
+
+USER:
+
+"Generate a report."
+
+                    ↓
+
+INTELLIGENCE REPORT
+39. END STATE
+
+The final system is a single platform containing:
+
+Natural-language satellite analysis
+Voice-controlled satellite analysis
+Remote-sensing VLM
+VQA
+Captioning
+Visual grounding
+Object detection
+Segmentation
+Land-cover analysis
+Multitemporal change detection
+Change description
+Change VQA
+Optical/SAR analysis
+Optical/SAR fusion
+GeoTIFF processing
+Metadata intelligence
+Intelligent image tiling
+Geospatial reasoning
+Interactive 2D maps
+Interactive 3D Earth
+Timeline analysis
+Region-aware AI
+"Ask this region"
+Autonomous investigation
+Agentic model routing
+Specialist model registry
+Evidence graph
+Confidence estimation
+Execution traces
+Model observability
+Research/benchmark mode
+Voice interaction
+Mission creation
+Continuous monitoring
+Automated alerts
+Mission history
+Investigation history
+Professional intelligence reports
+PDF/JSON/GeoJSON export
+Persistent AI workspace
+40. ONE-LINE DEFINITION
+
+AERIS is an agentic Earth-observation intelligence system that transforms satellite imagery, multimodal observations, and temporal data into interactive, evidence-grounded geospatial intelligence through specialized computer-vision and vision-language models.
+

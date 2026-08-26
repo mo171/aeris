@@ -1,0 +1,5464 @@
+SatQuery AI
+AERIS — Agentic Earth Reasoning & Intelligence System
+A Comprehensive Study & Technical Design Document
+An Interactive Vision–Language Assistant for Multimodal Remote-Sensing
+Image Analysis through Text Queries
+Smart India Hackathon 2026
+|
+Problem Statement SIH26167
+|
+ISRO
+Document purpose. This document is simultaneously (i) a research survey of
+remote-sensing vision–language analysis, (ii) a technical system-design document, (iii)
+a feature specification, (iv) a team learning guide, (v) a development roadmap, and
+(vi) a risk-aware implementation blueprint for building SatQuery AI (working name of
+the intelligence layer: AERIS). It is written to be used, not merely read: every design
+claim is labelled as established fact, proposed architecture, assumption, experimental
+idea, or future work.
+Version 1.0
+|
+August 23, 2026
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Abstract
+SatQuery AI is an agentic Earth-observation intelligence platform that lets analysts interrogate
+satellite imagery in natural language. Instead of forcing users to choose sensors, bands, models,
+and GIS operations by hand, the system inspects the uploaded imagery, classifies the user’s intent,
+plans an execution graph, dispatches specialist remote-sensing models (detection, segmentation,
+spectral indices, change detection, optical–SAR fusion), grounds every claim in spatial evidence,
+and returns an auditable answer with confidence and a full execution trace. This document
+surveys the relevant literature (remote-sensing captioning, visual question answering, visual
+grounding, bi-temporal change detection, change description, optical–SAR fusion, and geospatial
+foundation models), catalogues the forty features proposed in the project’s concept notes,
+critically de-duplicates and prioritises them into MVP / SIH-demo / advanced / research tiers,
+specifies the end-to-end analysis pipeline and software architecture, and closes with an evaluation
+framework, a design-decision log, a professional risk register, a dependency-aware build order,
+and a team learning roadmap. The central engineering thesis is that a vision–language model
+alone is not the product: the defensible contribution is the orchestration layer that routes natural
+language to verified specialist computation and binds every answer to evidence.
+How to read this document
+Every non-trivial claim in this document carries one of five epistemic labels, following the
+critical-analysis requirement of the design brief:
+• [Fact] — supported by peer-reviewed literature or official documentation (cited).
+• [Proposal] — our engineering design for SatQuery AI; not yet validated.
+• [Assumption] — plausible but must be validated during the build.
+• [Experimental] — requires a prototype and measurement before adoption.
+• [Future] — deliberately outside SIH scope.
+Proposed features are never presented as existing capabilities.
+Contents
+I
+Foundations
+6
+1
+Project Overview
+6
+1.1
+What SatQuery AI is . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+1.2
+The SIH problem statement . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+1.3
+The core problem being solved
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+1.4
+Why conventional remote-sensing analysis is difficult . . . . . . . . . . . . . . . . .
+7
+1.5
+Why multimodal satellite imagery is difficult to analyse
+. . . . . . . . . . . . . . .
+7
+1.6
+Why natural-language interaction is useful . . . . . . . . . . . . . . . . . . . . . . .
+7
+1.7
+Why a VLM alone is insufficient
+. . . . . . . . . . . . . . . . . . . . . . . . . . . .
+7
+1.8
+Why specialist remote-sensing tools/models are required . . . . . . . . . . . . . . .
+8
+1.9
+What makes this different from a satellite-image chatbot . . . . . . . . . . . . . . .
+8
+1.10 Intended end-to-end user experience
+. . . . . . . . . . . . . . . . . . . . . . . . . .
+8
+1.11 Novelty and technical contribution . . . . . . . . . . . . . . . . . . . . . . . . . . .
+8
+1.12 What should realistically be demonstrated in an SIH prototype . . . . . . . . . . .
+8
+2
+Who the User Is and What They Need
+8
+2.1
+Target users and workflows
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+8
+2.2
+User →Need →Query →Analysis →Output
+. . . . . . . . . . . . . . . . . . . .
+9
+1
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+2.3
+Representative natural-language queries . . . . . . . . . . . . . . . . . . . . . . . .
+10
+3
+Remote Sensing Fundamentals Required for the Project
+10
+3.1
+Remote-sensing fundamentals . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+10
+3.1.1
+Electromagnetic spectrum and sensing modes . . . . . . . . . . . . . . . . .
+10
+3.1.2
+The four resolutions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+11
+3.1.3
+Multispectral, hyperspectral, optical, thermal, SAR
+. . . . . . . . . . . . .
+11
+3.2
+Important satellite data concepts . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+11
+3.2.1
+Missions relevant to SatQuery AI . . . . . . . . . . . . . . . . . . . . . . . .
+11
+3.2.2
+Data artefacts the system must understand . . . . . . . . . . . . . . . . . .
+11
+3.3
+Remote-sensing indices . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+12
+3.3.1
+NDVI — Normalized Difference Vegetation Index [1] . . . . . . . . . . . . .
+12
+3.3.2
+EVI — Enhanced Vegetation Index [3] . . . . . . . . . . . . . . . . . . . . .
+12
+3.3.3
+SAVI — Soil-Adjusted Vegetation Index [2] . . . . . . . . . . . . . . . . . .
+12
+3.3.4
+NDWI — Normalized Difference Water Index [4] . . . . . . . . . . . . . . .
+13
+3.3.5
+MNDWI — Modified NDWI [5] . . . . . . . . . . . . . . . . . . . . . . . . .
+13
+3.3.6
+NDBI — Normalized Difference Built-up Index [6] . . . . . . . . . . . . . .
+13
+3.3.7
+NBR — Normalized Burn Ratio [7] . . . . . . . . . . . . . . . . . . . . . . .
+13
+II
+Research Survey
+13
+4
+Previous Research: Remote-Sensing Image Captioning
+13
+4.1
+Evolution of the task . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+13
+4.2
+From generic description to geospatial semantics
+. . . . . . . . . . . . . . . . . . .
+14
+4.3
+Limitations of generic VLMs on satellite imagery . . . . . . . . . . . . . . . . . . .
+14
+5
+Remote-Sensing Visual Question Answering (RSVQA)
+14
+5.1
+Task formulation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+14
+5.2
+Methods . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+14
+5.3
+Open difficulties
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+15
+5.4
+What existing systems solve — and what they do not
+. . . . . . . . . . . . . . . .
+15
+6
+Text-Guided Region Grounding in Remote Sensing
+15
+6.1
+Task family . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+15
+6.2
+Remote-sensing grounding resources
+. . . . . . . . . . . . . . . . . . . . . . . . . .
+15
+6.3
+Answer generation vs. evidence localisation
+. . . . . . . . . . . . . . . . . . . . . .
+15
+7
+Bi-Temporal Change Detection
+16
+7.1
+Task and prerequisites . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+16
+7.2
+Optical–optical change detection
+. . . . . . . . . . . . . . . . . . . . . . . . . . . .
+16
+7.3
+Optical–SAR change detection
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+16
+7.4
+Pipeline anatomy and failure modes
+. . . . . . . . . . . . . . . . . . . . . . . . . .
+16
+8
+Change Description and Change-Based VQA
+17
+2
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+8.1
+Beyond binary masks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+17
+8.2
+Question types the system must support . . . . . . . . . . . . . . . . . . . . . . . .
+17
+9
+Optical–SAR Multimodal Fusion
+17
+9.1
+Fusion strategies
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+17
+9.2
+When to fuse and when not to
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+18
+10 Multimodal Geospatial Foundation Models
+18
+10.1 Pretraining paradigms . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+18
+10.2 Model landscape and SatQuery AI roles . . . . . . . . . . . . . . . . . . . . . . . .
+18
+10.3 Selection rationale
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+20
+11 Remote-Sensing Image–Text Datasets
+20
+III
+System Design
+23
+12 Agentic / Task-Routing Approaches for Remote Sensing
+23
+12.1 Why not send every query to an LLM
+. . . . . . . . . . . . . . . . . . . . . . . . .
+23
+12.2 The routing pipeline . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+23
+12.3 Deterministic router vs. autonomous agent . . . . . . . . . . . . . . . . . . . . . . .
+23
+13 The Complete List of 40 Proposed Features
+24
+13.1 Extraction method . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+24
+13.2 Feature specification table . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+24
+13.3 Engineering assessment table
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+26
+13.4 Critical analysis of the feature list
+. . . . . . . . . . . . . . . . . . . . . . . . . . .
+29
+13.5 Feature dependency graph . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+29
+14 Feature Taxonomy
+29
+15 Remote-Sensing Analysis Pipeline
+30
+15.1 The canonical 20-stage pipeline . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+30
+15.2 Pipeline per input configuration . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+31
+16 System Modules
+31
+17 What Each Team Member Needs to Study
+33
+18 Technical Architecture
+34
+18.1 Overview
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+34
+18.2 Frontend . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+35
+18.3 Backend . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+35
+18.4 AI layer . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+35
+18.5 Geospatial layer . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+35
+18.6 Storage
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+35
+18.7 Model serving . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+35
+3
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+18.8 Explicitly excluded (with reasons)
+. . . . . . . . . . . . . . . . . . . . . . . . . . .
+35
+19 Query Understanding and Task Routing
+36
+19.1 Query interpretation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+36
+19.2 Routing examples . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+36
+20 Evidence-Grounded Answers
+37
+21 Explainability and Provenance
+37
+21.1 The auditable analysis trace . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+37
+21.2 Provenance requirements . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+37
+IV
+Engineering Governance
+38
+22 Evaluation Framework
+38
+22.1 Remote-sensing metrics
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+38
+22.2 VLM / VQA metrics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+38
+22.3 Grounding metrics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+38
+22.4 System-level metrics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+38
+22.5 User-level metrics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+38
+23 Design Decisions
+38
+24 Risk Register
+40
+V
+Execution Plan
+42
+25 Feasibility Analysis
+42
+25.1 Can all 40 features be built? . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+42
+25.2 MVP — the smallest system that clearly solves the problem . . . . . . . . . . . . .
+42
+25.3 SIH demo — the strongest realistic set . . . . . . . . . . . . . . . . . . . . . . . . .
+42
+25.4 Advanced version — if time/resources permit . . . . . . . . . . . . . . . . . . . . .
+42
+25.5 Research / future — do not attempt during the hackathon . . . . . . . . . . . . . .
+42
+26 Build Order
+43
+27 Learning Roadmap
+43
+28 Research Gaps and SatQuery AI’s Potential Novelty
+46
+28.1 What existing systems do not combine effectively . . . . . . . . . . . . . . . . . . .
+46
+28.2 Novelty classification . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+47
+29 Competitive / Research Comparison
+48
+30 Final End-to-End System Blueprint
+49
+4
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+VI
+References
+49
+5
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Part I
+Foundations
+1
+Project Overview
+1.1
+What SatQuery AI is
+SatQuery AI is an interactive vision–language assistant for multimodal remote-sensing image
+analysis through text queries. Its intelligence layer, AERIS (Agentic Earth Reasoning & Intelligence
+System), converts a natural-language request over one or more satellite images into a planned,
+executed, and audited geospatial analysis. The concept notes describe it as an agentic Earth-
+observation intelligence platform rather than a satellite chatbot: the differentiator is that answers
+are produced by verifiable specialist computation (spectral indices, segmentation, detection, change
+detection, optical–SAR fusion) and only explained by a language model — never invented by one.
+Elevator pitch
+You give SatQuery AI satellite imagery and ask questions in plain language — “where did new
+buildings appear?”, “show me unhealthy vegetation”, “what changed between the optical and
+the SAR image?” The system figures out what kind of data it is looking at, picks the right
+remote-sensing tools, runs them, highlights the exact regions that support its answer, and tells
+you how confident it is and how it got there. It turns satellite-image analysis from a specialist
+GIS workflow into a conversation — without hiding the evidence.
+Technical definition [Proposal]. SatQuery AI is a deterministic-routing, tool-using multimodal
+analysis system: a query-understanding front end (classifier + planner) maps natural language and
+uploaded rasters to a typed execution graph over a registry of specialist models and geospatial
+operators; an evidence engine binds intermediate products (masks, boxes, index maps, change maps)
+to claims; and a vision–language model (VLM) performs perception-level tasks (VQA, captioning,
+grounding) and synthesises explanations strictly from structured, validated results.
+1.2
+The SIH problem statement
+The project targets Smart India Hackathon 2026 problem statement SIH26167 (ISRO): an
+interactive vision–language assistant for multimodal remote-sensing image analysis through text
+queries. The statement’s core demands map onto four system obligations: (i) accept multimodal
+Earth-observation input (at minimum optical and SAR); (ii) accept text queries as the primary
+interaction mode; (iii) perform analysis, not just description — detection, localisation, comparison,
+quantification; and (iv) remain interactive — follow-up questions, region-scoped queries, and
+iterative investigation.
+1.3
+The core problem being solved
+Operationally, remote-sensing analysis today is a toolchain problem. Answering even a simple
+question such as “did built-up area increase here?” requires an analyst to know which sensor is ap-
+propriate, acquire and preprocess the data (atmospheric correction, cloud masking, co-registration),
+choose and run a change-detection method, post-process the result, quantify area, and interpret it.
+Each step has its own software, parameters, and failure modes. The bottleneck is not the availability
+of algorithms — it is the selection, sequencing, and interpretation of algorithms. SatQuery AI
+attacks exactly that bottleneck.
+6
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+1.4
+Why conventional remote-sensing analysis is difficult
+• Data heterogeneity [Fact].
+Optical multispectral, SAR, thermal, and hyperspectral
+products differ in geometry, radiometry, noise model, and semantics; a SAR backscatter image
+cannot be treated as an RGB picture (Section 3).
+• Preprocessing burden [Fact]. Georeferencing, CRS handling, resampling, co-registration,
+cloud masking, and atmospheric correction are prerequisites for almost any analysis and are
+a common source of silent error.
+• Scale [Fact]. A single Sentinel-2 tile is roughly 10,980 × 10,980 pixels per band at 10 m;
+naive full-scene inference is infeasible, so tiling and spatial reconstruction are mandatory.
+• Expertise gap. The people with the questions (disaster responders, planners, agricultural
+officers) are usually not the people who can operate the toolchain.
+1.5
+Why multimodal satellite imagery is difficult to analyse
+Optical and SAR are complementary but non-aligned observations of the same ground truth. Optical
+sensors measure reflected solar radiation in spectral bands; SAR measures coherent microwave
+backscatter sensitive to structure, moisture, and geometry, works at night and through clouds,
+but suffers speckle, layover, foreshortening, and shadow [Fact; Section 3]. Fusing them requires
+radiometric and geometric normalisation, co-registration to sub-pixel accuracy, and models that
+respect that optical̸ = SAR at the pixel-interpretation level.
+1.6
+Why natural-language interaction is useful
+Natural language is the shortest path between an analyst’s question and the system’s capabilities. It
+removes the requirement to know which tool implements which analysis, allows iterative refinement
+(“now only the north-east part”), and produces a self-documenting session: the query log is the
+analysis narrative. It does not remove the need for rigour — which is why the language layer must
+sit on top of verifiable computation, not replace it.
+1.7
+Why a VLM alone is insufficient
+Critical analysis — the core argument
+A generic or even remote-sensing-adapted VLM cannot be the whole system, for five reasons:
+1. Hallucination without evidence [Fact]. Generative models produce fluent answers
+unsupported by the pixels; without grounding, there is no way to audit a claim.
+2. No quantitative rigour [Fact]. “How many hectares changed?” requires georeferenced
+pixel counting, not token prediction. VLMs are poor at precise counting, measurement,
+and spatial arithmetic.
+3. Band blindness [Fact]. Standard VLMs consume 3-channel RGB. NDVI, NDWI,
+SAR polarimetry, and 13-band Sentinel-2 products are invisible to them unless specialist
+preprocessing renders or computes them.
+4. Weak temporal/cross-modal reasoning [Fact]. Bi-temporal change reasoning and
+optical–SAR comparison are active research problems (Sections 7, 8, 9); off-the-shelf
+VLMs do not solve them reliably.
+5. No provenance [Fact]. A chat answer carries no trace of inputs, parameters, model
+versions, or intermediate products — unacceptable for scientific or operational use.
+Therefore: the VLM is a component, not the architecture. Specialist models produce
+structured, checkable results; the VLM perceives and explains.
+7
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+1.8
+Why specialist remote-sensing tools/models are required
+Indices (NDVI, NDWI, NDBI, NBR) are closed-form band arithmetic with decades of validation;
+segmentation and detection models (U-Net, SegFormer, task-specific detectors) produce pixel-
+accurate, measurable outputs; change-detection networks (Siamese/transformer/Mamba families)
+are purpose-built for bi-temporal comparison. These are deterministic or statistically evaluated
+tools with known error characteristics — exactly what an evidence-first system needs as its ground
+truth layer.
+1.9
+What makes this different from a satellite-image chatbot
+• Evidence-first answers: every claim links to a region, mask, model, and execution trace
+(Section 20).
+• Tool routing, not monolithic generation: a planner dispatches specialist models (Sec-
+tion 12).
+• Multimodal and temporal by design: optical, SAR, and bi-temporal inputs are first-class,
+with compatibility validation.
+• Quantified output: areas, percentages, counts — computed geospatially.
+• Auditable: provenance, confidence, and reproducibility are system features, not afterthoughts
+(Section 21).
+1.10
+Intended end-to-end user experience
+Upload imagery →ask a question →watch the system state its plan →receive an answer with
+highlighted evidence, confidence, and a trace →drill in (“investigate”, “ask this region”, “show me”)
+→export a report. The concept notes’ scripted dialogue (“built-up area increased by approximately
+18.4%, 14.2 hectares, primarily north-east, confidence 91%”) is the target interaction quality.
+1.11
+Novelty and technical contribution
+Novelty is claimed only at the integration level [Proposal]: combining natural-language routing
++ specialist remote-sensing tools + evidence grounding + temporal and cross-modal reasoning +
+auditable traces in one SIH-feasible system. Each individual ingredient exists in the literature
+(Section 28); the combination, and the engineering discipline around evidence, is the contribution.
+We explicitly do not claim a new foundation model or a new algorithm.
+1.12
+What should realistically be demonstrated in an SIH prototype
+SIH demo target (reasoned in Section 25)
+A judge should be able to: upload an optical GeoTIFF and a SAR image, ask single-image
+questions (VQA, captioning, grounding, indices), run a bi-temporal change query with a
+quantified, localised answer, see cross-modal evidence, inspect the execution trace, and export
+a report — live, in minutes, on a single GPU. Continuous monitoring, voice control, 3D Earth,
+and autonomous multi-step investigation are explicitly not required for a credible demo.
+2
+Who the User Is and What They Need
+2.1
+Target users and workflows
+Table 1 characterises the intended users. The common pattern: users have questions, not pipelines;
+they need localised, quantified, trustworthy answers faster than the manual toolchain delivers them.
+8
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Table 1: Target users, their data, questions, pain points, and required outputs.
+User
+Data
+Typical questions
+Current difficulty
+Needed output /
+expertise
+Remote-sensing
+analyst
+S-1/S-2, Landsat,
+VHR
+Which model for this
+task? Did preprocess-
+ing succeed?
+Toolchain fragmenta-
+tion; repetitive script-
+ing
+Scripted-quality
+results
+without
+scripting;
+high
+expertise
+ISRO / scientific
+researcher
+Cartosat, RISAT,
+EOS series
+Does
+this
+method
+generalise? What is
+the error?
+Reproducibility,
+benchmarking
+over-
+head
+Auditable
+traces,
+metrics; very high
+expertise
+Disaster-
+management
+analyst
+SAR + optical,
+rapid tasking
+What is damaged?
+Where is flooding?
+Cloud cover blocks op-
+tical; time pressure
+Fast
+change
+maps,
+confidence;
+medium expertise
+Agriculture ana-
+lyst
+S-2,
+Landsat
+time series
+Which
+fields
+are
+stressed? When?
+Index computation +
+zonal stats by hand
+NDVI/health
+maps,
+alerts;
+medium expertise
+Urban planner
+VHR optical
+Where is new con-
+struction? Is it legal?
+Manual comparison of
+dated imagery
+Change
+masks,
+area
+stats;
+low–
+medium expertise
+Environmental
+researcher
+Multispectral
+time series
+Water spread? Vege-
+tation loss?
+Long time-series han-
+dling
+Temporal
+sum-
+maries,
+trends;
+medium expertise
+Defence / intelli-
+gence analyst
+VHR optical +
+SAR
+What changed at this
+site? Is this new?
+Cross-sensor
+correla-
+tion;
+audit
+require-
+ments
+Evidence-linked
+findings;
+high
+expertise
+GIS professional
+Mixed
+raster/vector
+Integrate EO results
+into GIS
+Format/CRS friction
+GeoJSON/GeoTIFF
+exports;
+high ex-
+pertise
+Student
+/
+re-
+searcher
+Public datasets
+How do I reproduce
+this?
+Steep learning curve
+Interactive
+explo-
+ration; low exper-
+tise
+2.2
+User →Need →Query →Analysis →Output
+Table 2 is the canonical mapping that drives feature design. Each row is an end-to-end contract
+the system must satisfy.
+9
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Table 2: User →Need →Query →Analysis →Output mapping.
+User
+Need
+Example query
+Analysis path
+Output
+Planner
+Detect new con-
+struction
+“Where did new build-
+ings appear?”
+Registration
+→
+change detection →
+building
+segmenta-
+tion →intersection
+Change mask + area
++ evidence
+Disaster
+ana-
+lyst
+Rapid
+damage
+view
+“Compare these two im-
+ages and tell me what
+changed.”
+Bi-temporal change
+detection + change
+classification
+Change map + sum-
+mary + confidence
+Agriculture
+analyst
+Crop stress
+“Show me areas with un-
+healthy vegetation.”
+Band check →NDVI
+→threshold/zones
+NDVI
+map
++
+stressed-region mask
+Environmental
+researcher
+Water
+monitor-
+ing
+“Where are the water
+bodies?”
+NDWI/MNDWI
++
+water segmentation
+Water mask + area
+Analyst
+Scene
+under-
+standing
+“What land-cover types
+are visible here?”
+Scene classification /
+land-cover segmenta-
+tion
+Class map + propor-
+tions
+Analyst
+Cross-sensor
+check
+“What
+changed
+be-
+tween the optical and
+SAR images?”
+Modality validation
+→per-sensor analy-
+sis →joint interpre-
+tation
+Comparative expla-
+nation + dual evi-
+dence
+Researcher
+Spectral query
+“Which
+regions
+have
+high NDVI?”
+Index
+engine
+→
+threshold
+→
+zonal
+stats
+Thresholded map +
+stats
+Analyst
+Infrastructure
+“Find all large roads in
+this region.”
+Detection/segmentation
+→vectorisation →
+size filter
+Boxes/masks + list
+Any user
+Trust
+“Show the region re-
+sponsible for your an-
+swer.”
+Evidence engine →
+grounding link
+Highlighted region +
+trace
+Any user
+Interpretation
+“Explain why this area
+appears different.”
+Evidence aggregation
+→VLM explanation
+Grounded
+explana-
+tion
+2.3
+Representative natural-language queries
+The system must handle at least the following query families (used later as routing test cases
+in Section 19): land-cover identification; water-body localisation; vegetation-health mapping;
+bi-temporal comparison; construction detection; optical–SAR comparison; linear-infrastructure
+extraction; index thresholding; causal explanation; and evidence recall (“show the region responsible
+for your answer”). Each family exercises a different routing path, which is why the query set
+doubles as an integration test suite [Proposal].
+3
+Remote Sensing Fundamentals Required for the Project
+This section is the study baseline: every team member must be fluent in Section 3.1; specialists go
+deeper per the learning matrix (Section 17).
+3.1
+Remote-sensing fundamentals
+3.1.1
+Electromagnetic spectrum and sensing modes
+Remote sensing measures electromagnetic (EM) radiation interacting with the Earth’s surface.
+Passive sensors record reflected sunlight or emitted thermal radiation (optical, multispectral,
+hyperspectral, thermal); active sensors emit their own signal and record the return (SAR, LiDAR)
+10
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+[Fact]. Key spectral regions for this project: visible (∼0.4–0.7 µm), near-infrared (NIR, ∼0.7–
+1.3 µm), short-wave infrared (SWIR, ∼1.3–3 µm), thermal infrared (∼8–14 µm), and microwave (e.g.
+C-band, ∼5.6 cm for Sentinel-1).
+3.1.2
+The four resolutions
+• Spatial resolution — ground sampling distance (GSD): the ground size of one pixel (Sentinel-
+2: 10/20/60 m; Landsat 8/9: 30 m multispectral; MODIS: 250–1000 m). Determines the
+smallest detectable object.
+• Spectral resolution — number and width of bands. Multispectral: few broad bands
+(Sentinel-2: 13). Hyperspectral: hundreds of narrow contiguous bands.
+• Temporal resolution — revisit time (Sentinel-2: ∼5 days with two satellites; Landsat: 16
+days; MODIS: daily). Governs change-analysis cadence.
+• Radiometric resolution — quantisation depth / sensitivity to intensity differences (Sentinel-
+2: 12-bit). Affects index precision and subtle-change detection.
+3.1.3
+Multispectral, hyperspectral, optical, thermal, SAR
+Optical/multispectral imagery records reflected solar radiation in discrete bands — intuitive, rich in
+spectral semantics (vegetation, water, soil), but blocked by clouds and darkness. Hyperspectral adds
+fine spectral discrimination (minerals, species, materials) at high data and processing cost. Thermal
+records emitted radiation (surface temperature, urban heat, fires). SAR (synthetic aperture radar)
+actively illuminates the surface with microwaves and records backscatter amplitude and phase;
+Sentinel-1 provides C-band VV/VH polarisations. SAR penetrates clouds and works at night
+and is sensitive to structure, roughness, and dielectric properties (moisture), but exhibits speckle
+(multiplicative granular noise), and geometric distortions: layover (tops of structures mapped
+toward the sensor), foreshortening (slopes compressed), and radar shadow (no-return zones) [Fact].
+Consequence for SatQuery AI: SAR outputs must never be interpreted with optical intuition; the
+explanation layer needs modality-aware phrasing [Proposal].
+3.2
+Important satellite data concepts
+3.2.1
+Missions relevant to SatQuery AI
+• Sentinel-1 (ESA/Copernicus) — C-band SAR, VV/VH (IW mode), ∼10 m pixel spacing,
+6–12 day revisit; the project’s primary SAR source.
+• Sentinel-2 (ESA/Copernicus) — 13-band multispectral, 10–60 m, ∼5-day revisit; primary
+optical source; L2A products are atmospherically corrected (Sen2Cor) and include a scene
+classification (cloud) layer.
+• Landsat 8/9 (USGS/NASA) — 30 m multispectral + 15 m panchromatic + thermal;
+16-day revisit; 50+ year archive — the reference for long-term change.
+• MODIS (NASA) — 250–1000 m, daily; coarse but temporally dense.
+• VIIRS (NOAA/NASA) — 375–750 m, daily; night-lights band relevant to urbanisation.
+• ISRO datasets — Cartosat series (high-resolution panchromatic/multispectral, e.g. Cartosat-
+3 ∼0.25 m pan), RISAT series (C-band SAR), Resourcesat (LISS-III/IV), EOS-04 (RISAT-1A).
+Accessible via the Bhuvan geoportal and MOSDAC; licensing and bulk-access terms must be
+verified before training use [Assumption].
+3.2.2
+Data artefacts the system must understand
+• Bands and metadata: band order/wavelengths, acquisition time, sensor mode, processing
+level, nodata value, scale/offset.
+11
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+• Georeferencing and CRS: the affine geotransform mapping pixel (col, row) to projected
+coordinates; CRS identified by EPSG code (e.g. WGS84 = EPSG:4326; UTM zones =
+EPSG:326xx/327xx). Mixing CRSs without reprojection is a silent-killer bug class (Section 24).
+• Formats: GeoTIFF (georeferenced TIFF, the workhorse), JP2 (JPEG-2000; Sentinel-2
+distribution format), plus PNG/JPEG for benchmark datasets (no georeferencing).
+• Raster tiles: large scenes are processed in windows (e.g. 512×512 with overlap) and spatially
+reconstructed.
+• Cloud masking: Sentinel-2 L2A SCL layer or s2cloudless; clouds/shadows must be masked
+or flagged before indices and change detection.
+• Atmospheric correction: converting top-of-atmosphere reflectance to bottom-of-atmosphere
+(surface) reflectance (L1C →L2A); indices computed on L1C data are biased [Fact].
+• Resampling: bringing bands/frames to a common grid (nearest for labels, bilinear/cubic for
+continuous data).
+• Co-registration: aligning two scenes to sub-pixel agreement; mandatory before any bi-
+temporal or cross-modal comparison (Section 7).
+3.3
+Remote-sensing indices
+Indices are the cheapest, most defensible “AI” in the system: closed-form band arithmetic with
+physical meaning. For each index we give Formula →Bands →Meaning →Typical query
+→Output →Limitations. All formulas assume surface reflectance ρ in the named bands.
+3.3.1
+NDVI — Normalized Difference Vegetation Index [1]
+NDVI = ρNIR −ρRed
+ρNIR + ρRed
+Sentinel-2: B08 −B04
+B08 + B04
+(1)
+Bands: NIR, Red. Meaning: healthy vegetation absorbs red and reflects NIR strongly; NDVI
+∈[−1, 1], dense healthy vegetation typically > 0.4, water < 0. Query: “Show me areas with
+unhealthy vegetation.” Output: index map + thresholded stress mask. Limitations: saturates
+over dense canopy; sensitive to soil background and atmosphere; not directly comparable across
+sensors without calibration.
+3.3.2
+EVI — Enhanced Vegetation Index [3]
+EVI = G
+ρNIR −ρRed
+ρNIR + C1ρRed −C2ρBlue + L,
+G=2.5, C1=6, C2=7.5, L=1
+(2)
+Bands: NIR, Red, Blue. Meaning: like NDVI but corrects aerosol and soil effects and resists
+saturation in high-biomass areas. Query: “Compare vegetation vigour between these dates.”
+Output: EVI map/difference. Limitations: needs blue band; coefficients are empirical (MODIS-
+derived); can be noisy in arid regions.
+3.3.3
+SAVI — Soil-Adjusted Vegetation Index [2]
+SAVI = (1 + L)
+ρNIR −ρRed
+ρNIR + ρRed + L,
+L = 0.5 (typical)
+(3)
+Bands: NIR, Red. Meaning: NDVI with a soil-brightness correction factor L; better in sparse
+vegetation / exposed soil. Query: “Vegetation cover in this semi-arid region?” Output: SAVI
+map. Limitations: L is scene-dependent; still saturates at high biomass.
+12
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+3.3.4
+NDWI — Normalized Difference Water Index [4]
+NDWI = ρGreen −ρNIR
+ρGreen + ρNIR
+Sentinel-2: B03 −B08
+B03 + B08
+(4)
+Bands: Green, NIR. Meaning: open water reflects green and absorbs NIR; positive values indicate
+water. Query: “Where are the water bodies?” Output: water mask + area. Limitations:
+confounded by built-up land and wet soil; McFeeters NDWI is not ideal over mixed urban/water
+scenes.
+3.3.5
+MNDWI — Modified NDWI [5]
+MNDWI = ρGreen −ρSWIR
+ρGreen + ρSWIR
+Sentinel-2: B03 −B11
+B03 + B11
+(5)
+Bands: Green, SWIR. Meaning: suppresses built-up noise; the standard choice for water extraction
+in urbanised scenes. Query: “Map flood extent.” Output: robust water mask. Limitations:
+needs SWIR (20 m on Sentinel-2 →resampling); turbid/shallow water can be ambiguous.
+3.3.6
+NDBI — Normalized Difference Built-up Index [6]
+NDBI = ρSWIR −ρNIR
+ρSWIR + ρNIR
+Sentinel-2: B11 −B08
+B11 + B08
+(6)
+Bands: SWIR, NIR. Meaning: built-up areas reflect SWIR more than NIR — the spectral mirror
+of NDVI. Query: “Show built-up regions.” Output: built-up likelihood map. Limitations:
+confuses bare soil with buildings; use as a feature/prior, not a sole detector [Proposal].
+3.3.7
+NBR — Normalized Burn Ratio [7]
+NBR = ρNIR −ρSWIR2
+ρNIR + ρSWIR2
+Sentinel-2: B08 −B12
+B08 + B12,
+∆NBR = NBRpre −NBRpost
+(7)
+Bands: NIR, SWIR2 (B12). Meaning: burned areas show strong SWIR2 response; ∆NBR
+quantifies burn severity. Query: “Assess fire damage in this region.” Output: burn-severity map.
+Limitations: seasonal/illumination differences mimic severity; needs co-registered pre/post pair.
+Design consequence — the spectral-index engine
+Indices require band identification (from metadata or user hint), surface reflectance (warn if
+L1C), cloud masking, and resolution harmonisation (SWIR at 20 m must be resampled to the
+analysis grid). The index engine is therefore a module with validation, not a set of formulas
+(Section 16). Notably, the concept notes never mention an index engine even though user queries
+(“high NDVI”, “unhealthy vegetation”) demand one — this is a genuine gap the architecture
+fills [Proposal; see Section 13.4].
+Part II
+Research Survey
+4
+Previous Research: Remote-Sensing Image Captioning
+4.1
+Evolution of the task
+Remote-sensing image captioning (RSIC) has passed through five technical generations [Fact]:
+13
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+1. CNN–RNN encoder–decoder (mid-2010s): a CNN encodes the image; an LSTM decodes
+a sentence, following the “show and tell” paradigm. Early RS adaptations produced short,
+generic descriptions (“many buildings are near a road”).
+2. Attention-based captioning: soft attention lets the decoder focus on image regions while
+generating words, improving object mention and reducing generic output.
+3. Transformer-based systems: self-attention encoders/decoders [8] replaced recurrence,
+enabling longer-range context and better fluent, structured descriptions.
+4. Multimodal pretraining: CLIP-style contrastive image–text alignment [11] provided
+transferable features; captioning became fine-tuning on top of aligned encoders.
+5. Large vision–language models: instruction-tuned LVLMs (LLaVA-style [13]) adapted
+to RS — RSGPT [24], RS-LLaVA [26], GeoChat [25], SkyEyeGPT [27], LHRS-Bot [28],
+EarthGPT [29] — unify captioning with VQA and grounding in one model.
+4.2
+From generic description to geospatial semantics
+Progress has moved descriptions along five axes: (i) land-cover semantics (correct class vocabulary);
+(ii) geographic semantics (place-aware phrasing); (iii) object relationships (“harbour with docked
+ships”); (iv) spatial descriptions (“in the north-east corner”); and (v) domain terminology (“built-
+up”, “cropland”, “sediment plume”). Benchmarks such as UCM-Captions, Sydney-Captions, RSICD,
+NWPU-Captions, and the human-annotated RSICap [24] drove this progression; VRSBench [23]
+now evaluates captioning jointly with VQA and grounding.
+4.3
+Limitations of generic VLMs on satellite imagery
+Why not just use GPT-4V-class or LLaVA-class models directly?
+• Top-down domain shift [Fact]: nadir views, tiny objects, unusual textures, and absence
+of canonical object scales degrade encoders trained on ground-level photos.
+• Resolution mismatch [Fact]: RS scenes are megapixels; VLM vision encoders expect
+∼224–448 px inputs — naive downsampling destroys exactly the detail the question
+targets.
+• Weak spatial reasoning [Fact]: VLMs are unreliable at counting, relative position,
+and area estimation in overhead imagery; benchmarks repeatedly show large gaps versus
+specialised models.
+• No spectral access [Fact]: RGB-only input discards NIR/SWIR/SAR information
+that defines the semantics of RS scenes.
+Domain-adapted RS-VLMs close part of this gap; SatQuery’s routing + specialist tools close
+the rest [Proposal].
+5
+Remote-Sensing Visual Question Answering (RSVQA)
+5.1
+Task formulation
+RSVQA formalises: input image + natural-language question →model reasoning →answer. The
+seminal RSVQA dataset and baselines [21] introduced low- and high-resolution splits with questions
+about presence, count, comparison, and area; HRVQA [22] extended this to very high-resolution
+aerial imagery. VRSBench [23] broadened evaluation to captioning, grounding, and VQA with
+human-verified annotations.
+5.2
+Methods
+Three families dominate [Fact]: (i) fusion baselines — CNN/ViT image features fused with question
+embeddings (the original RSVQA baselines); (ii) domain-adapted VLMs — instruction-tuned
+14
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+LVLMs (RSGPT [24], GeoChat [25], RS-LLaVA [26], LHRS-Bot [28], SkyEyeGPT [27], EarthGPT
+[29]); and (iii) contrastively-aligned encoders (RemoteCLIP [30], GeoRSCLIP/RS5M [31]) used
+with answer heads or retrieval. Instruction tuning on RS image–text pairs is the common enabler;
+vision–language alignment quality largely determines VQA accuracy.
+5.3
+Open difficulties
+Spatial reasoning (relative position, orientation, distance), object counting (especially small dense
+objects), and scene understanding at multiple scales remain weak points even for RS-adapted
+VLMs [Fact]. Quantitative questions (“how many hectares”) are fundamentally unsuited to token
+generation.
+5.4
+What existing systems solve — and what they do not
+Table 3: RSVQA/RS-VLM capability boundary relevant to SatQuery AI.
+Solved reasonably well
+Not solved / unreliable
+Presence/absence questions; scene-
+level description; coarse land-cover
+vocabulary; single-image VQA on
+benchmark-like data
+Precise counting and measurement; reliable localisation of the answer’s
+evidence; bi-temporal and cross-modal (optical–SAR) reasoning; quan-
+titative area/percentage answers; calibrated confidence; provenance
+SatQuery AI accepts VLM-class answers for perception-level questions but routes quantitative,
+temporal, and cross-modal questions to specialist tools whose outputs are measurable [Proposal].
+This division of labour is the system’s central design decision (Section 23).
+6
+Text-Guided Region Grounding in Remote Sensing
+6.1
+Task family
+Referring expressions describe a target (“the large water body in the north”); referring-expression
+comprehension (REC) returns a bounding box; referring-expression segmentation (RES) returns a
+pixel mask; phrase grounding localises all mentioned entities; point grounding returns a representative
+point. Outputs range over region proposals, boxes, masks, and points. General-domain enablers
+include Grounding DINO [15] (open-vocabulary box grounding) and SAM [14] (promptable masks).
+6.2
+Remote-sensing grounding resources
+RS-specific grounding datasets include RSVG [32], DIOR-RSVG [33], RRSIS-D [34] (mask-level),
+and the grounding splits of GeoChat [25] and VRSBench [23]. RS-VLMs with grounding heads
+(GeoChat, LHRS-Bot variants, SkyEyeGPT) output boxes or points inline with conversation.
+6.3
+Answer generation vs. evidence localisation
+The distinction that defines SatQuery AI
+Saying “there is a water body” is answer generation. Answering “where is the large water
+body?” with a highlighted polygon is evidence localisation. Grounding converts the VLM
+from an oracle into an instrument: every claim can be checked against pixels. In SatQuery AI,
+grounding is not only a user-facing feature — it is the mechanism that binds specialist-model
+outputs (masks, boxes, change regions) to language in the evidence layer (Section 20) [Proposal].
+For the SIH build, box-level grounding via an RS-VLM (GeoChat-class) plus mask-level grounding
+from specialist segmentation models is the pragmatic combination; end-to-end text-to-mask RES
+15
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+on arbitrary RS scenes is research-grade and deferred (Section 25).
+7
+Bi-Temporal Change Detection
+7.1
+Task and prerequisites
+Bi-temporal change detection takes co-registered images IT0, IT1 and produces a change map —
+binary (changed/unchanged) or semantic (from-class →to-class). Two prerequisites dominate all
+downstream quality [Fact]:
+• Image registration: geometric alignment via georeferencing + (if needed) feature-based
+refinement (affine/homography); misregistration of even 1–2 pixels creates systematic false
+change along edges.
+• Radiometric normalisation: season, illumination, and atmosphere differences mimic
+change; use same-season pairs, surface reflectance, and cloud masking.
+7.2
+Optical–optical change detection
+Canonical use cases: Sentinel-2→Sentinel-2 seasonal comparison, construction monitoring, vegeta-
+tion loss, water expansion, disaster damage. The architectural evolution [Fact]:
+1. CNN differencing / early fusion: concatenate or difference bi-temporal features; CVA-
+style baselines.
+2. Siamese CNNs: weight-shared encoders with late fusion — FC-EF, FC-Siam-conc, FC-
+Siam-diff [35]; SNUNet adds dense skip connections [40]; DSIFN adds deep supervision
+[41].
+3. U-Net decoders: Siamese encoders + U-Net-style decoders became the default dense-
+prediction recipe [19].
+4. Transformers: BIT tokenises bi-temporal features and models context with a transformer
+[38]; ChangeFormer hierarchical transformer backbones [39]; STANet introduced spatial–
+temporal attention with the LEVIR-CD dataset [37].
+5. Hybrid and state-space models: CNN–transformer hybrids; Mamba/state-space ap-
+proaches (ChangeMamba’s MambaBCD/SCD/BDA [42], building on Mamba [18]) target
+global context at linear cost.
+Benchmarks: LEVIR-CD [37], WHU-CD [43], OSCD [36], S2Looking [44], SYSU-CD [45], and the
+semantic-change dataset SECOND [46].
+7.3
+Optical–SAR change detection
+Optical–SAR pairs (Sentinel-1 + Sentinel-2) combine spectral with structural information and
+enable cloud-resistant monitoring. Difficulties [Fact]: (i) heterogeneous appearance — the same
+object looks unrelated across modalities, so pixel-level differencing is meaningless; comparison
+must happen in feature/semantic space; (ii) cross-modal alignment — radiometric and geometric
+normalisation plus co-registration; (iii) fusion strategy — per-modality feature extraction followed
+by feature-level or decision-level change reasoning. Multimodal change datasets remain scarce
+relative to optical–optical, which is why SatQuery AI treats optical–SAR change as comparative
+evidence (per-sensor analysis + joint interpretation) rather than a single learned cross-modal change
+network for the SIH build [Proposal; see Section 9].
+7.4
+Pipeline anatomy and failure modes
+registration →feature extraction →difference representation →change map →post-processing
+Post-processing: morphological cleanup, minimum-area filtering, vectorisation. Dominant false-
+positive sources: misregistration edges, seasonal vegetation cycles, cloud/shadow residuals, and
+16
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+sensor/angle differences. SatQuery AI mitigations: registration-quality check in the validation
+stage, cloud masking, seasonal-pair warnings, and change-confidence maps [Proposal].
+8
+Change Description and Change-Based VQA
+8.1
+Beyond binary masks
+A change mask answers where; users ask what, when, how much, and why. The research ladder
+[Fact]:
+Change Detection →Change Localization →Change Classification →Natural-Language Change E
+Change captioning generates sentences describing the difference (LEVIR-CC and dual-branch
+transformer captioners [47]); temporal/change VQA answers questions over image pairs — CDVQA,
+the first benchmark for the task, provides 2,968 SECOND-based image pairs and >122k question–
+answer pairs with a Siamese baseline [48]; change QA + grounding (CDQAG task, QAG-360K
+dataset, VisTA baseline) couples textual answers with change masks [49]; instruction-tuned temporal
+VLMs (ChangeChat-87k [50]; TEOChat for temporal EO sequences [51]) extend this to multi-turn
+dialogue.
+8.2
+Question types the system must support
+“What changed?” (classification), “where did it change?” (localisation + grounding), “when
+did it change?” (requires >2 observations or external dating [Future]), “how significant is the
+change?” (quantification: area, percentage — computed geospatially, not generated), and compara-
+tive/maximal queries (“largest change”).
+Critical analysis — SatQuery AI’s change stack
+The concept notes list change detection, segmentation, classification, description, and VQA
+as parallel features.
+In reality they form a dependency chain: description and VQA are
+only trustworthy when they verbalise validated masks and statistics. SatQuery AI therefore
+implements change description/VQA as structured-results-to-language rendering over the change
+pipeline’s outputs, optionally cross-checked by a change-VQA model — not as free-form VLM
+generation [Proposal]. This directly implements the evidence-first principle and matches the
+direction of CDQAG-style research [49].
+9
+Optical–SAR Multimodal Fusion
+9.1
+Fusion strategies
+• Early (data-level) fusion: stack co-registered channels (e.g. S-2 bands + VV/VH) and
+train one encoder. Simple; sensitive to misregistration and radiometric mismatch; supported
+by paired datasets such as SEN12MS [52] and BigEarthNet-MM [53].
+• Feature-level (intermediate) fusion: modality-specific encoders; merge features via
+concatenation, addition, or gating. The default for heterogeneous sensors.
+• Late (decision-level) fusion: independent per-modality predictions combined by rules or a
+meta-model. Most robust to missing/degraded modalities — and the most auditable, since
+each modality’s evidence stays separable.
+• Cross-attention fusion: queries from one modality attend to the other’s features; used in
+recent multimodal transformers and fusion-oriented foundation models (CROMA [59], DOFA
+[60], SkySense [61]).
+• Semantic-prior-guided / frequency-aware fusion / mixture-of-experts: research
+directions that route or weight modality contributions by learned priors, frequency content,
+17
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+or expert gating [Experimental for SatQuery AI].
+9.2
+When to fuse and when not to
+Fusion policy for SatQuery AI (Proposal)
+Fuse at feature or decision level, never raw-pixel level. Use fusion when tasks benefit
+from complementarity: built-up/water mapping under clouds, flood mapping (SAR water +
+optical context), structural confirmation of optical change. Keep modalities separate when:
+co-registration quality is poor; the question is purely spectral (NDVI) or purely structural (SAR
+texture); or auditability demands per-sensor evidence. SatQuery AI’s default is late fusion
+with joint explanation: optical evidence + SAR evidence →fused conclusion, with each side
+inspectable — mirroring the concept notes’ Cross-Modal Analysis Lab.
+10
+Multimodal Geospatial Foundation Models
+10.1
+Pretraining paradigms
+Three paradigms underpin RS foundation models [Fact]: contrastive pretraining (CLIP-style image–
+text alignment: RemoteCLIP [30], GeoRSCLIP/RS5M [31]); masked image modelling (MAE-style
+[10] adapted to RS: SatMAE [55], Scale-MAE [56], SpectralGPT [57], Prithvi [58]); and instruction
+tuning of LVLMs on RS data (Section 5).
+Adaptation to downstream tasks uses parameter-
+efficient fine-tuning — LoRA [16], QLoRA [17], adapters — rather than full fine-tuning, which is
+compute-prohibitive for an SIH team.
+10.2
+Model landscape and SatQuery AI roles
+Table 4 evaluates candidates on RS compatibility, multimodality, resolution handling, inference cost,
+openness, fine-tunability, spatial reasoning, and deployment feasibility. No model is recommended
+on popularity; each is assigned a concrete system role or rejected.
+18
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Table 4: Foundation-model / VLM comparison for SatQuery AI (assessment: [Proposal] unless
+cited).
+Model / fam-
+ily
+Input
+Output
+RS-
+specific?
+Strength
+Limitation
+Possible
+Sat-
+Query AI
+role
+CLIP [11]
+RGB image
++ text
+embeddings
+No
+transferable
+fea-
+tures
+ground-level
+do-
+main shift
+baseline
+only
+RemoteCLIP
+[30]
+RGB RS +
+text
+embeddings
+Yes
+RS-aligned
+retrieval/zero-
+shot
+RGB-only; no gen-
+eration
+embeddings
+for
+re-
+trieval/classification
+GeoRSCLIP
+(RS5M) [31]
+RGB RS +
+text
+embeddings
+Yes
+large-scale
+RS
+alignment
+RGB-only
+embedding
+backbone
+candidate
+LLaVA-1.5 [13]
+RGB + text
+text
+No
+strong
+general
+VQA
+poor RS semantics
+generic
+fallback
+/
+comparison
+baseline
+GeoChat [25]
+RGB RS +
+text
+text
++
+boxes
+Yes
+grounded dialogue,
+region VQA
+RGB-only;
+7B-
+class cost
+primary
+RS-VLM
+candidate
+RS-LLaVA [26]
+RGB RS +
+text
+text
+Yes
+captioning+VQA,
+LoRA-tuned
+no grounding head
+captioning/VQA
+alternative
+RSGPT [24]
+RGB RS +
+text
+text
+Yes
+quality
+RS
+cap-
+tions (RSICap)
+limited availability
+reference/benchmark
+SkyEyeGPT
+[27]
+RGB RS +
+text
+text
+Yes
+unified RS instruc-
+tion tuning
+RGB-only
+VQA alter-
+native
+LHRS-Bot [28]
+RGB RS +
+text
+text
+Yes
+VGI-enhanced
+alignment
+heavier pipeline
+research
+comparison
+EarthGPT [29]
+optical/SAR/IR
++ text
+text
+Yes
+multi-sensor scope
+availability/cost
+cross-
+modal
+VLM can-
+didate
+Qwen2.5-VL-
+class
+open
+VLMs
+RGB + text
+text
++
+boxes
+No
+strong
+general
+grounding, active
+ecosystem
+RS domain shift
+LoRA-
+adaptation
+base
+[Ex-
+perimental]
+Grounding
+DINO [15]
+RGB + text
+boxes
+No
+open-vocabulary
+detection
+not RS-tuned
+zero-shot
+detection
+fallback
+SAM / SAM 2
+[14]
+RGB
++
+prompts
+masks
+No
+promptable
+seg-
+mentation
+no
+semantics;
+RGB
+mask refine-
+ment
+from
+boxes/points
+SatMAE [55]
+multispectral/time
+features
+Yes
+temporal+multispectral
+pretraining
+encoder only
+encoder for
+fine-tuned
+heads
+SpectralGPT
+[57]
+hyperspectral features
+Yes
+spectral
+founda-
+tion model
+heavy; HS-focused
+[Future] hy-
+perspectral
+support
+Prithvi [58]
+HLS multi-
+spectral
+features
+Yes
+NASA/IBM
+EO
+pretraining
+encoder only
+encoder
+candidate
+for segmen-
+tation/CD
+CROMA [59]
+optical+SAR
+features
+Yes
+cross-modal radar–
+optical learning
+encoder only
+optical–
+SAR
+encoder
+candidate
+DOFA [60]
+any-sensor
+EO
+features
+Yes
+sensor-flexible rep-
+resentation
+maturity
+[Experimental]
+unified
+en-
+coder
+SkySense [61]
+multimodal
+EO
+features
+Yes
+large-scale
+multi-
+modal pretraining
+availability
+research ref-
+erence
+ChangeMamba
+[42]
+bi-temporal
+optical
+change
+masks
+Yes
+SOTA-class
+CD
+with
+SSM
+effi-
+ciency
+optical-only; needs
+training/fine-tune
+change-
+detection
+specialist
+19
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+10.3
+Selection rationale
+For the SIH build: one RS-VLM for perception tasks (GeoChat-class; EarthGPT-class if cross-modal
+text reasoning is demonstrated), LoRA/QLoRA-adapted on RS instruction data (VRSBench/RSVQA-
+style) if time permits [Experimental]; specialist, fine-tunable models for segmentation (SegFormer-
+class) and change detection (BIT/ChangeFormer-class, ChangeMamba as stretch); RemoteCLIP-
+class embeddings for retrieval/zero-shot support. Full fine-tuning and foundation-model pretraining
+are explicitly rejected on compute grounds (Section 23).
+11
+Remote-Sensing Image–Text Datasets
+Table 5 catalogues the datasets that matter for training, evaluation, demonstration, and bench-
+marking. Licensing must be checked per dataset before redistribution or commercial use; most cited
+datasets are research-licensed and suitable for training and benchmarking, while Sentinel/Landsat
+data are open [Fact].
+Table 5: Key datasets: Task | Sensor | Resolution | Size | Labels | Modality | Main use | SatQuery AI
+relevance.
+Dataset
+Task
+Sensor
+ResolutionSize / la-
+bels
+ModalityMain use
+SatQuery AI
+relevance
+BigEarthNet
+[53]
+multi-
+label
+classifica-
+tion
+S-1, S-2
+10–60 m
+∼590k
+patches;
+CORINE
+labels
+optical+SAR
+pretraining,
+multi-label
+domain
+adap-
+tation;
+SAR-
+optical
+pairing
+SEN12MS
+[52]
+classification,
+fusion
+S-1, S-2
+10 m
+∼180k
+scenes;
+IGBP
+optical+SAR
+fusion
+research
+cross-
+modal
+experi-
+ments
+EuroSAT
+[54]
+scene
+classifica-
+tion
+S-2
+10 m
+27k images;
+10 classes
+optical
+teaching,
+baselines
+quick
+demo,
+sanity
+checks
+UCM/Sydney/RSICD/NWPU
+captions
+captioning aerial/VHR0.3–2 m
+0.5k–30k
+images;
+5
+captions
+each
+optical
+captioning
+train/eval
+captioning
+fine-
+tune/eval
+RSICap (RS-
+GPT) [24]
+captioning VHR
+various
+2.5k human
+captions
+optical
+quality cap-
+tioning
+caption
+quality
+reference
+RSVQA
+LR/HR [21]
+VQA
+S-2,
+aerial
+10 m–
+15 cm
+∼77k
+/
+∼1M QA
+optical
+VQA
+train/eval
+VQA fine-
+tune/eval
+HRVQA [22]
+VQA
+aerial
+15–
+150 cm
+∼1M QA
+optical
+VHR VQA
+VQA eval-
+uation
+VRSBench
+[23]
+caption+ground+VQA
+VHR
+∼0.5–
+1 m
+∼29k
+images,
+human-
+verified
+optical
+unified
+LVLM eval
+primary
+VLM
+bench-
+mark
+20
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Dataset
+Task
+Sensor
+ResolutionSize / la-
+bels
+ModalityMain use
+SatQuery AI
+relevance
+RS5M [31]
+image–
+text
+pretrain-
+ing
+mixed
+various
+5M pairs
+optical
+contrastive
+pretraining
+embedding
+pretrain-
+ing data
+LEVIR-CD
+[37]
+binary
+change
+VHR
+0.5 m
+637
+pairs;
+building
+masks
+optical
+CD
+train/eval
+CD
+spe-
+cialist
+training
+WHU-CD
+[43]
+building
+change
+aerial
+0.075–
+0.3 m
+1–2 scenes
+(tiled)
+optical
+CD eval
+CD gener-
+alisation
+check
+OSCD [36]
+binary
+change
+S-2
+10 m
+24
+city
+pairs
+optical
+CD at S-2
+scale
+demo-
+scale CD
+S2Looking
+[44]
+building
+change
+VHR
+side-
+looking
+0.5–
+0.8 m
+5k pairs
+optical
+off-nadir
+CD
+robustness
+reference
+SYSU-CD
+[45]
+change
+VHR
+0.5 m
+20k pairs
+optical
+CD eval
+CD evalua-
+tion
+SECOND
+[46]
+semantic
+change
+aerial
+0.5–3 m
+4.7k pairs;
+6 classes
+optical
+semantic
+CD
+change
+classifica-
+tion
+DynamicEarthNet
+[76]
+semantic
+change
+time
+series
+Planet
+3 m
+24 AOIs ×
+24 months
+optical
+temporal
+segmenta-
+tion
+[Future]
+monitor-
+ing
+LEVIR-CC
+[47]
+change
+caption-
+ing
+VHR
+0.5 m
+10k pairs; 5
+captions
+optical
+change
+de-
+scription
+description
+fine-tune
+CDVQA [48]
+change
+VQA
+aerial
+(SEC-
+OND)
+0.5–3 m
+2,968 pairs;
+>122k QA
+optical
+change QA
+change-
+VQA
+bench-
+mark
+QAG-360K
+[49]
+change
+QA
++
+ground-
+ing
+mixed
+0.1–3 m
+6,810
+pairs; 360k
+QA-mask
+triples
+optical
+grounded
+change QA
+evidence-
+linked
+change
+answers
+ChangeChat-
+87k [50]
+change in-
+struction
+VHR
+0.5 m
+87k instruc-
+tions
+optical
+temporal
+instruction
+tuning
+temporal
+VLM
+tuning
+RSVG [32]
+grounding
+(boxes)
+VHR
+various
+5.5k expres-
+sions
+optical
+REC train-
+ing
+grounding
+specialist
+DIOR-
+RSVG [33]
+grounding
+(boxes)
+VHR
+(DIOR)
+0.5–
+30 m
+27k expres-
+sions
+optical
+REC train-
+ing
+grounding
+specialist
+RRSIS-D
+[34]
+grounding
+(masks)
+VHR
+various
+17k
+expression–
+mask
+optical
+RES
+train-
+ing
+mask
+grounding
+[Ad-
+vanced]
+21
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Dataset
+Task
+Sensor
+ResolutionSize / la-
+bels
+ModalityMain use
+SatQuery AI
+relevance
+DOTA [65]
+object de-
+tection
+aerial
+various
+∼2.8k
+im-
+ages,
+15
+classes
+optical
+detection
+detector
+train-
+ing/eval
+DIOR [66]
+object de-
+tection
+VHR
+0.5–
+30 m
+23k images,
+20 classes
+optical
+detection
+detector
+train-
+ing/eval
+xView [67]
+object de-
+tection
+WorldView-
+3
+0.3 m
+1M+
+in-
+stances, 60
+classes
+optical
+detection at
+scale
+[Advanced]
+detector
+breadth
+SpaceNet
+[68]
+buildings/roads
+VHR
+0.3–
+0.5 m
+multi-city
+challenges
+optical
+infrastructure road/building
+extraction
+SARDet-
+100K [69]
+SAR
+de-
+tection
+SAR
+various
+116k
+im-
+ages
+SAR
+SAR detec-
+tion
+SAR
+spe-
+cialist [Ad-
+vanced]
+LoveDA [70]
+land-
+cover
+segmen-
+tation
+VHR
+0.3 m
+6k images,
+7 classes
+optical
+segmentation/domain
+shift
+segmentation
+training
+DeepGlobe
+[71]
+land
+cover/roads/buildings
+VHR
+0.5 m
+challenge-
+scale
+optical
+segmentation segmentation
+training
+OpenEarthMap
+[72]
+global
+segmen-
+tation
+VHR
+0.25–
+0.6 m
+5k images,
+8 classes
+optical
+segmentation segmentation
+eval
+iSAID [73]
+instance
+segmen-
+tation
+aerial
+various
+655k
+in-
+stances
+optical
+instance
+masks
+[Advanced]
+FloodNet
+[74]
+flood
+segmen-
+tation
+UAV
+1.5 cm
+2.3k images
+optical
+disaster seg-
+mentation
+disaster
+demo
+potential
+FLAIR [75]
+land
+cover
+aerial
++
+S-2
+time
+0.2 m
+country-
+scale
+(France)
+optical
+segmentation+temporal
+research
+reference
+SSL4EO-S12
+[77]
+self-
+supervised
+pretrain-
+ing
+S-1, S-2
+10–60 m
+global,
+multi-
+season
+optical+SAR
+pretraining
+encoder
+pretrain-
+ing data
+Geo-Bench
+[78]
+benchmark
+suite
+mixed
+various
+6
+classifi-
+cation + 6
+segmenta-
+tion
+optical
+GFM evalu-
+ation
+evaluation
+reference
+PANGAEA
+[79]
+GFM
+bench-
+mark
+mixed
+various
+multi-task
+suite
+multimodalGFM evalu-
+ation
+evaluation
+reference
+Usage plan [Proposal]. Train/fine-tune: LEVIR-CD (+OSCD for S-2 scale), LoveDA / Deep-
+Globe / OpenEarthMap for segmentation, RSVQA + VRSBench for VLM adaptation, RSVG
+22
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+/ DIOR-RSVG for grounding. Evaluate: VRSBench (VLM), CDVQA (change QA), LEVIR-
+CD/WHU-CD (CD), DOTA/DIOR (detection). Demonstrate: Sentinel-1/2 open data over a
+chosen AOI, plus ISRO imagery via Bhuvan if licensing permits [Assumption].
+Part III
+System Design
+12
+Agentic / Task-Routing Approaches for Remote Sensing
+12.1
+Why not send every query to an LLM
+Routing every query to a single LLM/VLM fails on correctness (Section 1.7), cost (per-token pricing
+for quantitative work that band arithmetic does for free), latency (GPU-bound generation vs.
+millisecond index computation), and auditability (no intermediate artefacts). The correct pattern
+is language in, computation out: language models parse intent and render explanations; specialist
+tools do the measuring.
+12.2
+The routing pipeline
+SatQuery AI routing chain (Proposal)
+User Query →Intent Classification →Modality Detection →Data Validation →Specialist Tool
+Selection →Analysis →Evidence Extraction →VLM/LLM Explanation →Visualization →Audit
+Trace
+• Query classification / intent detection: map the query to a typed intent (SCENE_VQA,
+CAPTION, GROUND, INDEX_QUERY, DETECT, SEGMENT, CHANGE_DETECT, CHANGE_VQA, CROSS_MODAL,
+REPORT, MONITOR). A lightweight classifier (fine-tuned small model or LLM with structured
+output) suffices; intents are few and well-separated [Proposal].
+• Modality detection and validation: from metadata — bands, resolution, CRS, polar-
+isation, acquisition date; validate compatibility (bi-temporal needs 2 co-registrable scenes;
+NDVI needs NIR+Red; SAR questions need SAR input). Fail fast with an explanation, never
+silently degrade.
+• Specialist model selection: consult the model registry (name, version, capabilities, input
+modalities, supported tasks, latency, inference function) and pick the cheapest tool that
+satisfies the intent.
+• Execution planning: for multi-step intents, emit a linear or DAG plan (e.g. registration →
+change detection →building segmentation →intersection →area).
+• Result validation and confidence: sanity checks (mask coverage, index ranges, registration
+residual), plus model-reported confidence; low-confidence results are flagged, not hidden.
+• Provenance: every step appends to the execution trace (Section 21).
+12.3
+Deterministic router vs. autonomous agent
+Critical analysis — is an “agent” actually required?
+The concept notes describe a fully agentic workflow (planner, model router, autonomous
+investigation). For an SIH system, the safe and demonstrable core is a deterministic router
+with constrained planning: a finite intent set, typed tool schemas, and template plans
+per intent. Fully autonomous multi-step agents add failure modes (plan drift, tool-call loops,
+unbounded cost) without adding demo value for the core query families. Recommendation:
+implement the LangGraph-style state machine [81] with fixed routing edges per intent and
+23
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+a bounded “investigate” macro (a pre-defined expansion sequence), reserving open-ended
+autonomy for post-SIH work [Proposal; Future for full autonomy]. This preserves the concept’s
+spirit — the user sees planning, tool selection, and traces — while keeping behaviour predictable
+under judging.
+13
+The Complete List of 40 Proposed Features
+13.1
+Extraction method
+The concept notes’ “End State” section enumerates exactly forty capabilities; they are reproduced
+verbatim (names normalised only for grammar) in Tables 6–7. No features are invented; none are
+silently removed. Section 13.4 then applies critical analysis: duplicates, infrastructure-vs-feature
+distinctions, and prioritisation.
+13.2
+Feature specification table
+Table 6: The 40 proposed features — specification (Part 1 of 2). Preprocessing abbreviations: Reg
+= co-registration, CM = cloud mask, Norm = radiometric normalisation, Tile = windowed tiling,
+RS = resampling.
+#
+Feature
+User problem
+solved
+Input
+Modality Preprocessing Model / tool
+1
+Natural-
+language
+satellite analy-
+sis
+No GIS/ML ex-
+pertise
+needed
+to
+query
+im-
+agery
+text + im-
+age(s)
+any
+metadata
+parse
+query classifier
++ router
+2
+Voice-
+controlled
+satellite analy-
+sis
+Hands-free
+querying
+audio + im-
+age(s)
+any
+ASR
+speech-to-text
++ router
+3
+Remote-
+sensing VLM
+RS-aware
+per-
+ception
+and
+dialogue
+image
++
+text
+optical
+(RGB)
+tiling,
+RGB
+render
+RS-VLM
+(GeoChat-
+class)
+4
+VQA
+Ask
+questions
+about a scene
+image
++
+question
+optical
+tiling
+RS-VLM
+5
+Captioning
+Instant scene de-
+scription
+image
+optical
+tiling
+RS-VLM
+6
+Visual ground-
+ing
+Locate the thing
+asked about
+image
++
+phrase
+optical
+tiling
+RS-VLM
+grounding
+/
+Grounding-
+DINO-class
+7
+Object detec-
+tion
+Find buildings,
+roads, vehicles
+image
+optical
+(SAR
+adv.)
+Tile, Norm
+detector
+(DOTA/DIOR-
+trained)
+8
+Segmentation
+Pixel-level land-
+cover objects
+image
+optical
+Tile,
+Norm,
+CM
+SegFormer-
+class
+9
+Land-cover
+analysis
+What
+covers
+this area?
+image
+optical
+Tile, CM
+segmentation
++ class stats
+24
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+#
+Feature
+User problem
+solved
+Input
+Modality Preprocessing Model / tool
+10
+Multitemporal
+change detec-
+tion
+What
+changed
+between dates?
+2 images
+optical
+Reg,
+CM,
+Norm
+BIT/ChangeFormer-
+class
+11
+Change
+de-
+scription
+Explain
+the
+change in words
+2 images
+optical
+as #10
+change results
+→LLM ren-
+dering
+12
+Change VQA
+Ask
+questions
+about change
+2 images +
+question
+optical
+as #10
+change-VQA
+(CDVQA-
+trained)
+13
+Optical/SAR
+analysis
+Use cloud-proof
+structural data
+SAR (+op-
+tical)
+SAR,
+optical
+speckle
+filter,
+calib.
+SAR tools +
+per-modality
+models
+14
+Optical/SAR
+fusion
+Combine
+spec-
+tral + structural
+evidence
+optical
++
+SAR
+both
+Reg, Norm
+late-fusion rea-
+soning + joint
+explanation
+15
+GeoTIFF pro-
+cessing
+Real
+georef-
+erenced
+data
+support
+GeoTIFF
+any
+metadata, win-
+dows
+Rasterio/GDAL
+16
+Metadata
+in-
+telligence
+Know what the
+data is without
+asking
+any file
+any
+header parse
+metadata
+ex-
+tractor + val-
+idator
+17
+Intelligent im-
+age tiling
+Handle
+huge
+scenes
+large raster
+any
+Tile
+window engine
++
+reconstruc-
+tion
+18
+Geospatial rea-
+soning
+Areas,
+in-
+tersections,
+CRS-correct
+geometry
+raster/vector any
+reprojection
+GeoPandas/Shapely/Rasterio
+19
+Interactive 2D
+maps
+See results on a
+map
+results
+any
+tile serving
+MapLibre/Leaflet
+frontend
+20
+Interactive 3D
+Earth
+Geographic con-
+text and presen-
+tation
+results
++
+AOI
+any
+terrain/imagery
+layers
+CesiumJS
+21
+Timeline anal-
+ysis
+Scrub
+through
+time
+≥2
+dated
+images
+any
+Reg, CM
+temporal stack
++ change series
+22
+Region-aware
+AI
+Ask about a se-
+lected area
+region
++
+query
+any
+crop to AOI
+router + AOI
+scoping
+23
+“Ask this re-
+gion”
+One-click
+regional investi-
+gation
+polygon
++
+query
+any
+crop, context
+build
+router
++
+re-
+gion pipeline
+24
+Autonomous
+investigation
+Multi-step drill-
+down from one
+answer
+prior result
+any
+plan template
+bounded inves-
+tigation macro
+25
+Agentic model
+routing
+Right tool for
+each query
+query + reg-
+istry
+any
+—
+deterministic
+router (Lang-
+Graph)
+25
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+#
+Feature
+User problem
+solved
+Input
+Modality Preprocessing Model / tool
+26
+Specialist
+model registry
+Manage
+many
+models cleanly
+model zoo
+any
+—
+registry
+ser-
+vice
+27
+Evidence
+graph
+Every
+claim
+linked
+to
+evi-
+dence
+results
+any
+—
+evidence
+engine + store
+28
+Confidence es-
+timation
+Know when to
+trust an answer
+model
+out-
+puts
+any
+calibration
+confidence ag-
+gregator
+29
+Execution
+traces
+Audit how an
+answer
+was
+made
+run logs
+any
+—
+trace logger
+30
+Model observ-
+ability
+Latency,
+ver-
+sions, health
+telemetry
+any
+—
+metrics/logging
+stack
+31
+Research/benchmark
+mode
+Compare
+mod-
+els
+inside
+the
+app
+datasets
++
+models
+any
+harness
+evaluation
+framework
+32
+Voice interac-
+tion
+Conversational
+voice control
+audio
+any
+ASR (+TTS)
+ASR + router
+(+TTS)
+33
+Mission
+cre-
+ation
+Save
+investiga-
+tions as reusable
+missions
+AOI + con-
+fig
+any
+—
+mission store
+34
+Continuous
+monitoring
+Watch an AOI
+over time
+AOI
++
+schedule
+any
+Reg, CM
+scheduler
++
+change
+pipeline
+35
+Automated
+alerts
+Get
+notified
+on
+significant
+change
+monitoring
+events
+any
+thresholds
+alerting
+ser-
+vice
+36
+Mission
+his-
+tory
+Revisit past mis-
+sions
+store
+any
+—
+database
+37
+Investigation
+history
+Revisit
+past
+analyses
+store
+any
+—
+database
+38
+Professional
+intelligence
+reports
+Share
+findings
+formally
+investigation
+any
+—
+report genera-
+tor (PDF)
+39
+PDF/JSON/GeoJSON
+export
+Use results else-
+where
+results
+any
+—
+export
+ser-
+vices
+40
+Persistent AI
+workspace
+Keep
+data,
+chats, evidence
+across sessions
+all
+any
+—
+database + ob-
+ject storage
+13.3
+Engineering assessment table
+Categories: MVP = core minimum viable product; SIH = strong SIH-demo feature; ADV =
+advanced (build if time permits); RES = research-grade; FUT = future extension. Difficulty:
+L/M/H/VH. Reliability: expected output trustworthiness when built as specified.
+26
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Table 7: The 40 proposed features — engineering assessment (Part 2 of 2). Output/visualisation
+and priority.
+#
+Output →vi-
+sualisation
+Dependencies
+Diff.
+Reliability
+Demo
+value
+Research
+value
+Category
+1
+answer text →
+chat panel
+15,16,25
+M
+high
+(routed)
+very
+high
+medium
+MVP
+2
+text →chat
+1 + ASR
+M
+medium
+(ASR
+errors)
+medium
+low
+FUT
+3
+RS-aware
+an-
+swers →chat
+15,17
+H
+medium–
+high
+high
+high
+MVP
+4
+answer →chat
+3
+M
+medium–
+high
+very
+high
+high
+MVP
+5
+caption →chat
+3
+M
+medium–
+high
+high
+medium
+MVP
+6
+boxes/masks →
+map overlay
+3,19
+H
+medium
+very
+high
+high
+SIH
+7
+boxes
+→
+map
+overlay
+15,17,19
+H
+medium–
+high
+high
+medium
+SIH
+8
+masks →map
+overlay
+15,17,19
+H
+medium–
+high
+high
+medium
+SIH
+9
+class
+map
++
+stats →map +
+chart
+8
+M
+high
+high
+low
+MVP
+10
+change mask →
+change map
+15,Reg
+H
+medium–
+high
+very
+high
+high
+SIH
+11
+paragraph
+→
+chat/report
+10,11-renderer
+M
+high
+(if
+grounded)
+high
+medium
+SIH
+12
+answer →chat
+10
+(+CDVQA
+model)
+H
+medium
+high
+high
+ADV
+13
+SAR
+products
+→side-by-side
+15, SAR prep
+H
+medium
+high
+high
+SIH
+14
+joint conclusion
+→dual evidence
+13, Reg
+VH
+medium
+very
+high
+high
+ADV
+15
+parsed raster →
+viewer
+—
+M
+high
+medium
+low
+MVP
+16
+metadata
+card
+→UI panel
+15
+L
+high
+medium
+low
+MVP
+17
+tiles →seamless
+result
+15
+M
+high
+low
+low
+MVP
+18
+areas/geometry
+→map, stats
+15
+M
+high
+medium
+low
+MVP
+19
+interactive map
+→UI
+18
+M
+high
+very
+high
+low
+MVP
+20
+3D globe →UI
+19
+H
+high
+high
+low
+ADV
+27
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+#
+Output →vi-
+sualisation
+Dependencies
+Diff.
+Reliability
+Demo
+value
+Research
+value
+Category
+21
+time
+scrubber
+→UI
+10,19
+M
+medium–
+high
+high
+medium
+ADV
+22
+scoped answers
+→map+chat
+1,19
+M
+medium–
+high
+high
+medium
+SIH
+23
+region report →
+map+chat
+22
+M
+medium–
+high
+very
+high
+medium
+SIH
+24
+expanded analy-
+sis →trace UI
+25,27
+H
+medium
+high
+medium
+ADV
+25
+routed plan →
+trace UI
+26
+M
+high
+high
+medium
+MVP
+26
+registry
+API
+→
+observatory
+page
+—
+L
+high
+medium
+low
+MVP
+27
+evidence
+links
+→
+evidence
+page
+29
+M
+high
+high
+high
+SIH
+28
+confidence
+badge →UI
+per-model scores
+M
+medium
+high
+medium
+SIH
+29
+trace view →UI
+25
+L
+high
+high
+medium
+MVP
+30
+dashboards
+→
+observatory
+26,29
+M
+high
+medium
+low
+ADV
+31
+benchmark
+ta-
+bles →UI
+26, datasets
+H
+high
+low
+high
+FUT
+32
+voice I/O →UI
+2
+M
+medium
+medium
+low
+FUT
+33
+saved mission →
+UI
+40
+M
+high
+medium
+low
+ADV
+34
+monitoring runs
+→timeline
+10,33,40
+VH
+medium
+medium
+medium
+FUT
+35
+notifications →
+UI
+34
+M
+medium
+medium
+low
+FUT
+36
+mission list →
+UI
+33,40
+L
+high
+low
+low
+ADV
+37
+history list →
+UI
+40
+L
+high
+medium
+low
+ADV
+38
+PDF report →
+download
+27,29
+M
+high
+very
+high
+low
+SIH
+39
+files
+→
+down-
+load
+18
+L
+high
+medium
+low
+MVP
+40
+persistent
+sessions →UI
+DB + storage
+M
+high
+medium
+low
+SIH
+28
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+13.4
+Critical analysis of the feature list
+Duplicates, overlaps, and category corrections
+1. Exact duplicate: #2 (voice-controlled analysis) and #32 (voice interaction) are the
+same capability; they are merged into one roadmap item (FUT).
+2. Near-duplicates: #22 (region-aware AI) and #23 (“ask this region”) are one mechanism
+at two granularities — implemented once, exposed twice. #36, #37, #40 (mission history,
+investigation history, persistent workspace) are three views of one persistence layer.
+3. Infrastructure mislabelled as features: #15 (GeoTIFF), #16 (metadata), #17
+(tiling), #18 (geospatial reasoning), #26 (registry), #29 (traces) are enabling infras-
+tructure — mandatory, but they are modules, not user-facing features. The taxonomy
+(Section 14) reflects this.
+4. Missing from the concept notes: a spectral-index engine (NDVI/NDWI/NDBI/NBR)
+— required by the project’s own example queries; cloud masking; CRS/reprojection services;
+and a data-ingestion story beyond upload (STAC/Bhuvan) [Proposal: added as modules,
+Section 16].
+5. Unrealistic for SIH as stated: #34 continuous monitoring (needs data acquisition
+automation + scheduling + storage budget), #35 alerts, #31 benchmark mode, #24 full
+autonomy, #20 3D Earth (high effort, low analytical value), #2/#32 voice. These are
+staged ADV/FUT.
+13.5
+Feature dependency graph
+Figure 1 shows the build dependencies among feature clusters.
+GeoTIFF + metadata + tiling (#15–17)
+Geospatial engine (#18)
+Registry + traces (#26,29)
+Raster & index engine
+2D map + exports (#19,39)
+Query router (#1,25)
+RS-VLM: VQA/caption (#3–5)
+Seg / detection / land cover (#7–9)
+Change detection (#10)
+Grounding (#6)
+Evidence + confidence (#27,28) Change desc./VQA (#11,12)
+Ask-this-region (#22,23)
+Optical–SAR fusion (#13,14) Reports + persistence (#36–40)
+Voice (#2,32)
+3D Earth (#20)
+Monitoring + alerts (#33–35)
+Figure 1: Feature dependency graph (build bottom-up). Colour: grey = infrastructure, blue =
+MVP, teal = SIH-demo, orange = advanced, red = future.
+14
+Feature Taxonomy
+The forty features group into nine logical domains (Table 8); categories follow what the concept
+notes actually support, with the index engine added as the one justified extension.
+29
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Table 8: Feature taxonomy by domain.
+Domain
+Features (#)
+Image understanding & VQA
+RS-VLM (3), VQA (4), captioning (5)
+Text-to-region grounding
+Visual grounding (6), region-aware AI (22), ask-this-region (23)
+Detection & segmentation
+Object detection (7), segmentation (8), land-cover analysis (9)
+Spectral analysis
+Index engine (added; serves NDVI/NDWI/NDBI/NBR queries)
+Temporal analysis & change
+Change detection (10), change description (11), change VQA (12), timeline
+(21)
+SAR & cross-modal
+Optical/SAR analysis (13), fusion (14)
+Geospatial & data infrastruc-
+ture
+GeoTIFF (15), metadata (16), tiling (17), geospatial reasoning (18), exports
+(39)
+Agentic routing & explainabil-
+ity
+NL analysis (1), routing (25), registry (26), evidence graph (27), confidence
+(28), traces (29), observability (30), autonomous investigation (24), bench-
+mark mode (31)
+Interaction, reporting & persis-
+tence
+2D maps (19), 3D Earth (20), voice (2, 32), missions (33), monitoring (34),
+alerts (35), histories (36, 37), reports (38), workspace (40)
+15
+Remote-Sensing Analysis Pipeline
+15.1
+The canonical 20-stage pipeline
+S1. Data ingestion — upload or reference (STAC/Bhuvan [Future]); store raw file immutably.
+S2. File identification — format sniffing (GeoTIFF/JP2/PNG), band count, driver.
+S3. Metadata extraction — sensor hints, acquisition date, processing level, nodata, scale/offset.
+S4. CRS detection — EPSG lookup; reject or repair missing CRS (with user confirmation).
+S5. Band identification — map band indices to wavelengths (Sentinel-2 templates; user hint
+fallback).
+S6. Quality checking — nodata fraction, histogram sanity, resolution report.
+S7. Cloud / no-data handling — SCL/s2cloudless masking for optical; flag coverage.
+S8. Spatial normalisation — reproject to analysis CRS; align grids.
+S9. Co-registration — for pairs: geometric alignment + residual estimate; abort/warn above
+threshold.
+S10. Resampling — harmonise band resolutions (e.g. SWIR 20 m →10 m grid).
+S11. Tiling — windowed reads (e.g. 512 × 512, 10% overlap).
+S12. Feature extraction — indices, embeddings, per-tile model features.
+S13. Specialist analysis — detection / segmentation / change / SAR tools.
+S14. VLM reasoning — VQA/captioning/grounding over rendered tiles or regions.
+S15. Evidence localisation — bind outputs to georeferenced regions (masks, boxes).
+S16. Answer generation — structured results →constrained LLM rendering.
+S17. Visualisation — overlays, change maps, charts, side-by-side views.
+S18. Confidence estimation — per-tool scores + validation checks →aggregate badge.
+S19. Provenance logging — append full trace (inputs, versions, parameters, timings).
+S20. Final response — answer + evidence + confidence + trace + export handles.
+30
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+15.2
+Pipeline per input configuration
+Table 9: Stage activation per input type (• = active, ◦= conditional).
+Stages
+Optical
+SAR
+Opt+SAR
+Bi-temporal
+Text+img
+Text+2img
+S1–S6 ingestion/metadata
+•
+•
+•
+•
+•
+•
+S7 cloud handling
+•
+–
+◦
+•
+•
+•
+S8–S10
+registra-
+tion/resample
+◦
+◦
+•
+•
+◦
+•
+S11 tiling
+•
+•
+•
+•
+•
+•
+S12 indices/features
+•
+◦
+•
+•
+◦
+◦
+S13 specialist analysis
+◦
+•
+•
+•
+◦
+•
+S14 VLM reasoning
+◦
+◦
+•
+◦
+•
+•
+S15–S20
+evidence→response
+•
+•
+•
+•
+•
+•
+SAR-specific stages replace S7 with radiometric calibration, speckle filtering (e.g. refined Lee),
+and terrain-flattening awareness; optical–SAR runs both branches and joins at S15 (evidence
+localisation) per the late-fusion policy (Section 9).
+16
+System Modules
+Table 10: Software modules: purpose, I/O, technology, owner role, complexity.
+#
+Module
+Purpose / I/O
+Technologies
+Owner role
+Compl.Depends
+on
+M1
+Frontend / UI
+chat, upload, map,
+evidence,
+report
+views;
+in:
+user
+events; out:
+API
+calls
+Next.js, React,
+TypeScript,
+Tailwind,
+Zustand,
+TanStack
+Query
+Frontend
+H
+M18
+M2
+Upload & in-
+gestion
+file intake, valida-
+tion, storage;
+in:
+files;
+out:
+asset
+records
+FastAPI,
+ob-
+ject storage
+Backend
+M
+—
+M3
+Geospatial
+preprocessing
+CRS,
+reprojec-
+tion, registration,
+resampling;
+in:
+rasters;
+out:
+aligned rasters
+Rasterio,
+GDAL, pyproj
+Geospatial
+H
+M2
+M4
+Raster engine
+windowed
+reads,
+tiling, reconstruc-
+tion; in:
+rasters;
+out: tiles/products
+Rasterio, xar-
+ray, NumPy
+Geospatial
+M
+M3
+31
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+#
+Module
+Purpose / I/O
+Technologies
+Owner role
+Compl.Depends
+on
+M5
+Spectral-
+index engine
+NDVI/EVI/SAVI/NDWI/MNDWI/NDBI/NBR
++ thresholds;
+in:
+bands; out: index
+maps
+NumPy, Ras-
+terio
+Geospatial
+M
+M4
+M6
+Object detec-
+tion
+boxes
+for
+build-
+ings/roads/vehicles;
+in: tiles; out: geo-
+referenced boxes
+PyTorch,
+DOTA/DIOR-
+trained detec-
+tor
+CV
+H
+M4
+M7
+Segmentation
+land-cover/object
+masks;
+in:
+tiles;
+out: masks
+SegFormer-
+class, PyTorch
+CV
+H
+M4
+M8
+Change detec-
+tion
+bi-temporal
+change masks; in:
+aligned pair; out:
+change map
+BIT/ChangeFormer-
+class
+CV
+H
+M3,M4
+M9
+Optical–SAR
+fusion
+per-sensor analysis
++ joint interpreta-
+tion; in: pair; out:
+dual evidence
+PyTorch,
+CROMA-class
+encoders
+[Exp.]
+CV
+VH
+M3,M4
+M10 VQA engine
+answers over im-
+age+question; in:
+tiles+text; out: an-
+swers
+RS-VLM serv-
+ing
+VLM
+M
+M4,M13
+M11 Captioning
+engine
+scene descriptions;
+in: tiles; out: cap-
+tions
+RS-VLM
+VLM
+M
+M13
+M12 Grounding en-
+gine
+text→boxes/masks;
+in:
+phrase+tiles;
+out: regions
+RS-VLM
+grounding
+/
+Grounding-
+DINO
++
+SAM
+VLM
+H
+M13
+M13 VLM reason-
+ing engine
+model
+loading,
+LoRA
+weights,
+rendering
+of
+ex-
+planations;
+in:
+structured results;
+out: text
+HF
+Trans-
+formers,
+vLLM/ONNX
+VLM
+H
+—
+M14 Query classi-
+fier
+intent + entities;
+in:
+text;
+out:
+typed intent
+small
+LLM
+/
+fine-tuned
+classifier
+Agentic
+M
+—
+M15 Router / plan-
+ner
+plan
+per
+intent,
+tool selection; in:
+intent+assets; out:
+execution graph
+LangGraph
+state machine
+Agentic
+H
+M14,M16
+M16 Tool
+execu-
+tion engine
+runs tools, retries,
+timeouts; in: plan;
+out: results
+Python async,
+workers
+Agentic
+M
+M15
+32
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+#
+Module
+Purpose / I/O
+Technologies
+Owner role
+Compl.Depends
+on
+M17 Evidence
+/
+provenance
+claim–region–
+model
+links,
+traces;
+in:
+all
+outputs;
+out:
+evidence graph
+PostgreSQL/PostGIS,
+JSON-LD-ish
+records
+Backend
+M
+M16
+M18 Visualisation
+/ map engine
+tiles,
+overlays,
+change maps; in:
+products;
+out:
+web layers
+MapLibre/Leaflet,
+titiler-style
+tiles,
+(Ce-
+siumJS ADV)
+Frontend
+H
+M4
+M19 Backend API
+REST
++
+Web-
+Socket,
+sessions,
+auth-lite
+FastAPI, Web-
+Sockets
+Backend
+M
+all
+M20 Database
+assets,
+missions,
+history, evidence
+PostgreSQL/PostGIS
+Backend
+M
+—
+M21 Model serving
+registry,
+version-
+ing, GPU workers,
+CPU fallback
+HF,
+ONNX
+Runtime,
+Docker
+MLOps
+H
+M26-
+registry
+M22 Evaluation
+framework
+metrics
+harness,
+benchmark runs
+TorchGeo-
+style
+eval,
+scripts
+CV/VLM
+M
+M21
+Each module exposes a typed interface (JSON schema in / artefacts out), which is what makes the
+router testable and the traces meaningful [Proposal].
+17
+What Each Team Member Needs to Study
+The concept notes specify roles, not named members; assignments below are role-based (no personal
+information invented). Prerequisite chains follow the learning roadmap (Section 27).
+33
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Table 11: Team learning matrix: Role →Topics →Libraries →Models →Practice →Owns →
+Dependencies.
+Role
+Topics
+Libraries
+Models
+Practice
+project
+Owns
+Depends
+on
+Remote sens-
+ing / geospa-
+tial
+EM
+spectrum,
+4
+resolutions,
+SAR
+basics,
+CRS, indices,
+co-
+registration
+Rasterio, GDAL,
+GeoPandas,
+Shapely, pyproj,
+xarray
+—
+(index
+math)
+Build
+an
+NDVI/NDWI
++
+registration
+notebook
+on
+S-1/S-2
+M3–M5,
+S7–S10
+stages
+Python,
+NumPy
+Computer vi-
+sion
+CNNs,
+ViTs,
+de-
+tection, segmenta-
+tion, change detec-
+tion, registration
+PyTorch,
+torchvision,
+OpenCV, Albu-
+mentations
+U-Net,
+Seg-
+Former, BIT,
+Change-
+Former,
+(Change-
+Mamba)
+Train
++
+evalu-
+ate a LEVIR-CD
+change model
+M6–M9
+RS/geospatial
+role
+VLM
+/
+GenAI
+transformers,
+CLIP,
+LLaVA
+architecture,
+in-
+struction
+tuning,
+LoRA/QLoRA,
+grounding
+HF
+Transform-
+ers,
+PEFT,
+Datasets
+CLIP, LLaVA,
+GeoChat,
+RS-LLaVA,
+Grounding
+DINO, SAM
+LoRA-adapt
+an
+RS-VLM
+on
+VRSBench
+subset
+M10–
+M13
+CV role
+Backend
+/
+API
+async
+Python,
+REST,
+WebSock-
+ets, storage, queues
+FastAPI,
+Post-
+greSQL/PostGIS,
+Redis
+(opt.),
+Docker
+—
+Upload→process→result
+API with trace
+records
+M2,M17,M19,M20
+—
+Frontend / vi-
+sualisation
+React, maps, raster
+overlays, streaming
+UI
+Next.js,
+Type-
+Script, Tailwind,
+MapLibre, (Ce-
+siumJS)
+—
+Interactive
+map
+with
+mask/change
+overlays + chat
+M1,M18
+Backend
+API
+Data
+engi-
+neering
+datasets,
+formats,
+splits,
+licensing,
+STAC
+GDAL,
+STAC
+tools,
+HF
+Datasets
+—
+Dataset
+cards
++
+loaders
+for
+LEVIR-CD,
+VRSBench,
+SEN12MS
+dataset
+pipeline
+RS role
+MLOps / de-
+ployment
+GPU
+inference,
+quantisation, serv-
+ing, monitoring
+Docker, ONNX
+Runtime, vLLM
+(opt.),
+MLflow
+(opt.)
+all
+served
+models
+One-command
+GPU
+inference
+service
+with
+fallbacks
+M21
+CV+VLM
+roles
+Integration /
+agentic AI
+tool calling, struc-
+tured
+outputs,
+state
+machines,
+traces,
+evaluation
+of routing
+LangGraph,
+Pydantic, LLM
+APIs
+router
+classi-
+fier
+Deterministic
+router
+over
+6
+intents with full
+traces
+M14–
+M16
+Backend,
+VLM
+For a typical 6-person SIH team, merge: Data engineering →RS/geospatial; MLOps →Backend.
+The two roles that cannot be merged without risk are geospatial and VLM — they share almost no
+prerequisite overlap.
+18
+Technical Architecture
+18.1
+Overview
+Architecture in one paragraph (Proposal)
+A Next.js frontend talks to a FastAPI backend over REST (uploads, CRUD) and WebSockets
+(streaming analysis progress). The backend hosts the LangGraph router, which dispatches to
+specialist services (raster/index engine, CV models, VLM serving) running as Python workers
+34
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+with GPU access. Rasters live in object storage; structured state (assets, missions, evidence,
+traces) lives in PostgreSQL/PostGIS. Every run writes a provenance record that the frontend
+renders as the execution trace and evidence views.
+18.2
+Frontend
+Next.js + React + TypeScript + Tailwind [Proposal]. Map: MapLibre GL (2D raster overlays,
+boxes, masks, change maps) as default; Leaflet acceptable; CesiumJS only for the ADV 3D Earth.
+Charts for index/area statistics. Key inclusion rationale: MapLibre handles georeferenced overlays
+natively; Cesium’s 3D adds no analytical capability — hence ADV, not MVP.
+18.3
+Backend
+FastAPI (async Python) — chosen because the entire geospatial/ML stack is Python; one language
+end-to-end removes an integration layer. REST for uploads/CRUD; WebSockets for streaming
+execution-trace events and progress (judges see the plan unfold live — high demo value). Background
+jobs via a simple task queue; heavy inference on GPU workers.
+18.4
+AI layer
+Strictly separated concerns: VLM (perception + explanation rendering), LLM-class classifier
+(intent), specialist CV models (detection, segmentation, change), embeddings (RemoteCLIP-
+class for retrieval/zero-shot support), tool execution (deterministic Python tools: indices, area
+stats, registration). No RAG document store in MVP — the knowledge the system needs is in the
+imagery and tool outputs, not in documents [Proposal].
+18.5
+Geospatial layer
+Rasterio (Pythonic raster I/O — primary), GDAL (underneath Rasterio; CLI for conversions),
+GeoPandas + Shapely (vectors, intersections, area), pyproj (CRS), xarray (multi-band/time
+stacks, optional), PostGIS (spatial queries over AOIs/detections), STAC (deferred to FUT for
+catalogue ingestion). TorchGeo [80] recommended for dataset loaders and samplers.
+18.6
+Storage
+PostgreSQL/PostGIS (assets, AOIs, detections, missions, evidence, traces) + object storage or
+filesystem bucket (raw rasters, products, report PDFs) + in-memory/Redis cache for rendered tiles
+(optional). No vector database in MVP (no semantic-search requirement).
+18.7
+Model serving
+Hugging Face Transformers for VLM + PEFT/LoRA weights; ONNX Runtime as CPU fallback
+for specialist models; vLLM/TorchServe unnecessary at SIH scale. Quantisation (8-bit/4-bit via
+QLoRA-style loading) to fit a 7B-class VLM on a single ≤16 GB GPU; specialist models are small
+enough to co-reside. CPU fallback exists for everything except acceptable-latency VLM chat —
+which is why VLM calls are isolated behind M13 with graceful degradation [Proposal].
+18.8
+Explicitly excluded (with reasons)
+Node.js backend (splits the language stack); Kubernetes (SIH overkill — Docker Compose suffices);
+full microservice mesh (modules are Python packages behind one API first; split only if GPU
+contention demands); vector database (no RAG); STAC ingestion (FUT); 3D Earth (ADV); voice
+(FUT).
+35
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+19
+Query Understanding and Task Routing
+19.1
+Query interpretation
+The interpreter extracts: intent, task type, target objects, spatial region, temporal range, required
+modality, image count, and requested output. Example (from the concept notes): “Has the built-
+up area increased between these two images?” →task:
+CHANGE_VQA; images:
+2; temporal:
+T0→T1; target:
+built-up; output:
+answer + change map + evidence.
+19.2
+Routing examples
+Example 1 — bi-temporal construction query. “Compare these two images and show where
+new buildings appeared.”
+Query
+Intent Classification (CHANGE_DETECT+DETECT)
+Bi-temporal validation (2 images, CRS, dates)
+Image registration
+Change detection (BIT/ChangeFormer)
+Building detection/segmentation (T1)
+Spatial intersection (change ∩buildings)
+Area computation (PostGIS/Shapely)
+Evidence map + confidence
+VLM explanation (grounded rendering)
+Example 2 — vegetation health. “Show me areas with unhealthy vegetation.”
+→intent
+INDEX_QUERY →band validation (NIR+Red present? L2A?) →cloud mask →NDVI →threshold
++ connected components →stressed-region mask + stats →evidence →explanation. No VLM call
+until the final rendering.
+Example 3 — water localisation. “Where are the water bodies?” →GROUND or INDEX_QUERY:
+if the scene is urban, prefer MNDWI (built-up suppression) and/or water segmentation; return
+mask + area; optionally cross-check with VLM grounding for the phrase “water body”.
+Example 4 — cross-modal.
+“What changed between the optical and SAR images?”
+→
+CROSS_MODAL →modality validation →co-registration →per-sensor analysis (optical indices/land
+cover; SAR backscatter/structure) →joint interpretation →dual-evidence explanation. The answer
+must say which sensor supports which claim.
+Example 5 — pure perception. “Is there an airport in this image?” →SCENE_VQA →tiling →
+RS-VLM →answer + (if affirmative) grounding follow-up offer.
+Example 6 — evidence recall. “Show the region responsible for your answer.” →EVIDENCE_RECALL
+→evidence store lookup →map highlight. No model inference at all — proof that the evidence
+layer is real, not decorative.
+36
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+20
+Evidence-Grounded Answers
+Design principle: the LLM explains evidence; it never invents it
+The answer pipeline is strictly: specialist model →structured result →spatial/temporal
+evidence →validation →LLM explanation. The generation step receives only validated
+structured results (masks, statistics, confidence) and is instructed to verbalise exactly them.
+Every answer object contains: answer text; confidence; highlighted region(s) (georeferenced);
+relevant evidence artefacts (index map, change mask, boxes); model/tool used with version; input
+imagery identifiers; acquisition timestamps; and the processing trace. Example (concept-note target):
+“Built-up area increased by approximately 18.4%; 14.2 hectares of new built-up regions, primarily
+north-east; confidence 91%” — where 18.4% and 14.2 ha are computed from the georeferenced mask,
+and 91% aggregates model confidence and validation checks.
+Why this reduces hallucination and increases trust [Fact + Proposal]: generation
+conditioned on structured, validated inputs has a drastically smaller fabrication surface than
+free-form answering; every numeric claim is traceable to a computation; every spatial claim to pixels.
+This is the same principle behind grounded-VQA research [49] and retrieval-grounded generation
+generally. It also enables the “low confidence” UX: when evidence is insufficient, the system says so
+and offers alternatives (“use another sensor”), which is more valuable than a fluent guess.
+21
+Explainability and Provenance
+21.1
+The auditable analysis trace
+User query (text, timestamp, session)
+Classifier output (intent, confidence)
+Tool selected (registry entry, version)
+Input bands / files / parameters
+Preprocessing (mask, registration residual)
+Model inference (latency, device)
+Prediction (artefact URIs)
+Evidence region (geometry)
+VLM explanation (prompt hash, output)
+21.2
+Provenance requirements
+• Reproducibility: given the trace, the run must be re-executable — store model versions,
+parameters, random seeds, and input hashes.
+• Model/version logging: registry entries are immutable; a run references model@version.
+• Input metadata: file hashes, CRS, acquisition dates, processing level.
+• Timestamps and latency per stage (feeds model observability, feature #30).
+• Confidence: per-stage scores + aggregation rule recorded, not just shown.
+• Intermediate outputs: masks, index maps, and registration residuals are retained as
+addressable artefacts (object storage URIs in the trace).
+• Audit trail: append-only; exports (PDF/JSON) embed the trace ID.
+37
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+This converts SatQuery AI from a demo into an instrument: an ISRO evaluator can pick any claim
+in any report and walk it back to pixels, parameters, and model versions [Proposal].
+Part IV
+Engineering Governance
+22
+Evaluation Framework
+SatQuery AI is evaluated per layer, not only on final chat answers — matching the concept notes’
+multimodal-evaluation requirement.
+22.1
+Remote-sensing metrics
+Segmentation/change: Intersection-over-Union IoU = |P∩G|
+|P∪G|, mean IoU, Dice = 2|P∩G|
+|P|+|G|, precision,
+recall, F1 = 2PR
+P+R, pixel accuracy; change detection reports F1/IoU on the change class (LEVIR-CD
+convention). Detection: mAP at IoU thresholds (DOTA/DIOR convention).
+22.2
+VLM / VQA metrics
+VQA: accuracy / exact match on RSVQA, VRSBench, CDVQA splits. Captioning/description:
+CIDEr, BLEU, ROUGE, METEOR as proxies plus human evaluation on a fixed 50-scene panel
+(fluency, correctness, terminology). Semantic-similarity scoring for free-form answers.
+22.3
+Grounding metrics
+Box IoU@0.5 accuracy (REC convention), pointing accuracy (point-in-region), mask IoU for RES
+outputs; evaluated on RSVG/DIOR-RSVG and VRSBench grounding splits.
+22.4
+System-level metrics
+Routing accuracy (intent classification on a hand-labelled query set — target ≥95% on the six core
+intents); tool-selection accuracy; end-to-end latency per query family; GPU memory; throughput;
+failure rate (crashes, validation aborts); fallback activation rate.
+22.5
+User-level metrics
+Task completion on scripted analyst tasks; analyst time saved vs. manual workflow; interpretability
+rating (can the user find the evidence for a claim in <30 s?); usability (SUS-style questionnaire).
+Why NLP metrics alone are insufficient
+BLEU/ROUGE/CIDEr reward phrasing overlap, not correctness. A caption can score well
+while mislocating every object; a change description can be fluent and numerically wrong.
+SatQuery AI answers carry quantitative and spatial commitments, so evaluation must include
+geospatial metrics (IoU, area error), grounding accuracy, and routing correctness — NLP scores
+are reported but never sufficient [Fact + Proposal].
+23
+Design Decisions
+38
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Table 12: Design-decision log: Decision →Alternatives →Reason →Trade-off.
+Decision
+Alternatives
+Reason for selection
+Trade-off
+VLM + specialist
+tools
+VLM-only;
+tools-
+only UI
+VLM alone hallucinates
+and
+cannot
+quantify;
+tools alone are unusable
+by non-experts
+more moving parts;
+needs routing
+Deterministic
+router
+autonomous
+agent
+(ReAct-style); hard-
+coded menu
+predictable under judg-
+ing; auditable; matches fi-
+nite intent set
+less flexible to novel
+queries; “agentic” is
+bounded
+FastAPI (Python)
+Node.js/Express;
+Django
+one
+language
+across
+geospatial+ML+API;
+async
++
+WebSocket
+built-in
+Django
+admin
+lost;
+Node ecosystem for
+SSE lost
+Next.js + React
+plain
+React
+SPA;
+Vue/Svelte
+team familiarity (concept
+notes); SSR for report
+pages; ecosystem
+heavier than vanilla
+SPA
+MapLibre
+(2D-
+first)
+Cesium-first; Leaflet
+georeferenced raster over-
+lays, performant, open;
+3D deferred
+3D
+wow-factor
+de-
+ferred to ADV
+PostGIS
+vector DB; plain files
+spatial queries (intersec-
+tion, area) are core; evi-
+dence needs relational in-
+tegrity
+operational overhead
+vs. SQLite
+Rasterio
+first,
+GDAL beneath
+GDAL
+CLI-first;
+xarray-first
+Pythonic windowed I/O;
+GDAL still available for
+conversions
+some ops need GDAL
+CLI anyway
+REST
++
+Web-
+Socket
+REST-only; gRPC
+REST for CRUD/upload;
+WS for live trace stream-
+ing (demo-critical)
+two channels to main-
+tain
+Modular monolith
+first
+microservices
+from
+day one
+SIH timeline; single de-
+ploy; split only at GPU
+contention
+scaling requires later
+refactor
+Local/open-
+weight VLM
+API VLM (GPT-4V-
+class)
+offline judging, no per-
+call
+cost,
+fine-tunable
+(LoRA), data stays local
+GPU
+requirement;
+quality below frontier
+APIs
+LoRA/QLoRA
+adaptation
+full fine-tuning; no
+adaptation
+fits single GPU; proven
+for
+RS-VLMs
+(RS-
+LLaVA)
+adapter quality ceil-
+ing
+Synchronous core
++ async heavy jobs
+fully
+async
+every-
+thing
+simple
+mental
+model;
+CD/segmentation run as
+jobs with WS progress
+API design slightly
+hybrid
+Late
+fusion
+for
+optical–SAR
+early fusion; learned
+cross-modal net
+auditable per-sensor ev-
+idence;
+robust to mis-
+registration;
+no paired-
+training burden
+may underuse cross-
+modal signal
+Index engine as de-
+terministic tool
+let VLM estimate in-
+dices
+closed-form,
+exact,
+au-
+ditable, free
+none meaningful
+39
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Decision
+Alternatives
+Reason for selection
+Trade-off
+Evidence
+store
+(PostGIS)
+trace-only logging
+evidence
+recall
+queries
+(“show the region”) need
+queryable geometry
+schema design effort
+CPU fallback via
+ONNX
+GPU-only
+demo resilience on judges’
+hardware
+reduced throughput
+Docker
+Compose
+deployment
+Kubernetes;
+bare
+metal
+reproducible
+single-
+machine demo
+no horizontal scaling
+English-only UI at
+SIH
+multilingual
+scope control
+limits field usability
+[Future]
+24
+Risk Register
+Severity = Probability × Impact (H/M/L). Every risk has a detection signal, a mitigation, and a
+demo-safe fallback.
+Table 13: Risk register.
+Risk
+Prob. Imp.
+Sev.
+Detection
+Mitigation
+Fallback
+VLM hallucina-
+tion
+H
+H
+H
+answers
+with-
+out
+evidence
+links
+evidence-first
+rendering;
+con-
+strained prompts;
+validation checks
+show
+struc-
+tured results
+without prose
+Poor spatial rea-
+soning
+H
+M
+H
+wrong
+counts/locations
+in tests
+route
+count-
+ing/localisation to
+tools, not VLM
+tool-
+computed
+answers only
+Incorrect ground-
+ing
+M
+H
+H
+low
+IoU
+on
+grounding eval
+RS-specific ground-
+ing model; thresh-
+old + “no confi-
+dent region” state
+box from spe-
+cialist
+detec-
+tor instead
+Cloud cover
+H
+M
+H
+SCL/cloud-
+mask coverage
+stats
+mask
++
+warn;
+suggest
+alternate
+date/SAR
+report “insuf-
+ficient
+clear
+pixels”
+SAR complexity
+M
+M
+M
+SAR misinter-
+pretation in re-
+view
+modality-aware
+explanations;
+calibrated prepro-
+cessing
+restrict SAR
+to
+evidence
+display
+Optical/SAR
+misalignment
+M
+H
+H
+registration
+residual above
+threshold
+co-registration
+stage with abort
+threshold
+per-sensor an-
+swers, no fu-
+sion
+Temporal misreg-
+istration
+M
+H
+H
+edge-aligned
+false change in
+masks
+sub-pixel registra-
+tion check; resid-
+ual map in trace
+require better
+pair;
+warn
+user
+Spatial
+resolu-
+tion mismatch
+M
+M
+M
+grid alignment
+warnings
+harmonise to anal-
+ysis
+grid;
+docu-
+ment resampling
+analyse
+at
+coarsest
+common grid
+40
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Risk
+Prob. Imp.
+Sev.
+Detection
+Mitigation
+Fallback
+Domain
+shift
+(models vs. AOI)
+H
+M
+H
+confidence
+drop
+on
+new
+regions
+confidence
+flag-
+ging;
+LoRA
+adaptation
+on
+target-like data
+label outputs
+“unverified re-
+gion”
+Dataset
+limita-
+tions
+M
+M
+M
+benchmark-vs-
+field gap
+multi-dataset eval;
+field-scene test set
+demo on vali-
+dated AOIs
+Insufficient train-
+ing data
+M
+M
+M
+poor fine-tune
+metrics
+use
+pretrained
+specialists;
+small
+LoRA sets
+zero-
+shot/pretrained
+only
+GPU limitations
+M
+H
+H
+OOM
+errors;
+latency spikes
+4/8-bit
+quantisa-
+tion; tiling; small
+specialists
+CPU fallback
+(slow mode)
+Inference latency
+M
+M
+M
+per-stage
+latency
+in
+traces
+async
+jobs
++
+progress
+stream-
+ing; caching
+pre-
+computed
+demo scenes
+API costs (if API
+VLM used)
+L
+M
+L
+billing
+dash-
+board
+open-weight
+default
+n/a (local de-
+fault)
+Large
+raster
+memory
+H
+M
+H
+memory profil-
+ing
+windowed
+reads;
+tiling;
+dtype
+discipline
+downsampled
+analysis copy
+Unsupported file
+formats
+M
+L
+L
+ingestion vali-
+dation errors
+format sniffing +
+clear errors; GDAL
+conversion
+ask
+user
+for
+Geo-
+TIFF/PNG
+CRS errors
+M
+H
+H
+bounds/area
+sanity checks
+EPSG
+valida-
+tion; reprojection
+service
+reject with ex-
+planation
+False change de-
+tection
+H
+M
+H
+seasonal/edge
+artefacts
+in
+tests
+cloud
+mask;
+seasonal-pair
+warning; min-area
+filter
+present
+change
+as
+“candidate”
+Confidence mis-
+calibration
+M
+M
+M
+reliability plots
+on eval set
+temperature scal-
+ing;
+conservative
+aggregation
+qualitative
+badges
+(low/med/high)
+Explainability
+gaps
+L
+M
+L
+user
+testing
+feedback
+evidence explorer;
+trace UI
+manual walk-
+through
+in
+demo
+Deployment com-
+plexity
+M
+M
+M
+setup time on
+fresh machine
+Docker Compose;
+scripted setup
+pre-built
+demo bundle
+Integration com-
+plexity
+H
+M
+H
+end-to-end test
+failures
+typed module in-
+terfaces; contract
+tests
+staged demo
+(per-module)
+Scope creep
+H
+H
+H
+feature
+list
+growth
+in
+standups
+MVP/SIH/ADV/FUT
+tiers
+(this
+docu-
+ment); freeze after
+Phase 5
+cut to MVP
+script
+41
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Risk
+Prob. Imp.
+Sev.
+Detection
+Mitigation
+Fallback
+Team skill gaps
+M
+H
+H
+learning-
+roadmap
+checkpoints
+role-based learning
+matrix; pair pro-
+gramming
+reassign scope
+to strengths
+Demo-day envi-
+ronment failure
+L
+H
+M
+rehearsal
+on
+target
+hardware
+offline
+bundle;
+recorded
+backup
+video
+video + pre-
+computed
+scenes
+Part V
+Execution Plan
+25
+Feasibility Analysis
+25.1
+Can all 40 features be built?
+No — not within an SIH cycle with a student team and one GPU, and attempting it would produce
+forty shallow features instead of a credible system. The tiering below optimises for technical
+credibility + working integration + strong demonstration, not feature count.
+25.2
+MVP — the smallest system that clearly solves the problem
+GeoTIFF ingestion + metadata (#15,16), tiling (#17), geospatial engine (#18), index engine
+(added), 2D map + exports (#19,39), RS-VLM VQA/captioning (#3–5), query router + registry +
+traces (#1,25,26,29), land-cover from segmentation (#9 via pretrained model). Proof: upload
+an optical scene, ask “what is here / where is the water / which regions have high NDVI”, get
+evidence-linked answers with a visible trace.
+25.3
+SIH demo — the strongest realistic set
+MVP + grounding (#6), detection and segmentation overlays (#7,8), bi-temporal change detection
+with quantified, localised answers (#10), change description (#11), SAR ingestion + per-sensor
+analysis (#13), evidence graph + confidence (#27,28), ask-this-region (#22,23), report generation
++ persistence (#38,40). Demo script: the concept notes’ built-up-change dialogue, live, ending in
+a PDF report with embedded trace ID.
+25.4
+Advanced version — if time/resources permit
+Change VQA model (#12), optical–SAR fusion view (#14), timeline scrubber (#21), autonomous
+investigation macro (#24), model observability page (#30), missions and histories (#33,36,37), 3D
+Earth (#20).
+25.5
+Research / future — do not attempt during the hackathon
+Continuous monitoring + alerts (#34,35) — needs automated data acquisition, scheduling, and
+storage budgets; voice (#2,32) — ASR adds a failure layer with no analytical value; bench-
+mark/research mode (#31) — valuable only after the system exists; end-to-end text-to-mask RES
+and learned cross-modal change networks — open research problems; multi-temporal (>2) reasoning
+and hyperspectral support.
+42
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Reasoning summary
+The cut lines follow three rules: (i) no feature without its dependency chain — monitoring
+needs missions, storage, scheduling, and acquisition automation that SIH cannot supply; (ii) no
+unverifiable claims — features whose output cannot be checked live (free-form change VQA
+without grounding) are subordinated to checkable ones; (iii) demo value per engineering day
+— 3D Earth and voice are high-cost, low-substance for judges evaluating an ISRO problem
+statement.
+26
+Build Order
+Dependency-aware sequence (Figure 1 gives the feature-level view).
+Phase 0 — Fundamentals. Remote sensing + Python + Rasterio/GDAL basics; team reads
+Section 3; hello-world: load S-2 GeoTIFF, print metadata, render RGB.
+Phase 1 — Raster engine. Ingestion, metadata, CRS, tiling, index engine, basic viewer overlays.
+Gate: NDVI map of a Sentinel-2 tile rendered in the UI.
+Phase 2 — Specialist models. Segmentation (pretrained →fine-tuned), detection, change de-
+tection (LEVIR-CD-trained), registration stage. Gate: change mask + area stats computed for
+a test pair.
+Phase 3 — VLM. RS-VLM serving (quantised), VQA + captioning over tiles. Gate: single-image
+Q&A in chat.
+Phase 4 — Query router. Intent classifier + deterministic routing over the six core intents.
+Gate: routing accuracy ≥95% on labelled query set.
+Phase 5 — Tool calling. Router dispatches specialist tools; structured results flow back. Gate:
+“show unhealthy vegetation” runs index engine end-to-end.
+Phase 6 — Evidence layer. Grounding links, evidence store, confidence badges, execution-trace
+UI. Gate: every claim in a session is clickable to pixels.
+Phase 7 — Full UI. Map + chat + evidence explorer + investigation workspace.
+Phase 8 — Integration. Bi-temporal and cross-modal query paths end-to-end; report generation.
+Gate: full demo script passes three consecutive runs.
+Phase 9 — Evaluation. Benchmark runs (VRSBench subset, LEVIR-CD, CDVQA subset, rout-
+ing set); latency/memory profiling; fix worst offenders.
+Phase 10 — Demo hardening. Offline bundle, pre-computed fallback scenes, backup video,
+rehearsed script, freeze.
+27
+Learning Roadmap
+Ordered by dependency, not popularity. Must learn vs. nice to know is marked per topic; each
+topic lists what to learn, what to skip, a practical exercise, and the SatQuery AI feature it unlocks.
+43
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Python + NumPy/Pandas
+Rasterio / GDAL
+RS fundamentals + indices
+Computer vision + PyTorch
+Transformers + ViTs
+VLMs (CLIP, LLaVA)
+LoRA / QLoRA fine-tuning
+Grounding + segmentation + change detection
+SAR + optical–SAR fusion
+Tool calling + LangGraph routing
+FastAPI + Next.js + geospatial viz
+GPU serving + deployment
+Table 14: Learning roadmap detail (M = must learn, N = nice to know).
+Topic
+Learn / skip
+Practical exer-
+cise
+Unlocks
+Priority
+Python
++
+NumPy/Pandas
+learn: typing, async
+basics,
+array ops;
+skip: metaprogram-
+ming
+raster statistics
+script
+everything
+M
+Math for ML
+learn:
+linear alge-
+bra,
+probability,
+gradients;
+skip:
+proofs-heavy calcu-
+lus
+implement
+co-
+sine
+similarity,
+IoU
+model literacy
+M
+ML/DL
+funda-
+mentals
+learn:
+train/val/test,
+overfitting, transfer
+learning;
+skip:
+exotic optimisers
+fine-tune
+a
+classifier
+on
+EuroSAT
+all model work
+M
+RS
+fundamen-
+tals
+learn: spectrum, 4
+resolutions, sensors,
+SAR basics;
+skip:
+orbital mechanics
+band-math
+notebook
+(NDVI/NDWI/NDBI)
+index engine, SAR
+features
+M
+Geospatial com-
+puting
+learn:
+CRS, geo-
+transforms,
+repro-
+jection, tiling; skip:
+datum theory deep-
+dive
+GeoTIFF→tiles→reconstruction
+raster engine
+M
+44
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Topic
+Learn / skip
+Practical exer-
+cise
+Unlocks
+Priority
+Computer vision
+learn:
+classifica-
+tion/detection/segmentation/grounding
+distinctions;
+skip:
+GANs
+train U-Net on
+a
+small
+mask
+dataset
+seg + detection
+M
+Transformers +
+ViT
+learn:
+attention,
+patches, positional
+encoding; skip: ker-
+nel derivations
+visualise atten-
+tion maps
+VLM work
+M
+VLMs
+learn: CLIP align-
+ment, LLaVA archi-
+tecture, instruction
+tuning; skip:
+pre-
+training at scale
+run
+GeoChat/RS-
+LLaVA
+infer-
+ence
+VQA/captioning
+M
+LoRA/QLoRA
+learn:
+PEFT
+workflow,
+quanti-
+sation;
+skip:
+full
+fine-tuning
+LoRA-tune
+on
+VRSBench sub-
+set
+domain adaptation
+M
+Grounding
+learn:
+REC/RES,
+boxes
+vs.
+masks;
+skip: 3D grounding
+Grounding-
+DINO + SAM
+demo on RS tile
+grounding feature
+M
+Segmentation
+learn:
+U-
+Net/SegFormer,
+IoU/Dice;
+skip:
+panoptic everything
+fine-tune
+Seg-
+Former
+on
+LoveDA
+land-cover analysis
+M
+Change
+detec-
+tion
+learn: Siamese nets,
+BIT/ChangeFormer,
+registration;
+skip:
+video CD
+train + eval on
+LEVIR-CD
+change features
+M
+SAR
+learn:
+backscatter,
+VV/VH,
+speckle,
+distortions;
+skip:
+InSAR processing
+visualise S-1 vs
+S-2 same AOI
+SAR + fusion
+M
+Optical–SAR fu-
+sion
+learn:
+early/late/feature
+fusion
+trade-offs;
+skip:
+building
+a
+novel fusion net
+late-fusion
+water/built-up
+experiment
+cross-modal lab
+N (ADV)
+Agentic
+AI
+/
+LangGraph
+learn:
+state
+ma-
+chines, tool calling,
+structured outputs,
+traces; skip: open-
+ended multi-agent
+deterministic
+router
+over
+6
+intents
+routing + traces
+M
+45
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+Topic
+Learn / skip
+Practical exer-
+cise
+Unlocks
+Priority
+Evaluation
+learn:
+IoU/mAP/F1,
+CIDEr/BLEU
+limits,
+calibration;
+skip:
+exotic NLG
+metrics
+build
+per-layer
+eval harness
+evaluation frame-
+work
+M
+FastAPI + back-
+end
+learn:
+async,
+WebSockets,
+back-
+ground jobs; skip:
+GraphQL
+upload→process→stream
+API
+backend
+M
+Next.js + maps
+learn:
+React,
+MapLibre overlays,
+streaming UI; skip:
+WebGL
+shader
+programming
+map
+with
+mask/change
+overlays + chat
+frontend
+M
+CesiumJS 3D
+learn: only if ADV
+tier reached
+3D AOI viewer
+3D Earth
+N (ADV)
+GPU serving +
+MLOps
+learn: quantisation,
+ONNX,
+Docker,
+monitoring
+basics;
+skip: Kubernetes
+one-command
+GPU
+inference
+service
+deployment
+M
+ASR / voice
+skip for SIH
+—
+voice
+N (FUT)
+Geospatial foun-
+dation models
+learn:
+capabili-
+ties/limitations;
+skip: pretraining
+compare
+Re-
+moteCLIP
+vs
+CLIP zero-shot
+embedding
+sup-
+port
+N
+28
+Research Gaps and SatQuery AI’s Potential Novelty
+28.1
+What existing systems do not combine effectively
+The survey shows clear islands of capability [Fact]: RS-VLMs converse but do not quantify;
+change detectors quantify but do not converse; grounding models localise but not over validated
+specialist outputs; fusion models combine sensors but not under natural-language task routing;
+monitoring platforms exist but without conversational, evidence-linked interaction. No surveyed
+system combines: natural-language interaction + multimodal RS + specialist analysis
+tools + task routing + grounding + temporal reasoning + optical–SAR reasoning +
+evidence-backed explanations in one auditable workflow.
+46
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+28.2
+Novelty classification
+Table 15: Honest novelty assessment.
+Category
+SatQuery AI elements
+Established research
+RS captioning/VQA/grounding models; CD architectures; fusion methods;
+indices
+Existing capabilities (inte-
+grated, not invented)
+GeoChat-class dialogue; LEVIR-CD-class change models; MapLibre/Cesium
+visualisation
+Engineering
+integration
+(our main contribution)
+deterministic router + specialist registry + evidence graph + provenance over
+RS tools
+Potentially novel combina-
+tion
+evidence-first change explanation: change masks/statistics verbalised with
+per-pixel traceability, plus dual optical–SAR evidence in one answer
+Genuinely research-worthy
+(post-SIH)
+calibrated confidence for routed RS pipelines; grounded change QA with
+quantified answers (cf. CDQAG); cross-modal evidence fusion with auditability
+We do not claim algorithmic novelty; we claim a defensible, verifiable systems contribution [Proposal].
+47
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+29
+Competitive / Research Comparison
+Table 16: Capability comparison (• = strong/native, ◦= partial/limited, – = absent).
+Capability
+Traditional GIS
+RS-ML pipelines
+Generic VLM
+RS-VLM
+SatQuery AI
+Natural-
+language
+interaction
+–
+–
+•
+•
+•
+Optical
+im-
+agery analysis
+•
+•
+◦
+•
+•
+SAR analysis
+•
+◦
+–
+◦
+◦
+Optical–SAR
+fusion
+◦
+◦
+–
+◦
+◦
+Temporal
+/
+change
+detec-
+tion
+◦
+•
+–
+◦
+•
+VQA
+–
+–
+•
+•
+•
+Grounding
+/
+localisation
+◦
+◦
+◦
+•
+•
+Segmentation
+◦
+•
+–
+◦
+•
+Spectral
+in-
+dices
+•
+•
+–
+–
+•
+Tool calling /
+routing
+–
+–
+◦
+–
+•
+Evidence local-
+isation
+◦
+◦
+–
+◦
+•
+Provenance
+/
+audit trail
+◦
+◦
+–
+–
+•
+Explainability
+◦
+◦
+◦
+◦
+•
+Multi-step
+analysis
+• (manual)
+◦
+◦
+◦
+•
+Quantified
+answers (area,
+%)
+•
+•
+–
+–
+•
+This matrix is deliberately conservative: SatQuery AI scores • only where the design binds the
+capability to verifiable tooling, and ◦for SAR/fusion where the SIH tier provides per-sensor evidence
+rather than learned deep fusion. The defensible claim is not “better than RS-VLMs at VQA” but
+“the only column where routing, evidence, provenance, and quantification are all native” [Proposal].
+48
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+30
+Final End-to-End System Blueprint
+User query
+text / region selection
+Query understanding
+intent + entities (M14)
+Task / tool router
+deterministic planner (M15)
+Optical tools
+indices, seg, detect
+(M5–M7)
+SAR tools
+calibration, backscatter
+(M9)
+Temporal tools
+registration, change
+(M3, M8)
+Evidence & grounding
+regions, masks, stats (M12, M17)
+Vision–language model
+grounded explanation (M13)
+Answer + confidence
++ execution trace
+Map / visual output
+2D overlays, report (M1, M18)
+Model
+registry
+Evidence
+store
+Raster
+store
+Figure 2: End-to-end architecture. Solid arrows: execution flow; dashed: data/registry dependencies.
+Every arrow writes to the provenance log.
+The blueprint instantiates the document’s thesis: language enters at the top, specialist computation
+happens in the middle, evidence binds the two, and everything is logged. A judge walking the
+demo sees, in order: query →stated plan →live tool execution →localised evidence →quantified
+answer →trace →exportable report — the complete argument for SatQuery AI in one interaction.
+Part VI
+References
+References
+[1] J. W. Rouse, R. H. Haas, J. A. Schell, and D. W. Deering, “Monitoring vegetation systems in the Great
+Plains with ERTS,” NASA SP-351, 1973.
+[2] A. R. Huete, “A soil-adjusted vegetation index (SAVI),” Remote Sensing of Environment, 25(3):295–309,
+1988.
+[3] A. Huete, K. Didan, T. Miura, E. P. Rodriguez, X. Gao, and L. G. Ferreira, “Overview of the radiometric
+and biophysical performance of the MODIS vegetation indices,” Remote Sensing of Environment, 83(1–
+2):195–213, 2002.
+[4] S. K. McFeeters, “The use of the Normalized Difference Water Index (NDWI) in the delineation of
+open water features,” International Journal of Remote Sensing, 17(7):1425–1432, 1996.
+49
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+[5] H. Xu, “Modification of normalised difference water index (NDWI) to enhance open water features in
+remotely sensed imagery,” International Journal of Remote Sensing, 27(14):3025–3033, 2006.
+[6] Y. Zha, J. Gao, and S. Ni, “Use of normalized difference built-up index in automatically mapping urban
+areas from TM imagery,” International Journal of Remote Sensing, 24(3):583–594, 2003.
+[7] C. H. Key and N. C. Benson, “Landscape Assessment (LA),” in FIREMON: Fire Effects Monitoring
+and Inventory System, USDA Forest Service, 2006.
+[8] A. Vaswani et al., “Attention is all you need,” NeurIPS, 2017.
+[9] A. Dosovitskiy et al., “An image is worth 16x16 words: Transformers for image recognition at scale,”
+ICLR, 2021.
+[10] K. He, X. Chen, S. Xie, Y. Li, P. Dollár, and R. Girshick, “Masked autoencoders are scalable vision
+learners,” CVPR, 2022.
+[11] A. Radford et al., “Learning transferable visual models from natural language supervision,” ICML,
+2021.
+[12] J. Li, D. Li, S. Savarese, and S. Hoi, “BLIP-2: Bootstrapping language-image pre-training with frozen
+image encoders and large language models,” ICML, 2023.
+[13] H. Liu, C. Li, Q. Wu, and Y. J. Lee, “Visual instruction tuning,” NeurIPS, 2023.
+[14] A. Kirillov et al., “Segment anything,” ICCV, 2023.
+[15] S. Liu et al., “Grounding DINO: Marrying DINO with grounded pre-training for open-set object
+detection,” ECCV, 2024.
+[16] E. J. Hu et al., “LoRA: Low-rank adaptation of large language models,” ICLR, 2022.
+[17] T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer, “QLoRA: Efficient finetuning of quantized
+LLMs,” NeurIPS, 2023.
+[18] A. Gu and T. Dao, “Mamba:
+Linear-time sequence modeling with selective state spaces,”
+arXiv:2312.00752, 2023.
+[19] O. Ronneberger, P. Fischer, and T. Brox, “U-Net: Convolutional networks for biomedical image
+segmentation,” MICCAI, 2015.
+[20] E. Xie, W. Wang, Z. Yu, A. Anandkumar, J. M. Alvarez, and P. Luo, “SegFormer: Simple and efficient
+design for semantic segmentation with transformers,” NeurIPS, 2021.
+[21] S. Lobry, D. Marcos, J. Murray, and D. Tuia, “RSVQA: Visual question answering for remote sensing
+data,” IEEE TGRS, 58(12):8555–8566, 2020.
+[22] K. Li, G. Vosselman, and M. Y. Yang, “HRVQA: A visual question answering benchmark for high-
+resolution aerial images,” ISPRS J. Photogrammetry and Remote Sensing, 214:65–81, 2024.
+[23] X. Li, J. Ding, and M. Elhoseiny, “VRSBench: A versatile vision-language benchmark dataset for
+remote sensing image understanding,” NeurIPS (Datasets and Benchmarks), 2024.
+[24] Y. Hu et al., “RSGPT: A remote sensing vision language model and benchmark,” arXiv:2307.15266,
+2023.
+[25] K. Kuckreja, M. S. Danish, M. Naseer, A. Das, S. Khan, and F. S. Khan, “GeoChat: Grounded large
+vision-language model for remote sensing,” CVPR, 2024.
+[26] Y. Bazi, L. Bashmal, M. M. Al Rahhal, R. Ricci, and F. Melgani, “RS-LLaVA: A large vision-language
+model for joint captioning and question answering in remote sensing imagery,” Remote Sensing,
+16(9):1477, 2024.
+[27] Y. Zhan et al., “SkyEyeGPT: Unifying remote sensing vision-language tasks via instruction tuning with
+large language model,” ISPRS J. Photogrammetry and Remote Sensing, 2025.
+50
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+[28] D. Muhtar et al., “LHRS-Bot: Empowering remote sensing with VGI-enhanced large multimodal
+language model,” ECCV, 2024.
+[29] W. Zhang, M. Cai, T. Zhang, Y. Zhuang, and X. Mao, “EarthGPT: A universal multi-modal large
+language model for multi-sensor image comprehension in remote sensing domain,” IEEE TGRS, 62,
+2024.
+[30] F. Liu et al., “RemoteCLIP: A vision language foundation model for remote sensing,” IEEE TGRS, 62,
+2024.
+[31] Z. Zhang et al., “RS5M and GeoRSCLIP: A large-scale vision-language dataset and a large vision-
+language model for remote sensing,” IEEE TPAMI, 2024.
+[32] Y. Sun et al., “Visual grounding in remote sensing images,” ACM MM, 2022.
+[33] Y. Zhan, Z. Xiong, and Y. Yuan, “RSVG: Exploring data and models for visual grounding on remote
+sensing data,” IEEE TGRS, 61, 2023.
+[34] S. Liu et al., “Rotated multi-scale interaction network for referring remote sensing image segmentation,”
+CVPR, 2024.
+[35] R. C. Daudt, B. Le Saux, and A. Boulch, “Fully convolutional Siamese networks for change detection,”
+ICIP, 2018.
+[36] R. C. Daudt, B. Le Saux, A. Boulch, and Y. Gousseau, “Urban change detection for multispectral
+Earth observation using convolutional neural networks,” IGARSS, 2018.
+[37] H. Chen and Z. Shi, “A spatial-temporal attention-based method and a new dataset for remote sensing
+image change detection,” Remote Sensing, 12(10):1662, 2020.
+[38] H. Chen, Z. Qi, and Z. Shi, “Remote sensing image change detection with transformers,” IEEE TGRS,
+60:1–14, 2022.
+[39] W. G. C. Bandara and V. M. Patel, “A transformer-based Siamese network for change detection,”
+IGARSS, 2022.
+[40] S. Fang, K. Li, J. Shao, and Z. Li, “SNUNet-CD: A densely connected Siamese network for change
+detection of VHR images,” IEEE GRSL, 19, 2022.
+[41] C. Zhang et al., “A deeply supervised image fusion network for change detection in high resolution
+bi-temporal remote sensing images,” ISPRS J. Photogrammetry and Remote Sensing, 166:183–200,
+2020.
+[42] H. Chen, J. Song, C. Han, J. Xia, and N. Yokoya, “ChangeMamba: Remote sensing change detection
+with spatio-temporal state space model,” IEEE TGRS, 62:1–20, 2024.
+[43] S. Ji, S. Wei, and M. Lu, “Fully convolutional networks for multisource building extraction from an
+open aerial and satellite imagery data set,” IEEE TGRS, 57(1):574–586, 2019.
+[44] L. Shen et al., “S2Looking: A satellite side-looking dataset for building change detection,” Remote
+Sensing, 13(24):5094, 2021.
+[45] Q. Shi et al., “A deeply supervised attention metric-based network and an open aerial image dataset
+for remote sensing change detection,” IEEE TGRS, 60, 2022.
+[46] K. Yang et al., “Asymmetric Siamese networks for semantic change detection in aerial images,” IEEE
+TGRS, 60, 2022.
+[47] C. Liu, R. Zhao, J. Chen, Z. Qi, Z. Zou, and Z. Shi, “Remote sensing image change captioning with
+dual-branch transformers: A new method and a large scale dataset,” IEEE TGRS, 60, 2022.
+[48] X. Yuan et al., “Change detection meets visual question answering,” IEEE TGRS, 60, 2022.
+[49] K. Li, F. Dong, D. Wang, S. Li, Q. Wang, X. Gao, and T.-S. Chua, “Show me what and where has
+changed? Question answering and grounding for remote sensing change detection,” arXiv:2410.23828,
+2024.
+51
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+[50] C. Liu, K. Chen, H. Guo, R. Zhao, Z. Zou, and Z. Shi, “ChangeChat: An interactive model for remote
+sensing change analysis via multimodal instruction tuning,” arXiv:2402.13547, 2024.
+[51] J. Irvin et al., “TEOChat: A large vision-language assistant for temporal Earth observation data,”
+ICLR, 2025.
+[52] M. Schmitt, L. H. Hughes, C. Qiu, and X. X. Zhu, “SEN12MS — A curated dataset of georeferenced
+multi-spectral Sentinel-1/2 imagery for deep learning and data fusion,” IGARSS, 2019.
+[53] G. Sumbul, M. Charfuelan, B. Demir, and V. Markl, “BigEarthNet: A large-scale benchmark archive
+for remote sensing image understanding,” IGARSS, 2019.
+[54] P. Helber, B. Bischke, A. Dengel, and D. Borth, “EuroSAT: A novel dataset and deep learning benchmark
+for land use and land cover classification,” IEEE JSTARS, 12(7):2217–2226, 2019.
+[55] Y. Cong et al., “SatMAE: Pre-training transformers for temporal and multi-spectral satellite imagery,”
+NeurIPS, 2022.
+[56] C. J. Reed et al., “Scale-MAE: A scale-aware masked autoencoder for multiscale geospatial representation
+learning,” ICCV, 2023.
+[57] D. Hong et al., “SpectralGPT: Spectral remote sensing foundation model,” IEEE TPAMI, 46(8):5227–
+5244, 2024.
+[58] J. Jakubik et al., “Foundation models for generalist geospatial artificial intelligence,” arXiv:2310.18660,
+2023.
+[59] A. Fuller, K. Millard, and J. R. Green, “CROMA: Remote sensing representations with contrastive
+radar-optical-masked autoencoders,” NeurIPS, 2023.
+[60] Z. Xiong et al., “Neural plasticity-inspired foundation model for observing the Earth crossing modalities,”
+arXiv:2403.15356, 2024.
+[61] X. Guo et al., “SkySense: A multi-modal remote sensing foundation model towards universal interpre-
+tation for Earth observation imagery,” CVPR, 2024.
+[62] F. Bastani et al., “SatlasPretrain: A large-scale dataset for remote sensing image understanding,” ICCV,
+2023.
+[63] G. Tseng et al., “Lightweight, pre-trained transformers for remote sensing timeseries,” ICLR, 2024.
+[64] G. Astruc et al., “AnySat: An Earth observation model for any resolutions, scales, and modalities,”
+CVPR, 2025.
+[65] G.-S. Xia et al., “DOTA: A large-scale dataset for object detection in aerial images,” CVPR, 2018.
+[66] K. Li, G. Wan, G. Cheng, L. Meng, and J. Han, “Object detection in optical remote sensing images: A
+survey and a new benchmark,” ISPRS J. Photogrammetry and Remote Sensing, 159:296–307, 2020.
+[67] D. Lam et al., “xView: Objects in context in overhead imagery,” arXiv:1802.07856, 2018.
+[68] A. Van Etten, D. Lindenbaum, and T. M. Bacastow, “SpaceNet: A remote sensing dataset and challenge
+series,” arXiv:1807.01232, 2018.
+[69] Y. Li et al., “SARDet-100K: Towards open-source benchmark and toolkit for large-scale SAR object
+detection,” NeurIPS, 2024.
+[70] J. Wang et al., “LoveDA: A remote sensing land-cover dataset for domain adaptive semantic segmenta-
+tion,” NeurIPS (Datasets and Benchmarks), 2021.
+[71] I. Demir et al., “DeepGlobe 2018: A challenge to parse the Earth through satellite images,” CVPR
+Workshops, 2018.
+[72] J. Xia et al., “OpenEarthMap: A benchmark dataset for global high-resolution semantic segmentation,”
+WACV, 2023.
+52
+SatQuery AI / AERIS — Technical Design & Study Document
+SIH 2026 — SIH26167
+[73] S. W. Zamir et al., “iSAID: A large-scale dataset for instance segmentation in aerial images,” CVPR
+Workshops, 2019.
+[74] M. Rahnemoonfar, T. Chowdhury, A. Sarkar, D. Varshney, M. Yari, and R. R. Murphy, “FloodNet: A
+high resolution aerial imagery dataset for post flood scene understanding,” IEEE Access, 9:89644–89654,
+2021.
+[75] A. Garioud et al., “FLAIR: A country-scale land cover semantic segmentation dataset from multi-source
+optical imagery,” NeurIPS (Datasets and Benchmarks), 2023.
+[76] A. Toker et al., “DynamicEarthNet: Daily multi-spectral satellite dataset for semantic change segmen-
+tation,” CVPR, 2022.
+[77] Y. Wang et al., “SSL4EO-S12: A large-scale multimodal, multitemporal dataset for self-supervised
+learning in Earth observation,” IEEE GRSM, 11(3):98–106, 2023.
+[78] A. Lacoste et al., “Geo-Bench: Toward foundation models for Earth monitoring,” NeurIPS (Datasets
+and Benchmarks), 2023.
+[79] V. Marsocci et al., “PANGAEA: A global and inclusive benchmark for geospatial foundation models,”
+arXiv:2412.04204, 2024.
+[80] A. J. Stewart et al., “TorchGeo: Deep learning with geospatial data,” ACM SIGSPATIAL, 2022.
+[81] LangChain, “LangGraph: Building stateful, multi-actor applications with LLMs,” official documentation,
+https://langchain-ai.github.io/langgraph/.
+[82] S. Ramírez, “FastAPI,” official documentation, https://fastapi.tiangolo.com/.
+[83] Mapbox, “Rasterio: Geospatial raster I/O for Python programmers,” official documentation, https:
+//rasterio.readthedocs.io/.
+[84] OSGeo, “GDAL — Geospatial Data Abstraction Library,” https://gdal.org/.
+[85] PostGIS Project, “PostGIS — Spatial and geographic objects for PostgreSQL,” https://postgis.net/.
+[86] Radiant Earth Foundation, “SpatioTemporal Asset Catalog (STAC) specification,” https://stacspec.
+org/.
+[87] Cesium, “CesiumJS,” official documentation, https://cesium.com/platform/cesiumjs/.
+[88] ESA, “Sentinel-1 User Guide,” Copernicus, https://sentiwiki.copernicus.eu/web/s1-mission.
+[89] ESA, “Sentinel-2 User Guide,” Copernicus, https://sentiwiki.copernicus.eu/web/s2-mission.
+[90] USGS, “Landsat 8–9,” https://www.usgs.gov/landsat-missions.
+[91] NASA, “MODIS — Moderate Resolution Imaging Spectroradiometer,” https://modis.gsfc.nasa.
+gov/.
+[92] ISRO, “Bhuvan — Indian Geo-Platform of ISRO,” https://bhuvan.nrsc.gov.in/.
+[93] ISRO, “MOSDAC — Meteorological and Oceanographic Satellite Data Archival Centre,” https:
+//www.mosdac.gov.in/.
+53
