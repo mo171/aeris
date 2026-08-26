@@ -1,7 +1,7 @@
 // components/sharedUI/functionalComponent/feedback/EmptyState.tsx — the "nothing here yet" panel state.
 //
 // what  : A centred icon, title, explanation and optional action, sized to sit inside a panel column.
-// where : Used wherever a list can legitimately be empty — imagery catalogue, missions, notifications.
+// where : Used wherever a list can legitimately be empty — the imagery catalogue and the mission list.
 // how   : Every data surface in AERIS must render one of four states: loading, empty, error or content.
 //         Sharing this component means the empty state is never an afterthought that ships as a blank box.
 

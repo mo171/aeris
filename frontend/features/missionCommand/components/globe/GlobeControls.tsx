@@ -1,13 +1,20 @@
 // features/missionCommand/components/globe/GlobeControls.tsx — the floating camera controls over the globe.
 //
-// what  : Zoom, reset-view and auto-rotate controls, plus the marker status legend.
-// where : Overlaid on the globe by GlobeViewport.
-// how   : These are DOM controls, not 3D objects, so they stay crisp at any resolution and are reachable
-//         by keyboard and screen readers — a control drawn inside the canvas is neither.
+// what  : One bottom bar carrying the marker legend and the zoom / rotation / reset controls.
+// where : Rendered by MissionCommandScreen into the centre column of the panel overlay — the free space
+//         between the data and assistant panels.
+// how   : It is positioned inside that centre column rather than against the viewport on purpose. The
+//         legend was previously anchored to the viewport's bottom-left, which put it underneath the Data
+//         & Context panel where it was invisible. Living in the centre column means the controls can only
+//         ever occupy space no panel is using, at any panel width.
+//
+//         Legend and controls share a single row rather than floating independently, so they cannot
+//         collide with each other as the column narrows.
 //
 //         They act through the GlobeViewerHandle published in the feature store, which is the same path
-//         the command bus uses. A button and its equivalent command therefore cannot diverge in behaviour,
-//         because they are literally the same call.
+//         the command bus uses. A button and its equivalent command therefore cannot diverge in
+//         behaviour, because they are literally the same call. That handle's presence is also the
+//         readiness signal — the bar fades in once the globe has published itself.
 
 "use client";
 
@@ -17,12 +24,11 @@ import { useState, type ReactNode } from "react";
 import { GlowDot, type GlowDotTone } from "@/components/sharedUI/dumbComponent/GlowDot";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { GLOBE_CAMERA } from "@/lib/constants/globe";
 import { cn } from "@/lib/utils";
 
 import { useMissionCommandStore } from "../../store/mission-command-store";
 import type { MissionStatus } from "../../types/mission.types";
-
-const ZOOM_STEP_DISTANCE = 0.45;
 
 const MARKER_LEGEND: readonly { status: MissionStatus; label: string; tone: GlowDotTone }[] = [
   { status: "alert", label: "Alert", tone: "red" },
@@ -31,13 +37,11 @@ const MARKER_LEGEND: readonly { status: MissionStatus; label: string; tone: Glow
   { status: "archived", label: "Archived", tone: "neutral" },
 ];
 
-interface GlobeControlsProps {
-  className?: string;
-}
-
-export function GlobeControls({ className }: GlobeControlsProps) {
+export function GlobeControls() {
   const globeViewer = useMissionCommandStore((state) => state.globeViewer);
   const [isAutoRotating, setIsAutoRotating] = useState(true);
+
+  const isGlobeReady = globeViewer !== null;
 
   const handleAutoRotateToggle = () => {
     const next = !isAutoRotating;
@@ -46,22 +50,34 @@ export function GlobeControls({ className }: GlobeControlsProps) {
   };
 
   return (
-    <>
-      <div
-        className={cn(
-          "pointer-events-auto absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-surface-2/80 p-1 backdrop-blur-md",
-          className,
-        )}
-      >
+    <div
+      className={cn(
+        "absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 transition-opacity duration-slow ease-expo",
+        isGlobeReady ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
+    >
+      <div className="pointer-events-none flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-surface-2/70 px-2.5 py-1.5 backdrop-blur-md">
+        <span className="aeris-technical">Markers</span>
+        {MARKER_LEGEND.map((entry) => (
+          <span key={entry.status} className="flex items-center gap-1.5">
+            <GlowDot tone={entry.tone} isPulsing={entry.status === "alert"} />
+            <span className="font-mono text-[10px] tracking-wide text-muted-foreground">
+              {entry.label}
+            </span>
+          </span>
+        ))}
+      </div>
+
+      <div className="pointer-events-auto flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface-2/80 p-1 backdrop-blur-md">
         <GlobeControlButton
           label="Zoom in"
-          onClick={() => globeViewer?.zoomBy(-ZOOM_STEP_DISTANCE)}
+          onClick={() => globeViewer?.zoomByFactor(GLOBE_CAMERA.zoomInFactor)}
         >
           <Plus />
         </GlobeControlButton>
         <GlobeControlButton
           label="Zoom out"
-          onClick={() => globeViewer?.zoomBy(ZOOM_STEP_DISTANCE)}
+          onClick={() => globeViewer?.zoomByFactor(GLOBE_CAMERA.zoomOutFactor)}
         >
           <Minus />
         </GlobeControlButton>
@@ -79,24 +95,7 @@ export function GlobeControls({ className }: GlobeControlsProps) {
           <RotateCcw />
         </GlobeControlButton>
       </div>
-
-      <div
-        className={cn(
-          "pointer-events-none absolute bottom-4 left-4 flex flex-col gap-1 rounded-md border border-border bg-surface-2/70 px-2.5 py-2 backdrop-blur-md",
-          className,
-        )}
-      >
-        <span className="aeris-technical mb-0.5">Marker status</span>
-        {MARKER_LEGEND.map((entry) => (
-          <span key={entry.status} className="flex items-center gap-2">
-            <GlowDot tone={entry.tone} isPulsing={entry.status === "alert"} />
-            <span className="font-mono text-[10px] tracking-wide text-muted-foreground">
-              {entry.label}
-            </span>
-          </span>
-        ))}
-      </div>
-    </>
+    </div>
   );
 }
 

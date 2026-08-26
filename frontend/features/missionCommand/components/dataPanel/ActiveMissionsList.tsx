@@ -44,9 +44,15 @@ const STATUS_CHIP_TONE: Record<MissionStatus, ChipTone> = {
 
 interface ActiveMissionsListProps {
   onLocateMission: (mission: Mission) => void;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
 }
 
-export function ActiveMissionsList({ onLocateMission }: ActiveMissionsListProps) {
+export function ActiveMissionsList({
+  onLocateMission,
+  isExpanded,
+  onToggleExpanded,
+}: ActiveMissionsListProps) {
   const { missions, totalCount, isLoading, isFetchingNextPage, fetchNextPage, error, refetch } =
     useActiveMissions();
 
@@ -64,9 +70,19 @@ export function ActiveMissionsList({ onLocateMission }: ActiveMissionsListProps)
   );
 
   return (
-    <section className="flex min-h-0 shrink-0 basis-[38%] flex-col border-t border-border-soft pt-2">
+    <section
+      className={cn(
+        "flex flex-col border-t border-border-soft pt-2",
+        // Same rule as the catalogue: claim flex space only while showing content. The previous fixed
+        // 38% basis combined with the catalogue's flex-1 could exceed the panel height, which is what
+        // made the sections render on top of each other.
+        isExpanded ? "min-h-0 flex-1" : "shrink-0",
+      )}
+    >
       <SectionHeader
         title="Missions"
+        isExpanded={isExpanded}
+        onToggle={onToggleExpanded}
         trailing={
           totalCount !== null ? (
             <span className="font-mono text-[10px] text-muted-foreground">{totalCount}</span>
@@ -74,7 +90,7 @@ export function ActiveMissionsList({ onLocateMission }: ActiveMissionsListProps)
         }
       />
 
-      {error ? (
+      {!isExpanded ? null : error ? (
         <ErrorState error={error} onRetry={refetch} />
       ) : isLoading ? (
         <PanelSkeleton rowCount={3} rowHeight={ESTIMATED_ROW_HEIGHT - 8} />

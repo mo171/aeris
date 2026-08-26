@@ -34,8 +34,10 @@ The color scheme is designed to reduce eye strain during prolonged analysis whil
 To elevate AERIS beyond the initial idea and secure that "winner" reaction, we will implement these unmentioned "Wow" factors:
 
 > [!TIP]
-> **1. Cinematic 3D Transitions (CesiumJS Integration)**
-> Instead of abruptly switching pages, transitioning from the Mission Command Center (3D globe view) to the Investigation Workspace (2D/3D localized map) should feature a smooth, cinematic camera "fly-to" animation down to the exact Area of Interest (AOI).
+> **1. Cinematic 3D Transitions (CesiumJS + deck.gl)**
+> Instead of abruptly switching pages, transitioning from the Mission Command Center (3D globe view) to the Investigation Workspace should feature a smooth, cinematic camera "fly-to" animation down to the exact Area of Interest (AOI).
+>
+> **Engine decision (2026-08-26):** CesiumJS owns the Earth — globe, terrain, imagery tiles, camera and fly-to. deck.gl owns the analytical overlays — animated temporal transitions, aggregation, large vector sets — rendered above Cesium and camera-synced. All computation (band math, reprojection, tiling, inference) happens in the backend; the frontend renders and creates the experience. The goal is to make change *felt*, not to build another Google Maps.
 
 > [!TIP]
 > **2. Ambient Data Streams (Idle State)**
@@ -99,7 +101,14 @@ The layout is a full-screen, non-scrolling dashboard. The 3D Earth acts as the b
 #### 1. The Global Header (Top Bar)
 *   **Left:** Sleek, minimalist AERIS logo.
 *   **Center:** A universal command bar (like Spotlight on Mac). Users can type coordinates, place names, or quick commands (e.g., `/monitor Mumbai`).
-*   **Right:** User profile, subtle pulsing notification bell for completed background analyses.
+*   **Right:** Live system status readout (model fleet health).
+
+> [!NOTE]
+> **Removed 2026-08-26:** this slot previously specified a notification bell for completed background
+> analyses. Continuous monitoring and alerting are later-tier scope in the source PDF and are not being
+> built, so the bell and its `/api/v1/notifications` endpoint were deleted rather than left as a
+> non-functional affordance. `AppShell` retains a `headerActionsSlot` extension point for when a later
+> surface needs this corner.
 
 #### 2. The Center Canvas (3D Earth)
 *   The primary visual anchor. We will use CesiumJS configured with a high-res, dark-themed satellite basemap.
@@ -125,4 +134,4 @@ If you approve this design direction, Phase 1 execution will begin with:
 1.  Setting up the Next.js layout structure matching this wireframe.
 2.  Configuring the Tailwind theme with the specified exact color tokens and typography.
 3.  Building the foundational UI components (Panels, Inputs, Chat Bubbles) in the `components/sharedUI` folder.
-4.  Integrating the base 3D Earth viewer (CesiumJS/Mapbox) in the center canvas.
+4.  Integrating the base 3D Earth viewer (CesiumJS) in the center canvas, with deck.gl reserved for the analytical overlay layers in the Investigation Workspace.

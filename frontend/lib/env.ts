@@ -28,8 +28,20 @@ const environmentSchema = z.object({
   NEXT_PUBLIC_MOCK_LATENCY_MS: z.coerce.number().int().nonnegative().default(280),
   /** Size of the generated mock imagery catalogue — raise it to stress-test virtualisation. */
   NEXT_PUBLIC_MOCK_SCENE_COUNT: z.coerce.number().int().positive().default(5_000),
-  /** Number of mission markers rendered on the globe — raise it to stress-test instanced rendering. */
-  NEXT_PUBLIC_MOCK_MARKER_COUNT: z.coerce.number().int().positive().default(2_000),
+  /**
+   * Number of mission markers on the globe. 300 is a realistic resting load; raise it well past a
+   * thousand to stress-test the point collection. Density at any given altitude is governed by the
+   * level-of-detail rules in lib/constants/globe.ts, not by this number.
+   */
+  NEXT_PUBLIC_MOCK_MARKER_COUNT: z.coerce.number().int().positive().default(300),
+
+  /**
+   * Cesium Ion access token. Optional, but this is the switch between a real Earth and a fallback.
+   * Set    -> Ion world imagery + real elevation terrain. The intended experience.
+   * Unset  -> dark raster basemap on a smooth ellipsoid. Real geography, but flat.
+   * Free tokens come from ion.cesium.com.
+   */
+  NEXT_PUBLIC_CESIUM_ION_TOKEN: z.string().default(""),
 });
 
 const parsedEnvironment = environmentSchema.safeParse({
@@ -40,6 +52,7 @@ const parsedEnvironment = environmentSchema.safeParse({
   NEXT_PUBLIC_MOCK_LATENCY_MS: process.env.NEXT_PUBLIC_MOCK_LATENCY_MS,
   NEXT_PUBLIC_MOCK_SCENE_COUNT: process.env.NEXT_PUBLIC_MOCK_SCENE_COUNT,
   NEXT_PUBLIC_MOCK_MARKER_COUNT: process.env.NEXT_PUBLIC_MOCK_MARKER_COUNT,
+  NEXT_PUBLIC_CESIUM_ION_TOKEN: process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN,
 });
 
 if (!parsedEnvironment.success) {

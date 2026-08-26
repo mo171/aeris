@@ -19,7 +19,6 @@ import {
   selectMissionPage,
 } from "../data/mission.data";
 import { MOCK_MODEL_STATUSES } from "../data/model.data";
-import { MOCK_NOTIFICATIONS, MOCK_UNREAD_NOTIFICATION_COUNT } from "../data/notification.data";
 
 export interface MockRequestContext {
   pathname: string;
@@ -138,17 +137,6 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     method: "GET",
     match: exactPath(REST_API.assistant.suggestions),
     handle: () => ({ status: 200, data: { suggestions: MOCK_ASSISTANT_SUGGESTIONS } }),
-  },
-  {
-    method: "GET",
-    match: exactPath(REST_API.notifications.list),
-    handle: () => ({
-      status: 200,
-      data: {
-        notifications: MOCK_NOTIFICATIONS,
-        unreadCount: MOCK_UNREAD_NOTIFICATION_COUNT,
-      },
-    }),
   },
 ];
 

@@ -2,7 +2,7 @@
 //
 // what  : Marker/track data types plus GlobeViewerHandle — the imperative interface any globe renderer
 //         must satisfy.
-// where : Implemented by components/globe/GlobeCanvas.tsx, consumed by use-globe-viewport.ts and by the
+// where : Implemented by components/globe/CesiumGlobe.tsx, consumed by GlobeControls and by the
 //         `globe.*` commands.
 // how   : This handle is the reason the renderer is swappable. The rest of the application only ever calls
 //         flyTo / resetView / setAutoRotate, so replacing the react-three-fiber implementation with
@@ -27,17 +27,25 @@ export interface GeographicPoint {
 }
 
 export interface GlobeFlyToTarget extends GeographicPoint {
-  /** Camera distance from the globe centre in globe radii. Omit to keep the current distance. */
-  distance?: number;
-  /** Animation length in milliseconds. Omit for the default cinematic duration. */
+  /**
+   * Camera altitude above the ellipsoid, in metres. Omit to use the standard locate altitude.
+   * Metres, not abstract radii: Cesium works in real-world units, and so should every caller — an
+   * altitude is something an analyst can reason about, a radius multiplier is not.
+   */
+  altitudeMeters?: number;
+  /** Animation length in milliseconds. Omit for the default cinematic duration. Zero jumps instantly. */
   durationMs?: number;
 }
 
 /** The imperative surface every globe renderer implementation must provide. */
 export interface GlobeViewerHandle {
   flyTo: (target: GlobeFlyToTarget) => void;
-  /** Moves the camera along its current view axis. Negative values move closer. */
-  zoomBy: (distanceDelta: number) => void;
+  /**
+   * Multiplies the camera's current altitude. Below 1 moves closer, above 1 moves away.
+   * Multiplicative rather than additive because a fixed metre step that feels right at street level is
+   * imperceptible at orbital altitude, and vice versa.
+   */
+  zoomByFactor: (factor: number) => void;
   resetView: () => void;
   setAutoRotate: (isEnabled: boolean) => void;
   isAutoRotating: () => boolean;

@@ -27,6 +27,18 @@ interface MissionCommandState {
   uploadTasks: ImageryUploadTask[];
 
   /**
+   * Which of the data panel's two lists are expanded.
+   *
+   * The catalogue and the mission list compete for the same vertical space, and which one matters
+   * depends entirely on what the operator is doing — hunting for a scene, or checking what is running.
+   * Collapsing one hands its space to the other rather than leaving both cramped.
+   */
+  isCatalogSectionExpanded: boolean;
+  isMissionSectionExpanded: boolean;
+  toggleCatalogSection: () => void;
+  toggleMissionSection: () => void;
+
+  /**
    * Imperative handles published by the globe and the assistant panel once they mount.
    *
    * These are live connection objects, not data — the same category as a WebSocket client — and they live
@@ -59,8 +71,15 @@ export const useMissionCommandStore = create<MissionCommandState>((set) => ({
   catalogSearchTerm: "",
   focusedMissionId: null,
   uploadTasks: [],
+  isCatalogSectionExpanded: true,
+  isMissionSectionExpanded: true,
   globeViewer: null,
   assistantControls: null,
+
+  toggleCatalogSection: () =>
+    set((state) => ({ isCatalogSectionExpanded: !state.isCatalogSectionExpanded })),
+  toggleMissionSection: () =>
+    set((state) => ({ isMissionSectionExpanded: !state.isMissionSectionExpanded })),
 
   setGlobeViewer: (viewer) => set({ globeViewer: viewer }),
   setAssistantControls: (controls) => set({ assistantControls: controls }),

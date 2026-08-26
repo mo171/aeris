@@ -18,6 +18,7 @@ import { VirtualizedList } from "@/components/sharedUI/functionalComponent/dataD
 import { EmptyState } from "@/components/sharedUI/functionalComponent/feedback/EmptyState";
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
 import { PanelSkeleton } from "@/components/sharedUI/functionalComponent/feedback/PanelSkeleton";
+import { cn } from "@/lib/utils";
 
 import { useImageryCatalog } from "../../hooks/use-imagery-catalog";
 import { useMissionCommandStore } from "../../store/mission-command-store";
@@ -29,9 +30,15 @@ const ESTIMATED_ROW_HEIGHT = 92;
 
 interface ImageryCatalogListProps {
   onLocateScene: (scene: ImageryScene) => void;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
 }
 
-export function ImageryCatalogList({ onLocateScene }: ImageryCatalogListProps) {
+export function ImageryCatalogList({
+  onLocateScene,
+  isExpanded,
+  onToggleExpanded,
+}: ImageryCatalogListProps) {
   const {
     scenes,
     totalCount,
@@ -44,8 +51,12 @@ export function ImageryCatalogList({ onLocateScene }: ImageryCatalogListProps) {
     refetch,
   } = useImageryCatalog();
 
-  const selectedSceneIds = useMissionCommandStore((state) => state.selectedSceneIds);
-  const toggleSceneSelection = useMissionCommandStore((state) => state.toggleSceneSelection);
+  const selectedSceneIds = useMissionCommandStore(
+    (state) => state.selectedSceneIds,
+  );
+  const toggleSceneSelection = useMissionCommandStore(
+    (state) => state.toggleSceneSelection,
+  );
 
   const renderScene = useCallback(
     (scene: ImageryScene) => (
@@ -60,9 +71,18 @@ export function ImageryCatalogList({ onLocateScene }: ImageryCatalogListProps) {
   );
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col border-t border-border-soft pt-2">
+    <section
+      className={cn(
+        "flex flex-col border-t border-border-soft pt-2",
+        // Only a section that is showing content competes for the panel's vertical space. Without this
+        // the collapsed header would still claim a share of the flex row and the sections would overlap.
+        isExpanded ? "min-h-0 flex-1" : "shrink-0",
+      )}
+    >
       <SectionHeader
         title="Imagery catalogue"
+        isExpanded={isExpanded}
+        onToggle={onToggleExpanded}
         trailing={
           totalCount !== null ? (
             <span className="font-mono text-[10px] text-muted-foreground">
@@ -72,55 +92,64 @@ export function ImageryCatalogList({ onLocateScene }: ImageryCatalogListProps) {
         }
       />
 
-      <div className="px-3 pt-1.5 pb-2">
-        <label className="flex h-7 items-center gap-2 rounded-md border border-border bg-surface-2/60 px-2 transition-colors duration-fast focus-within:border-aeris-teal/50">
-          <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Filter by place, platform or modality"
-            className="w-full bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground/70"
-            aria-label="Filter imagery catalogue"
-          />
-        </label>
-      </div>
+      {!isExpanded ? null : (
+        <>
+          <div className="px-3 pt-1.5 pb-2">
+            <label className="flex h-7 items-center gap-2 rounded-md border border-border bg-surface-2/60 px-2 transition-colors duration-fast focus-within:border-aeris-teal/50">
+              <Search
+                className="size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Filter by place, platform or modality"
+                className="w-full bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground/70"
+                aria-label="Filter imagery catalogue"
+              />
+            </label>
+          </div>
 
-      {error ? (
-        <ErrorState error={error} onRetry={refetch} />
-      ) : isLoading ? (
-        <PanelSkeleton rowCount={5} rowHeight={ESTIMATED_ROW_HEIGHT - 8} />
-      ) : scenes.length === 0 ? (
-        <EmptyState
-          icon={ImageOff}
-          title={searchTerm.length > 0 ? "No matching scenes" : "No imagery yet"}
-          description={
-            searchTerm.length > 0
-              ? "Try a different place name, platform or modality."
-              : "Upload a GeoTIFF above to start an investigation."
-          }
-        />
-      ) : (
-        <VirtualizedList
-          items={scenes}
-          estimateItemHeight={ESTIMATED_ROW_HEIGHT}
-          getItemKey={(scene) => scene.id}
-          renderItem={renderScene}
-          onEndReached={fetchNextPage}
-          footer={
-            isFetchingNextPage ? (
-              <div className="flex items-center justify-center gap-2 py-3">
-                <LoaderCircle
-                  className="size-3 animate-spin text-aeris-teal"
-                  aria-hidden="true"
-                />
-                <span className="font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
-                  Loading more scenes
-                </span>
-              </div>
-            ) : null
-          }
-        />
+          {error ? (
+            <ErrorState error={error} onRetry={refetch} />
+          ) : isLoading ? (
+            <PanelSkeleton rowCount={5} rowHeight={ESTIMATED_ROW_HEIGHT - 8} />
+          ) : scenes.length === 0 ? (
+            <EmptyState
+              icon={ImageOff}
+              title={
+                searchTerm.length > 0 ? "No matching scenes" : "No imagery yet"
+              }
+              description={
+                searchTerm.length > 0
+                  ? "Try a different place name, platform or modality."
+                  : "Upload a GeoTIFF above to start an investigation."
+              }
+            />
+          ) : (
+            <VirtualizedList
+              items={scenes}
+              estimateItemHeight={ESTIMATED_ROW_HEIGHT}
+              getItemKey={(scene) => scene.id}
+              renderItem={renderScene}
+              onEndReached={fetchNextPage}
+              footer={
+                isFetchingNextPage ? (
+                  <div className="flex items-center justify-center gap-2 py-3">
+                    <LoaderCircle
+                      className="size-3 animate-spin text-aeris-teal"
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
+                      Loading more scenes
+                    </span>
+                  </div>
+                ) : null
+              }
+            />
+          )}
+        </>
       )}
     </section>
   );

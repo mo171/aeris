@@ -27,7 +27,7 @@ import { NavigationRail } from "./NavigationRail";
 
 interface AppShellProps {
   children: ReactNode;
-  /** Feature-owned header controls, e.g. the notification bell. */
+  /** Feature-owned header controls. The shell never imports feature code, so surfaces pass them in. */
   headerActionsSlot?: ReactNode;
   className?: string;
 }

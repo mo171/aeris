@@ -17,6 +17,10 @@ const eslintConfig = defineConfig([
     // them only produces errors nobody is permitted to fix. They are vendored third-party code, not ours.
     "components/ui/**",
     "hooks/use-mobile.ts",
+
+    // Static assets, never source. public/cesium holds Cesium's minified runtime workers, copied in by
+    // scripts/copy-cesium-assets.mjs on postinstall.
+    "public/**",
   ]),
 ]);
 

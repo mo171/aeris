@@ -50,3 +50,6 @@ next-env.d.ts
 CLAUDE.md
 AGENTS.md
 .claude/
+
+# Cesium runtime assets, regenerated on postinstall by scripts/copy-cesium-assets.mjs
+/public/cesium/

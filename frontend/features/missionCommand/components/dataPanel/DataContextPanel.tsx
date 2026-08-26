@@ -10,6 +10,11 @@
 //
 //         Order follows the operator's workflow: bring imagery in, find it, see what is already running,
 //         confirm the tools are up.
+//
+//         The catalogue and the mission list are both collapsible and both claim flex space only while
+//         expanded. That is what lets one hand its height to the other, and it is also what fixed the
+//         sections rendering on top of each other — the previous layout gave the mission list a fixed 38%
+//         basis alongside a flex-1 catalogue, which could total more than the panel's height.
 
 "use client";
 
@@ -34,6 +39,14 @@ interface DataContextPanelProps {
 export function DataContextPanel({ onLocateScene, onLocateMission }: DataContextPanelProps) {
   const selectedSceneIds = useMissionCommandStore((state) => state.selectedSceneIds);
   const clearSceneSelection = useMissionCommandStore((state) => state.clearSceneSelection);
+  const isCatalogSectionExpanded = useMissionCommandStore(
+    (state) => state.isCatalogSectionExpanded,
+  );
+  const isMissionSectionExpanded = useMissionCommandStore(
+    (state) => state.isMissionSectionExpanded,
+  );
+  const toggleCatalogSection = useMissionCommandStore((state) => state.toggleCatalogSection);
+  const toggleMissionSection = useMissionCommandStore((state) => state.toggleMissionSection);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -61,8 +74,20 @@ export function DataContextPanel({ onLocateScene, onLocateMission }: DataContext
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1">
         <ImageryUploadZone />
-        <ImageryCatalogList onLocateScene={onLocateScene} />
-        <ActiveMissionsList onLocateMission={onLocateMission} />
+        <ImageryCatalogList
+          onLocateScene={onLocateScene}
+          isExpanded={isCatalogSectionExpanded}
+          onToggleExpanded={toggleCatalogSection}
+        />
+        <ActiveMissionsList
+          onLocateMission={onLocateMission}
+          isExpanded={isMissionSectionExpanded}
+          onToggleExpanded={toggleMissionSection}
+        />
+        {/* Absorbs the leftover height when both lists are collapsed, so the fleet strip stays anchored. */}
+        {!isCatalogSectionExpanded && !isMissionSectionExpanded ? (
+          <div className="flex-1" aria-hidden="true" />
+        ) : null}
         <ModelStatusStrip />
       </div>
     </div>

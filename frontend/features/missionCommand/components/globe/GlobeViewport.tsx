@@ -3,16 +3,16 @@
 // what  : Lazily loads the WebGL canvas, checks that the browser can render it, shows the loading and
 //         unavailable states, and overlays the globe's own controls.
 // where : Rendered by MissionCommandScreen as the centre canvas.
-// how   : The 3D bundle is the largest asset on this page, so it is code-split behind next/dynamic with
-//         server rendering disabled — three.js touches browser globals at import time and would fail
-//         during SSR. The loading placeholder occupies the identical box, so nothing around it reflows
-//         when the canvas mounts.
+// how   : Cesium is by far the largest asset on this page, so it is code-split behind next/dynamic with
+//         server rendering disabled — it touches browser globals at import time and would fail during SSR.
+//         The loading placeholder occupies the identical box, so nothing around it reflows when the
+//         viewer mounts.
 //
 //         WebGL support is probed rather than assumed. A browser without a WebGL context must show an
 //         explanation and leave the rest of the command centre fully usable, not a black rectangle or a
 //         crashed React tree.
 //
-//         The camera handle is not passed down through props — GlobeCameraRig publishes it into the
+//         The camera handle is not passed down through props — CesiumGlobe publishes it into the
 //         feature store when it mounts, which is what lets non-React callers (the command bus, and later
 //         the agent) reach the camera at all.
 
@@ -26,11 +26,10 @@ import { useWebGlSupport } from "@/hooks/use-webgl-support";
 import { cn } from "@/lib/utils";
 
 import type { GlobeMarker } from "../../types/globe.types";
-import { GlobeControls } from "./GlobeControls";
 import { GlobeLoadingState, GlobeUnavailableState } from "./GlobeLoadingState";
 
-const GlobeCanvas = dynamic(
-  () => import("./GlobeCanvas").then((module) => module.GlobeCanvas),
+const CesiumGlobe = dynamic(
+  () => import("./CesiumGlobe").then((module) => module.CesiumGlobe),
   { ssr: false, loading: () => <GlobeLoadingState /> },
 );
 
@@ -57,7 +56,7 @@ export function GlobeViewport({ onMarkerSelect, className }: GlobeViewportProps)
               isGlobeReady ? "opacity-100" : "opacity-0",
             )}
           >
-            <GlobeCanvas
+            <CesiumGlobe
               isMotionReduced={prefersReducedMotion}
               onMarkerSelect={onMarkerSelect}
               onReady={() => setIsGlobeReady(true)}
@@ -65,13 +64,6 @@ export function GlobeViewport({ onMarkerSelect, className }: GlobeViewportProps)
           </div>
 
           {!isGlobeReady ? <GlobeLoadingState /> : null}
-
-          <GlobeControls
-            className={cn(
-              "transition-opacity duration-slow ease-expo",
-              isGlobeReady ? "opacity-100" : "pointer-events-none opacity-0",
-            )}
-          />
         </>
       ) : null}
     </div>

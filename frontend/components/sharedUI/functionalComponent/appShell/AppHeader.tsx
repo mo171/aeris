@@ -1,7 +1,7 @@
 // components/sharedUI/functionalComponent/appShell/AppHeader.tsx — the global top bar.
 //
 // what  : Brand mark, the universal command bar trigger, a system status readout, and slots for
-//         feature-owned actions such as the notification bell and the user menu.
+//         feature-owned actions, e.g. a mission-status control or a user menu.
 // where : Rendered by AppShell on every surface.
 // how   : The command bar is a button, not an input. Typing happens inside the command palette dialog,
 //         which owns focus, keyboard navigation and results — duplicating that in an inline field would
@@ -23,7 +23,7 @@ import { dispatchCommand } from "@/lib/command-bus";
 import { cn } from "@/lib/utils";
 
 interface AppHeaderProps {
-  /** Feature-owned controls rendered on the right, e.g. the notification bell. */
+  /** Feature-owned controls rendered on the right. Surfaces supply their own; the shell stays generic. */
   actionsSlot?: ReactNode;
   className?: string;
 }

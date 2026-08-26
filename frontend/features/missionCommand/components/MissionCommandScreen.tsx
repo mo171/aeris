@@ -22,7 +22,7 @@ import { useCallback } from "react";
 import { AppShell } from "@/components/sharedUI/functionalComponent/appShell/AppShell";
 import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
 import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
-import { NotificationBell } from "@/features/notifications/components/NotificationBell";
+import { GLOBE_CAMERA } from "@/lib/constants/globe";
 import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
 import { useUiStore } from "@/store/ui-store";
 
@@ -33,10 +33,8 @@ import type { ImageryScene } from "../types/imagery.types";
 import type { Mission } from "../types/mission.types";
 import { AssistantPanel } from "./assistantPanel/AssistantPanel";
 import { DataContextPanel } from "./dataPanel/DataContextPanel";
+import { GlobeControls } from "./globe/GlobeControls";
 import { GlobeViewport } from "./globe/GlobeViewport";
-
-/** Camera distance used when flying to a specific scene or mission — close enough to read the region. */
-const LOCATE_CAMERA_DISTANCE = 1.75;
 
 export function MissionCommandScreen() {
   const isDataPanelOpen = useUiStore((state) => state.isDataPanelOpen);
@@ -58,7 +56,7 @@ export function MissionCommandScreen() {
     useMissionCommandStore.getState().globeViewer?.flyTo({
       latitude,
       longitude,
-      distance: LOCATE_CAMERA_DISTANCE,
+      altitudeMeters: GLOBE_CAMERA.locateAltitudeMeters,
     });
   }, []);
 
@@ -89,7 +87,7 @@ export function MissionCommandScreen() {
   );
 
   return (
-    <AppShell headerActionsSlot={<NotificationBell />}>
+    <AppShell>
       <PanelErrorBoundary panelName="Globe">
         <GlobeViewport onMarkerSelect={handleMarkerSelect} />
       </PanelErrorBoundary>
@@ -112,7 +110,13 @@ export function MissionCommandScreen() {
           </PanelErrorBoundary>
         </PanelContainer>
 
-        <div className="min-w-0 flex-1" aria-hidden="true" />
+        {/*
+          The free space between the panels. The globe's own controls live here rather than being anchored
+          to the viewport, so they can never end up underneath a panel at any panel width.
+        */}
+        <div className="relative min-w-0 flex-1">
+          <GlobeControls />
+        </div>
 
         <PanelContainer
           side="right"

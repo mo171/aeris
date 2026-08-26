@@ -58,13 +58,13 @@ export function useMissionCommandCommands(): void {
         id: COMMAND_IDS.globe.flyTo,
         title: "Fly to coordinates",
         description:
-          "Move the 3D Earth camera to a geographic position. Latitude is -90 to 90, longitude is -180 to 180. Distance is optional and expressed in globe radii; smaller values are closer.",
+          "Move the 3D Earth camera to a geographic position. Latitude is -90 to 90, longitude is -180 to 180. altitudeMeters is optional and is the camera height above the ground in metres; smaller values are closer.",
         group: "globe",
         isPaletteVisible: false,
         paramsSchema: z.object({
           latitude: z.number().min(-90).max(90),
           longitude: z.number().min(-180).max(180),
-          distance: z.number().positive().optional(),
+          altitudeMeters: z.number().positive().optional(),
           durationMs: z.number().int().nonnegative().optional(),
         }),
         handler: (target) => getGlobeViewer()?.flyTo(target),

@@ -31,8 +31,4 @@ export const QUERY_KEYS = {
     suggestions: () => ["assistant", "suggestions"] as const,
     history: (sessionId: string) => ["assistant", "history", sessionId] as const,
   },
-  notifications: {
-    all: ["notifications"] as const,
-    list: () => ["notifications", "list"] as const,
-  },
 } as const;

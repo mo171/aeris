@@ -16,7 +16,6 @@ export const APP = {
 export const SHELL_COPY = {
   commandBarPlaceholder: "Search coordinates, places, missions or type a command",
   commandBarHint: "Ctrl K",
-  notificationsLabel: "Notifications",
   systemStatusNominal: "All systems nominal",
   systemStatusDegraded: "Degraded capability",
   systemStatusOffline: "Link lost",

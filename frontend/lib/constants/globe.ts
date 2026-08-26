@@ -1,88 +1,176 @@
-// lib/constants/globe.ts — every tunable number the 3D Earth uses. No magic values inside the scene code.
+// lib/constants/globe.ts — every tunable value the CesiumJS globe uses. No magic numbers in scene code.
 //
-// what  : Geometry, camera, land-dot sampling, marker, arc and level-of-detail configuration for the globe.
-// where : Read by features/missionCommand/components/globe/*. Changing the look or the performance profile
-//         of the Earth is a change to this file, not to shader or scene code.
-// how   : The globe renders land as an instanced point cloud sampled from a rasterised land mask, so the
-//         only quality/performance dial that matters is LAND_DOT_SAMPLING. The LOD thresholds cap how many
-//         markers and labels are drawn — these exist because the marker feed is unbounded in production.
+// what  : Cesium base URL, basemap providers, camera geometry, marker level-of-detail, arc animation and
+//         performance ceilings.
+// where : Read by features/missionCommand/components/globe/*. Changing how the Earth looks or performs is
+//         a change to this file, not to viewer code.
+// how   : Cesium works in real-world units — degrees and metres — not the abstract radii the previous
+//         react-three-fiber globe used. Every altitude below is metres above the ellipsoid, which is why
+//         the numbers look large: 19,000 km is roughly "whole Earth in frame".
 
-import { AERIS_COLOR_INT } from "./theme";
+import { AERIS_COLOR_HEX } from "./theme";
 
-/** Unit-sphere radius. Every other distance below is expressed as a multiple of this. */
-export const GLOBE_RADIUS = 1;
+/**
+ * Where Cesium loads its Workers, Assets, ThirdParty and Widgets from at runtime.
+ * These are copied into /public by scripts/copy-cesium-assets.mjs on postinstall, NOT bundled — they are
+ * roughly 8 MB and must be fetched on demand. `window.CESIUM_BASE_URL` must be set to this before the
+ * first Viewer is constructed or Cesium will request its workers from the wrong origin and fail silently.
+ */
+export const CESIUM_BASE_URL = "/cesium";
 
 export const GLOBE_CAMERA = {
-  fieldOfView: 38,
-  initialDistance: 3.05,
-  minDistance: 1.45,
-  maxDistance: 4.6,
-  /** Radians per second of idle auto-rotation. Pauses while the operator is interacting. */
-  idleRotationSpeed: 0.028,
-  /** How long after the last interaction before idle rotation resumes, in milliseconds. */
+  /** Opening view. Centred on the Indian subcontinent, the primary area of interest for AERIS. */
+  home: {
+    longitude: 78.9,
+    latitude: 20.6,
+    altitudeMeters: 19_000_000,
+  },
+  /** Altitude used when flying to a specific scene or mission — close enough to read the region. */
+  locateAltitudeMeters: 120_000,
+  minimumZoomAltitudeMeters: 300,
+  maximumZoomAltitudeMeters: 26_000_000,
+  /** Multiplicative zoom step. Below 1 moves closer, above 1 moves away. */
+  zoomInFactor: 0.55,
+  zoomOutFactor: 1.8,
+  /** Radians per second of idle rotation. Pauses while the operator is interacting. */
+  idleRotationRadiansPerSecond: 0.018,
+  /** How long after the last interaction before idle rotation resumes. */
   idleResumeDelayMs: 2_600,
-  dampingFactor: 0.06,
+  flyDurationSeconds: 2.2,
+  /** A brisker curve for zoom steps, which should feel like a control rather than a journey. */
+  zoomDurationSeconds: 0.6,
 } as const;
 
-export const LAND_DOT_SAMPLING = {
-  /** Static asset rasterised into a land mask at runtime. Served from /public, never bundled into JS. */
-  geometryUrl: "/geo/land-110m.json",
-  /** Equirectangular raster resolution used for the land/water test. */
-  maskWidth: 1024,
-  maskHeight: 512,
-  /** Angular spacing between candidate dots. Lower = denser globe, more instances. */
-  spacingDegrees: 1.35,
-  /** Dots are pushed marginally off the sphere so they never z-fight with the base sphere. */
-  surfaceOffset: 0.002,
-  dotSize: 0.0075,
+/**
+ * Basemap imagery.
+ *
+ * With a Cesium Ion token the globe uses Ion world imagery and real elevation — that is the intended
+ * experience. Without one it falls back to a dark raster basemap so the application never boots to a
+ * black sphere. The fallback is a safety net, not an equivalent option.
+ */
+export const GLOBE_BASEMAP = {
+  fallbackTileUrl: "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  fallbackAttribution: "© OpenStreetMap contributors © CARTO",
+  fallbackMaximumLevel: 19,
 } as const;
 
 export const GLOBE_APPEARANCE = {
-  oceanColor: AERIS_COLOR_INT.black,
-  landDotColor: AERIS_COLOR_INT.teal,
-  landDotOpacity: 0.62,
-  graticuleColor: AERIS_COLOR_INT.stroke,
-  graticuleOpacity: 0.3,
-  /** Latitude/longitude line spacing in degrees. */
-  graticuleStepDegrees: 15,
-  atmosphereColor: AERIS_COLOR_INT.teal,
-  atmosphereIntensity: 1.05,
-  atmosphereScale: 1.16,
-  /** Rim light that separates the terminator from the background. */
-  rimColor: AERIS_COLOR_INT.blue,
+  /** Shown where no imagery tile has loaded yet, so gaps read as space rather than as a rendering fault. */
+  baseColor: AERIS_COLOR_HEX.black,
+  /** Day/night terminator driven by real sun position. A genuine detail, not a filter. */
+  enableSunLighting: true,
+  showGroundAtmosphere: true,
+  showSkyAtmosphere: true,
+
+  /**
+   * Imagery grading.
+   *
+   * These were originally set much darker to keep overlays dominant, which drained the planet of colour
+   * and made it look like a grey relief map. The Earth is the centrepiece of this screen and should look
+   * like the Earth; marker prominence is controlled by the level-of-detail rules below instead, which is
+   * the correct lever — dimming the whole planet to make dots readable is solving the wrong problem.
+   */
+  imageryBrightness: 1.02,
+  imageryContrast: 1.12,
+  imagerySaturation: 1.18,
+  imageryGamma: 0.98,
+
+  /** A slight cool shift ties the atmosphere to the AERIS palette without tinting the landmass. */
+  atmosphereHueShift: -0.02,
+  atmosphereSaturationShift: 0.08,
+  atmosphereBrightnessShift: 0.05,
 } as const;
 
 export const GLOBE_MARKERS = {
-  /** Base point size in pixels at unit distance, before magnitude scaling and pulse. */
-  baseSize: 26,
+  /** Pixel size at unit scale, before magnitude and distance scaling. */
+  basePixelSize: 4.5,
+  /** Added on top of base size, scaled by the marker's magnitude. */
+  magnitudePixelRange: 4.5,
+  outlineWidth: 1,
+  /** A dark rim keeps a bright marker legible against bright terrain such as desert or cloud. */
+  outlineColor: AERIS_COLOR_HEX.black,
+
   /**
-   * Hard cap on markers uploaded to the GPU. Markers render as a single instanced point cloud with the
-   * pulse animated entirely in the vertex shader, so tens of thousands cost one draw call and no
-   * per-frame CPU work. The cap exists only to bound memory if the feed ever returns something absurd;
-   * when it bites, the lowest-magnitude markers are dropped first.
+   * Distance-based scaling: (nearDistance, nearScale, farDistance, farScale).
+   * Markers shrink as the camera pulls back so a global view reads as a constellation of fine points
+   * rather than a field of overlapping blobs.
+   */
+  scaleByDistance: {
+    nearMeters: 150_000,
+    nearScale: 1.7,
+    farMeters: 22_000_000,
+    farScale: 0.5,
+  },
+  /** Markers soften rather than vanish at extreme range, which keeps the globe from looking speckled. */
+  translucencyByDistance: {
+    nearMeters: 150_000,
+    nearAlpha: 1,
+    farMeters: 30_000_000,
+    farAlpha: 0.4,
+  },
+
+  /**
+   * Level of detail, by status.
+   *
+   * A marker is drawn only while the camera is closer than its range. This is what keeps the orbital view
+   * clean: from space you see alerts and active investigations, and the routine monitoring feed reveals
+   * itself as you descend. Importance is status-first because that is what the operator triages on — a
+   * globe that renders every observation at every altitude communicates nothing.
+   *
+   * Evaluated on the GPU, so hiding markers this way costs nothing.
+   */
+  visibilityRangeMeters: {
+    alert: 6.0e7,
+    active: 3.2e7,
+    monitoring: 9.0e6,
+    archived: 2.5e6,
+  },
+  /** Range multiplier from magnitude: a low-magnitude marker needs a closer camera than a high one. */
+  magnitudeRangeFloor: 0.6,
+  magnitudeRangeSpan: 0.8,
+
+  /** Alert markers pulse; nothing else does, so the motion always carries meaning. */
+  pulsePixelAmplitude: 3,
+  pulseSpeed: 2.4,
+
+  /**
+   * Hard ceiling on markers uploaded to the GPU. All markers live in a single PointPrimitiveCollection,
+   * so tens of thousands cost one draw call; the cap only bounds memory if the feed returns something
+   * absurd. When it bites, the lowest-magnitude markers are dropped first.
    */
   maxRenderedMarkers: 20_000,
-  /** Only the N highest-magnitude markers get a DOM label — labels are the genuinely expensive part. */
-  maxLabelledMarkers: 5,
-  pulseSpeed: 2.1,
   statusColor: {
-    active: AERIS_COLOR_INT.teal,
-    monitoring: AERIS_COLOR_INT.blue,
-    alert: AERIS_COLOR_INT.red,
-    archived: AERIS_COLOR_INT.grayDim,
+    active: AERIS_COLOR_HEX.teal,
+    monitoring: AERIS_COLOR_HEX.blue,
+    alert: AERIS_COLOR_HEX.red,
+    archived: AERIS_COLOR_HEX.grayDim,
   },
 } as const;
 
 export const GLOBE_SATELLITE_ARCS = {
-  /** Ambient data streams from the design report's idle-state wow factor. */
-  maxVisibleArcs: 16,
-  segmentCount: 64,
-  /** Peak altitude of an arc as a fraction of globe radius. */
-  altitudeFactor: 0.34,
-  travelSpeed: 0.16,
-  color: AERIS_COLOR_INT.blue,
-  headColor: AERIS_COLOR_INT.teal,
+  maxVisibleArcs: 12,
+  sampleCount: 96,
+  widthPixels: 1.6,
+  /**
+   * Apex height as a fraction of the ground distance the arc spans. At 0.08 a hemisphere-crossing pass
+   * peaks around 800 km, which is roughly true low-Earth-orbit altitude — the arcs read as satellite
+   * passes rather than as decorative rings thrown around the planet.
+   */
+  apexHeightRatio: 0.08,
+  /** Cycles per second for the travelling pulse. */
+  pulseSpeed: 0.22,
+  /** How sharply the trail falls off behind the pulse head. Higher is a shorter, tighter comet. */
+  trailFalloff: 16,
+  /** Resting opacity of the arc line itself, before the pulse passes over it. */
+  restAlpha: 0.07,
+  /** Additional opacity carried by the pulse head. */
+  pulseAlpha: 0.85,
+  trailColor: AERIS_COLOR_HEX.blue,
+  headColor: AERIS_COLOR_HEX.teal,
 } as const;
 
-/** Device-pixel-ratio ceiling. Uncapped DPR on a 4K display is the single biggest cause of jank. */
-export const GLOBE_MAX_PIXEL_RATIO = 1.75;
+/**
+ * Resolution-scale ceiling. Uncapped device pixel ratio on a high-density display is the single most
+ * common cause of an otherwise healthy globe running at thirty frames per second.
+ */
+export const GLOBE_MAX_RESOLUTION_SCALE = 1.5;
