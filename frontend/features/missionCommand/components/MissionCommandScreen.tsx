@@ -2,11 +2,13 @@
 //
 // what  : Composes the application shell with the three zones of the command centre — the Data & Context
 //         panel, the 3D Earth canvas, and the AERIS Assistant panel — and wires them to each other.
-// where : Rendered by app/page.tsx, which contains nothing else.
-// how   : The globe fills the whole content area and the panels float above it, with pointer events
-//         disabled on the gap between them, so the operator can always grab and rotate the Earth. That is
-//         what keeps the geospatial context present rather than framed, which is the point of the glass
-//         treatment in the design report.
+// where : Rendered by app/(geospatial)/page.tsx, which contains nothing else.
+// how   : The Earth is NOT rendered here. It belongs to the shared stage mounted by the route group's
+//         layout, which is what lets the camera keep flying across the navigation into the Investigation
+//         Workspace. This screen contributes the panels that float over it, with pointer events disabled
+//         on the gap between them so the operator can always grab and rotate the Earth. That is what keeps
+//         the geospatial context present rather than framed, which is the point of the glass treatment in
+//         the design report.
 //
 //         The two panels never talk to each other. Selection and focus flow through the feature store, and
 //         camera moves flow through the globe handle that store publishes — so adding a fourth zone later
@@ -19,13 +21,13 @@
 
 import { useCallback } from "react";
 
-import { AppShell } from "@/components/sharedUI/functionalComponent/appShell/AppShell";
 import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
 import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
 import { GLOBE_CAMERA } from "@/lib/constants/globe";
 import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
 import { useUiStore } from "@/store/ui-store";
 
+import { useGlobeStageBinding } from "../hooks/use-globe-stage-binding";
 import { useMissionCommandCommands } from "../hooks/use-mission-command-commands";
 import { useMissionCommandStore } from "../store/mission-command-store";
 import type { GlobeMarker } from "../types/globe.types";
@@ -34,7 +36,6 @@ import type { Mission } from "../types/mission.types";
 import { AssistantPanel } from "./assistantPanel/AssistantPanel";
 import { DataContextPanel } from "./dataPanel/DataContextPanel";
 import { GlobeControls } from "./globe/GlobeControls";
-import { GlobeViewport } from "./globe/GlobeViewport";
 
 export function MissionCommandScreen() {
   const isDataPanelOpen = useUiStore((state) => state.isDataPanelOpen);
@@ -47,7 +48,6 @@ export function MissionCommandScreen() {
   const setFocusedMissionId = useMissionCommandStore((state) => state.setFocusedMissionId);
   const toggleSceneSelection = useMissionCommandStore((state) => state.toggleSceneSelection);
 
-  useMissionCommandCommands();
 
   // The globe handle is read at call time rather than subscribed to: these callbacks fire from user
   // interaction, long after mount, and re-creating them whenever the globe re-registers would churn every
@@ -86,14 +86,13 @@ export function MissionCommandScreen() {
     [flyToPosition, setFocusedMissionId],
   );
 
-  return (
-    <AppShell>
-      <PanelErrorBoundary panelName="Globe">
-        <GlobeViewport onMarkerSelect={handleMarkerSelect} />
-      </PanelErrorBoundary>
+  // Registered after the callbacks exist so the stage can route a marker click straight into them.
+  useGlobeStageBinding({ onMarkerSelect: handleMarkerSelect });
+  useMissionCommandCommands();
 
-      {/* The overlay itself ignores pointer events; each panel opts back in. */}
-      <div className="pointer-events-none absolute inset-0 flex gap-3 p-3">
+  return (
+    /* The overlay itself ignores pointer events; each panel opts back in. */
+    <div className="pointer-events-none absolute inset-0 flex gap-3 p-3">
         <PanelContainer
           side="left"
           isOpen={isDataPanelOpen}
@@ -126,11 +125,10 @@ export function MissionCommandScreen() {
           revealDelaySeconds={BOOT_SEQUENCE_DELAY.assistantPanel}
           ariaLabel="AERIS assistant panel"
         >
-          <PanelErrorBoundary panelName="Assistant">
-            <AssistantPanel />
-          </PanelErrorBoundary>
-        </PanelContainer>
-      </div>
-    </AppShell>
+        <PanelErrorBoundary panelName="Assistant">
+          <AssistantPanel />
+        </PanelErrorBoundary>
+      </PanelContainer>
+    </div>
   );
 }

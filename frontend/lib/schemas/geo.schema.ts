@@ -1,8 +1,9 @@
-// features/missionCommand/schemas/shared.schema.ts — geospatial and pagination primitives shared by every
-// Mission Command schema.
+// lib/schemas/geo.schema.ts — geospatial and pagination primitives shared by every feature's schemas.
 //
 // what  : Zod schemas for geographic points, bounding boxes, ISO timestamps and cursor pages.
-// where : Composed by the imagery, mission, model and assistant schemas in this folder.
+//         Application-wide rather than feature-scoped: a latitude means the same thing on every surface,
+//         and duplicating the definition per feature is how two surfaces end up disagreeing about it.
+// where : Composed by every feature's Zod schemas — imagery, missions, investigations, evidence, reports.
 // how   : Every domain type in this feature is defined as a Zod schema first and its TypeScript type is
 //         inferred from it. One definition therefore produces both the compile-time type and the runtime
 //         validator, so a backend contract drift is caught at the boundary instead of surfacing as

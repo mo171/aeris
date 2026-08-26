@@ -26,6 +26,19 @@ export const QUERY_KEYS = {
     all: ["models"] as const,
     status: () => ["models", "status"] as const,
   },
+  investigations: {
+    all: ["investigations"] as const,
+    detail: (investigationId: string) => ["investigations", "detail", investigationId] as const,
+    evidence: (investigationId: string) => ["investigations", "evidence", investigationId] as const,
+    plan: (investigationId: string, fromClaimId: string) =>
+      ["investigations", "plan", investigationId, fromClaimId] as const,
+    report: (investigationId: string) => ["investigations", "report", investigationId] as const,
+  },
+  regions: {
+    all: ["regions"] as const,
+    suggestions: (investigationId: string, geometryKey: string) =>
+      ["regions", "suggestions", investigationId, geometryKey] as const,
+  },
   assistant: {
     all: ["assistant"] as const,
     suggestions: () => ["assistant", "suggestions"] as const,

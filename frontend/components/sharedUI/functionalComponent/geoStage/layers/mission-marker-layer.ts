@@ -1,8 +1,8 @@
-// features/missionCommand/components/globe/mission-marker-layer.ts — mission markers on the Cesium globe.
+// components/sharedUI/functionalComponent/geoStage/layers/mission-marker-layer.ts — mission markers on the shared globe.
 //
 // what  : Builds and maintains a single PointPrimitiveCollection of mission/AOI markers, applies
 //         distance-based level of detail, pulses the alert ones, and resolves a pick back to its marker.
-// where : Owned by CesiumGlobe.tsx. Imperative on purpose — this is scene-graph work, not rendering.
+// where : Owned by CesiumStage.tsx. Imperative on purpose — this is scene-graph work, not rendering.
 // how   : One PointPrimitiveCollection rather than thousands of Cesium Entities. An Entity carries a full
 //         time-dynamic property machinery that costs far more than the point it draws; a primitive
 //         collection uploads everything as one batch and renders in one draw call.
@@ -29,23 +29,23 @@ import {
 
 import { GLOBE_MARKERS } from "@/lib/constants/globe";
 
-import type { GlobeMarker } from "../../types/globe.types";
+import type { StageMarker } from "../geo-stage.types";
 
 /** Markers float slightly above the surface so terrain never swallows them at close range. */
 const MARKER_HEIGHT_METERS = 4_000;
 
 export interface MissionMarkerLayer {
-  setMarkers: (markers: readonly GlobeMarker[]) => void;
+  setMarkers: (markers: readonly StageMarker[]) => void;
   /** Advances the alert pulse. Called once per frame by the viewer's render loop. */
   update: (elapsedSeconds: number) => void;
   /** Resolves whatever Cesium's scene.pick returned into one of our markers, or null. */
-  resolvePick: (picked: unknown) => GlobeMarker | null;
+  resolvePick: (picked: unknown) => StageMarker | null;
   destroy: () => void;
 }
 
 export function createMissionMarkerLayer(scene: Scene): MissionMarkerLayer {
   const collection = scene.primitives.add(new PointPrimitiveCollection());
-  const markerByPrimitive = new WeakMap<object, GlobeMarker>();
+  const markerByPrimitive = new WeakMap<object, StageMarker>();
   let pulsingPrimitives: { primitive: PointPrimitive; baseSize: number }[] = [];
 
   // Shared instances: Cesium reads these per frame, and allocating one per marker would waste memory
@@ -75,7 +75,7 @@ export function createMissionMarkerLayer(scene: Scene): MissionMarkerLayer {
 
   const outlineColor = Color.fromCssColorString(GLOBE_MARKERS.outlineColor);
 
-  function setMarkers(markers: readonly GlobeMarker[]): void {
+  function setMarkers(markers: readonly StageMarker[]): void {
     collection.removeAll();
     pulsingPrimitives = [];
 
@@ -128,7 +128,7 @@ export function createMissionMarkerLayer(scene: Scene): MissionMarkerLayer {
     }
   }
 
-  function resolvePick(picked: unknown): GlobeMarker | null {
+  function resolvePick(picked: unknown): StageMarker | null {
     if (!picked || typeof picked !== "object") {
       return null;
     }
@@ -165,7 +165,7 @@ export function createMissionMarkerLayer(scene: Scene): MissionMarkerLayer {
  * driven by status, then stretched or compressed by magnitude, so a significant monitoring site survives
  * further out than a routine one without ever outranking an alert.
  */
-function buildVisibilityRange(marker: GlobeMarker): DistanceDisplayCondition {
+function buildVisibilityRange(marker: StageMarker): DistanceDisplayCondition {
   const statusRange = GLOBE_MARKERS.visibilityRangeMeters[marker.status];
   const magnitudeFactor =
     GLOBE_MARKERS.magnitudeRangeFloor + marker.magnitude * GLOBE_MARKERS.magnitudeRangeSpan;

@@ -28,6 +28,23 @@ export const REST_API = {
   models: {
     status: `${API_VERSION_PREFIX}/models/status`,
   },
+  investigations: {
+    create: `${API_VERSION_PREFIX}/investigations`,
+    detail: (investigationId: string) => `${API_VERSION_PREFIX}/investigations/${investigationId}`,
+    attachScene: (investigationId: string) =>
+      `${API_VERSION_PREFIX}/investigations/${investigationId}/scenes`,
+    /** Server-sent events: trace steps, ready layers, claims and answer tokens for one analysis run. */
+    runs: (investigationId: string) => `${API_VERSION_PREFIX}/investigations/${investigationId}/runs`,
+    evidence: (investigationId: string) =>
+      `${API_VERSION_PREFIX}/investigations/${investigationId}/evidence`,
+    /** The autonomous plan, returned before execution so the operator can edit it. */
+    plan: (investigationId: string) => `${API_VERSION_PREFIX}/investigations/${investigationId}/plan`,
+    report: (investigationId: string) =>
+      `${API_VERSION_PREFIX}/investigations/${investigationId}/report`,
+  },
+  regions: {
+    suggestions: `${API_VERSION_PREFIX}/regions/suggestions`,
+  },
   assistant: {
     suggestions: `${API_VERSION_PREFIX}/assistant/suggestions`,
     history: `${API_VERSION_PREFIX}/assistant/history`,

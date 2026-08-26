@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 
-import { createCursorPageSchema, geoBoundingBoxSchema, geoPointSchema, isoTimestampSchema } from "./shared.schema";
+import { createCursorPageSchema, geoBoundingBoxSchema, geoPointSchema, isoTimestampSchema } from "@/lib/schemas/geo.schema";
 
 export const sensorModalitySchema = z.enum(["optical", "sar", "multispectral", "hyperspectral"]);
 

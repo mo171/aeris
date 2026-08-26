@@ -16,3 +16,15 @@ export const ROUTES = {
 } as const;
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
+
+/**
+ * Resource paths, built rather than concatenated at call sites.
+ *
+ * Kept out of ROUTES itself so `RoutePath` stays a union of literal strings — the navigation rail and the
+ * `nav.goto` command both depend on that, and widening it to include `string` would silently remove the
+ * compile-time guarantee that every navigation target is a surface that exists.
+ */
+export const buildRoute = {
+  investigationDetail: (investigationId: string) =>
+    `${ROUTES.INVESTIGATION}/${investigationId}` as const,
+} as const;

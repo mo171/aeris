@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 
-import { isoTimestampSchema } from "./shared.schema";
+import { isoTimestampSchema } from "@/lib/schemas/geo.schema";
 
 export const executionStepStateSchema = z.enum(["pending", "running", "completed", "failed", "skipped"]);
 

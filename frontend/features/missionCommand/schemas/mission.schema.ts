@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 
-import { createCursorPageSchema, geoPointSchema, isoTimestampSchema } from "./shared.schema";
+import { createCursorPageSchema, geoPointSchema, isoTimestampSchema } from "@/lib/schemas/geo.schema";
 
 export const missionStatusSchema = z.enum(["active", "monitoring", "alert", "archived"]);
 

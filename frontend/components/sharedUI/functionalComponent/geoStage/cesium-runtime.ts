@@ -1,12 +1,12 @@
-// features/missionCommand/components/globe/cesium-runtime.ts — Cesium bootstrapping and imagery providers.
+// components/sharedUI/functionalComponent/geoStage/cesium-runtime.ts — Cesium bootstrapping and imagery providers.
 //
 // what  : Points Cesium at its static assets, applies the Ion token when one exists, and builds the
 //         imagery and terrain providers for both the Ion and the no-token paths.
-// where : Used only by CesiumGlobe.tsx. Nothing else in the application may import `cesium`.
+// where : Used only by CesiumStage.tsx. No file outside this geoStage folder may import `cesium`.
 // how   : window.CESIUM_BASE_URL must be set before a Viewer is constructed, or Cesium resolves its web
 //         workers and glTF assets against the wrong origin and the globe fails with no useful error. It is
 //         assigned at module scope here, which runs when this module is first imported — always before any
-//         Viewer exists, because CesiumGlobe imports this file.
+//         Viewer exists, because CesiumStage imports this file.
 //
 //         Two rendering paths, chosen by whether NEXT_PUBLIC_CESIUM_ION_TOKEN is present:
 //           token   -> Ion world imagery + real elevation terrain. The intended experience.

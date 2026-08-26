@@ -1,15 +1,15 @@
-// features/missionCommand/components/globe/GlobeLoadingState.tsx — what fills the canvas before the globe.
+// components/sharedUI/functionalComponent/geoStage/StageLoadingState.tsx — the stage's boot and unsupported states.
 //
 // what  : A centred technical placeholder with a faint grid and an orbital ring, plus a WebGL-unavailable
 //         variant carrying a real explanation.
-// where : Shown by GlobeViewport while the 3D bundle downloads, and permanently when WebGL is missing.
+// where : Shown by GeoStage while the 3D bundle downloads, and permanently when WebGL is missing.
 // how   : It occupies exactly the same box as the finished globe, so the panels around it never reflow
 //         when the canvas takes over. It is also intentionally quiet: a loud spinner in the centre of the
 //         command centre would be the first thing an operator sees every session.
 
 import { Orbit, TriangleAlert } from "lucide-react";
 
-export function GlobeLoadingState() {
+export function StageLoadingState() {
   return (
     <div className="absolute inset-0 flex items-center justify-center">
       <div className="aeris-grid-backdrop absolute inset-0" aria-hidden="true" />
@@ -26,7 +26,7 @@ export function GlobeLoadingState() {
   );
 }
 
-export function GlobeUnavailableState() {
+export function StageUnavailableState() {
   return (
     <div className="absolute inset-0 flex items-center justify-center">
       <div className="aeris-grid-backdrop absolute inset-0" aria-hidden="true" />

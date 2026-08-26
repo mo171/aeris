@@ -1,7 +1,7 @@
-// features/missionCommand/components/globe/satellite-arc-layer.ts — the ambient data streams over the globe.
+// components/sharedUI/functionalComponent/geoStage/layers/satellite-arc-layer.ts — the ambient data streams over the globe.
 //
 // what  : Draws each satellite track as a faint geodesic arc with a bright pulse travelling along it.
-// where : Owned by CesiumGlobe.tsx.
+// where : Owned by CesiumStage.tsx.
 // how   : The path is sampled from an EllipsoidGeodesic rather than interpolated linearly, so it follows
 //         the real shortest path over the Earth — the curve a satellite pass actually traces. A straight
 //         line between two distant points would cut through the planet and read as obviously fake.
