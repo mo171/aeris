@@ -13,11 +13,13 @@ import { REST_API } from "@/lib/constants/rest.api";
 
 import { MOCK_ASSISTANT_SUGGESTIONS } from "../data/assistant.data";
 import {
+  attachMockScene,
   createMockInvestigation,
   getMockEvidenceGraph,
   getMockInvestigation,
   getMockPlan,
   getMockRegionSuggestions,
+  getMockSceneInspection,
   listMockInvestigations,
 } from "../data/investigation.data";
 import { insertUploadedScene, selectImageryPage } from "../data/imagery.data";
@@ -217,6 +219,31 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     method: "POST",
     match: patternPath(/^\/api\/v1\/investigations\/([^/]+)$/),
     handle: () => ({ status: 204, data: null }),
+  },
+  {
+    method: "POST",
+    match: patternPath(/^\/api\/v1\/investigations\/([^/]+)\/scenes$/),
+    handle: ({ pathParameters, body }) => {
+      const request = body as { sceneId?: string; role?: "t0" | "t1" | "sar" };
+      const updated =
+        request?.sceneId && request?.role
+          ? attachMockScene(pathParameters[0], request.sceneId, request.role)
+          : null;
+
+      return updated
+        ? { status: 200, data: updated }
+        : { status: 404, data: { message: "Investigation or scene not found" } };
+    },
+  },
+  {
+    method: "GET",
+    match: patternPath(/^\/api\/v1\/imagery\/([^/]+)$/),
+    handle: ({ pathParameters }) => {
+      const inspection = getMockSceneInspection(pathParameters[0]);
+      return inspection
+        ? { status: 200, data: inspection }
+        : { status: 404, data: { message: "Scene not found" } };
+    },
   },
   {
     method: "GET",

@@ -44,7 +44,13 @@ import {
 } from "cesium";
 import { useEffect, useRef } from "react";
 
-import { GLOBE_APPEARANCE, GLOBE_CAMERA, GLOBE_MAX_RESOLUTION_SCALE } from "@/lib/constants/globe";
+import {
+  GLOBE_APPEARANCE,
+  GLOBE_CAMERA,
+  GLOBE_HIDDEN_TAB_RENDER_INTERVAL_MS,
+  GLOBE_MAX_RESOLUTION_SCALE,
+  GLOBE_PROJECTION_MORPH_SECONDS,
+} from "@/lib/constants/globe";
 import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
 import { LAYER_RENDERING } from "@/lib/constants/layers";
 import { AERIS_COLOR_HEX } from "@/lib/constants/theme";
@@ -64,13 +70,14 @@ import type {
   StageFrameOptions,
   StageLayerRenderMode,
   StageMode,
+  StageProjection,
 } from "./geo-stage.types";
 import { createAreaOfInterestOutlineLayer } from "./layers/aoi-outline-layer";
 import { createEvidenceVectorLayerSet } from "./layers/evidence-vector-layer";
 import { createMissionMarkerLayer } from "./layers/mission-marker-layer";
 import { createSatelliteArcLayer } from "./layers/satellite-arc-layer";
 import { createSceneImageryLayerSet } from "./layers/scene-imagery-layer";
-import { createRegionDrawController } from "./region-draw";
+import { createDrawController } from "./region-draw";
 import { createSplitComparator } from "./split-comparator";
 
 import "cesium/Build/Cesium/Widgets/widgets.css";
@@ -138,7 +145,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     const evidenceVectors = createEvidenceVectorLayerSet(viewer);
     const aoiOutline = createAreaOfInterestOutlineLayer(viewer);
     const comparator = createSplitComparator(scene);
-    const regionDraw = createRegionDrawController(viewer);
+    const draw = createDrawController(viewer);
 
     // ── Stage state ────────────────────────────────────────────────────────────────────────────────
     let mode: StageMode = "globe";
@@ -150,6 +157,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     let lastFrameMs = performance.now();
     let orbitAxis = Cartesian3.clone(Cartesian3.UNIT_Z);
     let basemapBrightness: number = GLOBE_APPEARANCE.imageryBrightness;
+    let projection: StageProjection = "3D";
     let onMarkerClick: ((markerId: string) => void) | null = null;
     let onFeatureClick: ((featureId: string, layerId: string) => void) | null = null;
 
@@ -208,6 +216,58 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     };
     scene.preUpdate.addEventListener(onPreUpdate);
 
+    // ── Reaching first paint in a background tab ───────────────────────────────────────────────────
+    // requestAnimationFrame is starved in a hidden tab, so Cesium's own loop never runs and the scene
+    // never paints. A workspace opened in a background tab would then still be showing its loading state
+    // when the operator finally switches to it, because readiness is reported from postRender.
+    //
+    // Timers keep firing when hidden, so the loop is handed to one — but ONLY until a frame has actually
+    // been painted. Past that point a hidden tab has nothing to show anyone, and continuing to render a
+    // full globe on a timer would burn a laptop battery to keep an invisible surface up to date.
+    let hiddenRenderTimerId: number | null = null;
+    let hasPaintedOnce = false;
+
+    const stopHiddenRenderLoop = () => {
+      if (hiddenRenderTimerId !== null) {
+        window.clearInterval(hiddenRenderTimerId);
+        hiddenRenderTimerId = null;
+      }
+    };
+
+    const syncRenderLoopToVisibility = () => {
+      if (viewer.isDestroyed()) {
+        return;
+      }
+
+      const shouldDriveManually = document.visibilityState === "hidden" && !hasPaintedOnce;
+
+      if (shouldDriveManually && hiddenRenderTimerId === null) {
+        // Cesium's own loop is switched off first, so the two never drive the scene at once.
+        viewer.useDefaultRenderLoop = false;
+        hiddenRenderTimerId = window.setInterval(() => {
+          if (viewer.isDestroyed()) {
+            stopHiddenRenderLoop();
+            return;
+          }
+          try {
+            viewer.render();
+          } catch {
+            // A render that throws while hidden must not leave a timer hammering a broken scene.
+            stopHiddenRenderLoop();
+          }
+        }, GLOBE_HIDDEN_TAB_RENDER_INTERVAL_MS);
+        return;
+      }
+
+      if (!shouldDriveManually && hiddenRenderTimerId !== null) {
+        stopHiddenRenderLoop();
+        viewer.useDefaultRenderLoop = true;
+      }
+    };
+
+    document.addEventListener("visibilitychange", syncRenderLoopToVisibility);
+    syncRenderLoopToVisibility();
+
     // ── Input ──────────────────────────────────────────────────────────────────────────────────────
     const inputHandler = new ScreenSpaceEventHandler(viewer.canvas);
 
@@ -235,8 +295,8 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     }, ScreenSpaceEventType.WHEEL);
 
     inputHandler.setInputAction((movement: { position: Cartesian2 }) => {
-      // Region drawing owns the pointer while it is armed; a click through to a marker would be noise.
-      if (regionDraw.isDrawing()) {
+      // A drawing tool owns the pointer while it is armed; a click through to a marker would be noise.
+      if (draw.activeTool() !== null) {
         return;
       }
 
@@ -486,7 +546,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           evidenceVectors.clear();
           aoiOutline.set(null);
           comparator.reset();
-          regionDraw.clearRegion();
+          draw.clearAll();
           basemapLayer.brightness = basemapBrightness;
         },
       },
@@ -501,12 +561,17 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
         subscribe: comparator.subscribe,
       },
 
-      regionDraw: {
-        begin: (drawMode) => regionDraw.begin(drawMode),
-        cancel: regionDraw.cancel,
-        isDrawing: regionDraw.isDrawing,
-        clearRegion: regionDraw.clearRegion,
-        subscribe: regionDraw.subscribe,
+      draw: {
+        begin: draw.begin,
+        complete: draw.complete,
+        undoVertex: draw.undoVertex,
+        cancel: draw.cancel,
+        isDrawing: draw.isDrawing,
+        activeTool: draw.activeTool,
+        clearAll: draw.clearAll,
+        removeRegion: draw.removeRegion,
+        subscribeRegions: draw.subscribeRegions,
+        subscribeLive: draw.subscribeLive,
       },
 
       appearance: {
@@ -540,6 +605,30 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           basemapLayer.brightness = basemapBrightness;
         },
         getMode: () => mode,
+
+        setProjection: (nextProjection) => {
+          if (nextProjection === projection || viewer.isDestroyed()) {
+            return;
+          }
+          projection = nextProjection;
+
+          // Morphing rather than cutting, because the transition is itself informative: watching the
+          // globe flatten tells the operator these are the same pixels seen a different way, which a
+          // hard switch between two views does not.
+          const durationSeconds = isMotionReducedRef.current
+            ? 0
+            : GLOBE_PROJECTION_MORPH_SECONDS;
+
+          if (nextProjection === "2D") {
+            scene.morphTo2D(durationSeconds);
+          } else if (nextProjection === "columbus") {
+            scene.morphToColumbusView(durationSeconds);
+          } else {
+            scene.morphTo3D(durationSeconds);
+          }
+        },
+        getProjection: () => projection,
+
         setBasemapBrightness: (brightness) => {
           basemapBrightness = brightness;
           basemapLayer.brightness = brightness;
@@ -565,6 +654,9 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     // Readiness is reported only once a frame has actually been painted, never on construction.
     const onFirstRender = () => {
       scene.postRender.removeEventListener(onFirstRender);
+      // The manual loop existed only to reach this moment; from here the browser's own loop is enough.
+      hasPaintedOnce = true;
+      syncRenderLoopToVisibility();
       setReady(true);
       onReadyRef.current?.();
     };
@@ -572,8 +664,10 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
 
     return () => {
       clearResumeTimer();
+      stopHiddenRenderLoop();
+      document.removeEventListener("visibilitychange", syncRenderLoopToVisibility);
       inputHandler.destroy();
-      regionDraw.destroy();
+      draw.destroy();
       markerLayer.destroy();
       arcLayer.destroy();
       sceneImagery.destroy();

@@ -56,6 +56,19 @@ export const INVESTIGATION_LAYOUT = {
   regionPromptOffsetPx: 14,
 } as const;
 
+/**
+ * The detached scene inspector window.
+ *
+ * Portrait-ish because a quicklook is square and the metadata reads as a column beneath it. Sized to sit
+ * comfortably beside a maximised workspace on one monitor rather than covering it.
+ */
+export const SCENE_POPOUT_WINDOW = {
+  widthPx: 560,
+  heightPx: 860,
+  /** A detached window fires no close event the opener can subscribe to, so its state is polled. */
+  closePollIntervalMs: 1_500,
+} as const;
+
 export const INVESTIGATION_LIMITS = {
   /** Scenes attachable to one investigation. Beyond this the comparator stops being meaningful. */
   maximumScenes: 6,

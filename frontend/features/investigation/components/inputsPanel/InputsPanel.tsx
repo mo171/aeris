@@ -1,9 +1,9 @@
 // features/investigation/components/inputsPanel/InputsPanel.tsx — the left zone: inputs and evidence layers.
 //
-// what  : Two collapsible sections — the scenes attached to this investigation, and the evidence layers
-//         produced from them.
+// what  : Four collapsible sections — the scenes currently bound to comparison roles, the full acquisition
+//         history over the area, the regions the operator has drawn, and the evidence layers produced.
 // where : The left zone of InvestigationScreen.
-// how   : The two sections compete for the same vertical space, and which one matters depends entirely on
+// how   : The sections compete for the same vertical space, and which one matters depends entirely on
 //         what the operator is doing — checking what went in, or controlling what came out. Each claims
 //         flex space only while expanded, so collapsing one hands its height to the other rather than
 //         leaving both cramped. That is the same fix Mission Command needed, applied before it bites here.
@@ -13,7 +13,7 @@
 
 "use client";
 
-import { Layers, Satellite } from "lucide-react";
+import { History, Layers, Satellite } from "lucide-react";
 import { useState } from "react";
 
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
@@ -21,19 +21,50 @@ import { EmptyState } from "@/components/sharedUI/functionalComponent/feedback/E
 import { cn } from "@/lib/utils";
 
 import { useInvestigationStore } from "../../store/investigation-store";
-import type { InvestigationSceneSlot } from "../../types/investigation.types";
+import type {
+  Acquisition,
+  InvestigationSceneSlot,
+  SceneRole,
+} from "../../types/investigation.types";
 import type { EvidenceLayer } from "../../types/layer.types";
+import type { StageDrawnRegion } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
+
+import { AcquisitionList } from "./AcquisitionList";
 import { EvidenceLayerRow } from "./EvidenceLayerRow";
+import { RegionList } from "./RegionList";
 import { SceneSlotCard } from "./SceneSlotCard";
 
 interface InputsPanelProps {
   sceneSlots: InvestigationSceneSlot[];
+  acquisitions: Acquisition[];
+  roleBySceneId: Record<string, SceneRole>;
+  openSceneIds: readonly string[];
+  onOpenScene: (sceneId: string) => void;
   layers: EvidenceLayer[];
+  regions: readonly StageDrawnRegion[];
+  activeRegionId: string | null;
+  onSelectRegion: (regionId: string | null) => void;
+  onRemoveRegion: (regionId: string) => void;
   onFocusScene: (slot: InvestigationSceneSlot) => void;
 }
 
-export function InputsPanel({ sceneSlots, layers, onFocusScene }: InputsPanelProps) {
+export function InputsPanel({
+  sceneSlots,
+  acquisitions,
+  roleBySceneId,
+  openSceneIds,
+  onOpenScene,
+  layers,
+  regions,
+  activeRegionId,
+  onSelectRegion,
+  onRemoveRegion,
+  onFocusScene,
+}: InputsPanelProps) {
   const [isInputsExpanded, setIsInputsExpanded] = useState(true);
+  // Collapsed by default: the history matters when choosing scenes, not while reading an answer.
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+  const [isRegionsExpanded, setIsRegionsExpanded] = useState(true);
   const [isLayersExpanded, setIsLayersExpanded] = useState(true);
 
   const visibilityOverrides = useInvestigationStore((state) => state.layerVisibilityOverrides);
@@ -87,6 +118,70 @@ export function InputsPanel({ sceneSlots, layers, onFocusScene }: InputsPanelPro
           </div>
         ) : null}
       </section>
+
+      <section
+        className={cn(
+          "flex flex-col border-t border-border-soft pt-2",
+          isHistoryExpanded ? "min-h-0 flex-1" : "shrink-0",
+        )}
+      >
+        <SectionHeader
+          title="Acquisition History"
+          isExpanded={isHistoryExpanded}
+          onToggle={() => setIsHistoryExpanded((current) => !current)}
+          trailing={
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {acquisitions.length}
+            </span>
+          }
+        />
+
+        {isHistoryExpanded ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            {acquisitions.length === 0 ? (
+              <EmptyState icon={History} title="No archive coverage" />
+            ) : (
+              <AcquisitionList
+                acquisitions={acquisitions}
+                roleBySceneId={roleBySceneId}
+                openSceneIds={openSceneIds}
+                onOpenScene={onOpenScene}
+              />
+            )}
+          </div>
+        ) : null}
+      </section>
+
+      {/* Regions only claim space once something has been drawn — an empty section between two useful
+          ones is just a line the operator has to read past. */}
+      {regions.length > 0 ? (
+        <section
+          className={cn(
+            "flex flex-col border-t border-border-soft pt-2",
+            isRegionsExpanded ? "min-h-0 flex-1" : "shrink-0",
+          )}
+        >
+          <SectionHeader
+            title="Areas of Interest"
+            isExpanded={isRegionsExpanded}
+            onToggle={() => setIsRegionsExpanded((current) => !current)}
+            trailing={
+              <span className="font-mono text-[10px] text-muted-foreground">{regions.length}</span>
+            }
+          />
+
+          {isRegionsExpanded ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+              <RegionList
+                regions={regions}
+                activeRegionId={activeRegionId}
+                onSelect={onSelectRegion}
+                onRemove={onRemoveRegion}
+              />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section
         className={cn(

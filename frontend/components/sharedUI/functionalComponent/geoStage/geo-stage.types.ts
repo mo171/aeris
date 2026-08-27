@@ -21,6 +21,16 @@
 /** Which instrument the stage is currently acting as. Governs zoom limits, idle behaviour and layers. */
 export type StageMode = "globe" | "scene";
 
+/**
+ * Projection the scene is drawn in.
+ *
+ * `3D` is the globe. `2D` is a flat nadir projection — what an analyst wants for digitising an area of
+ * interest, because in perspective every polygon edge is foreshortened by an amount that depends on where
+ * it sits on screen, and precise tracing becomes guesswork. `columbus` is the 2.5D middle ground: a flat
+ * map that still honours height, so extruded change is readable without perspective distortion.
+ */
+export type StageProjection = "3D" | "2D" | "columbus";
+
 export interface StageGeoPoint {
   latitude: number;
   longitude: number;
@@ -208,23 +218,66 @@ export interface StageComparatorApi {
   subscribe: (listener: (position: number) => void) => () => void;
 }
 
-// ── Region drawing ────────────────────────────────────────────────────────────────────────────────
+// ── Region drawing and measurement ────────────────────────────────────────────────────────────────
 
-export type StageRegionDrawMode = "rectangle" | "polygon";
+/**
+ * How the operator defines a shape.
+ *
+ * Four modes because they answer different questions. A rectangle is fastest for "this block". A polygon
+ * traces an administrative or physical boundary. Freehand follows a coastline or a river without fighting
+ * vertex-by-vertex clicking. A circle asks "within N metres of here", which is how buffer questions are
+ * actually posed.
+ */
+export type StageDrawMode = "rectangle" | "polygon" | "freehand" | "circle";
+
+/** Measurement tools share the drawing machinery but commit a readout instead of a region. */
+export type StageMeasureMode = "distance" | "area" | "bearing";
+
+export type StageDrawTool = StageDrawMode | StageMeasureMode;
 
 export interface StageDrawnRegion {
+  id: string;
+  mode: StageDrawMode;
   bounds: StageBoundingBox;
   ring: readonly StageGeoPoint[];
+  /** Measured from the committed ring, not estimated — the backend crops to exactly this. */
+  areaHectares: number;
+  perimeterMeters: number;
   /** Where to anchor the follow-up prompt, in canvas pixels. */
   screenAnchor: { x: number; y: number };
 }
 
-export interface StageRegionDrawApi {
-  begin: (mode: StageRegionDrawMode) => void;
+/**
+ * What the operator sees while a shape is still being drawn.
+ *
+ * Live area and perimeter are not a nicety: an analyst sizing an area of interest is deciding whether it
+ * is the right scope, and discovering the size only after committing means drawing it twice.
+ */
+export interface StageDrawLiveState {
+  tool: StageDrawTool | null;
+  isDrawing: boolean;
+  vertexCount: number;
+  areaHectares: number;
+  lengthMeters: number;
+  bearingDegrees: number | null;
+  /** Ground position under the pointer. Null when the pointer is off the globe. */
+  cursor: StageGeoPoint | null;
+}
+
+export interface StageDrawApi {
+  begin: (tool: StageDrawTool) => void;
+  /** Closes the shape currently in progress. Polygons and paths need an explicit finish. */
+  complete: () => void;
+  /** Removes the last placed vertex. No-op for drag-defined shapes. */
+  undoVertex: () => void;
   cancel: () => void;
   isDrawing: () => boolean;
-  clearRegion: () => void;
-  subscribe: (listener: (region: StageDrawnRegion | null) => void) => () => void;
+  activeTool: () => StageDrawTool | null;
+  /** Removes every committed region and measurement from the scene. */
+  clearAll: () => void;
+  removeRegion: (regionId: string) => void;
+  subscribeRegions: (listener: (regions: readonly StageDrawnRegion[]) => void) => () => void;
+  subscribeLive: (listener: (live: StageDrawLiveState) => void) => () => void;
 }
 
 // ── Appearance ────────────────────────────────────────────────────────────────────────────────────
@@ -232,6 +285,9 @@ export interface StageRegionDrawApi {
 export interface StageAppearanceApi {
   setMode: (mode: StageMode) => void;
   getMode: () => StageMode;
+  /** Morphs between the globe, the flat map and the 2.5D middle ground. */
+  setProjection: (projection: StageProjection) => void;
+  getProjection: () => StageProjection;
   /** 1 is normal. Lower values recede the basemap so overlays dominate. */
   setBasemapBrightness: (brightness: number) => void;
   setMotionReduced: (isReduced: boolean) => void;
@@ -243,6 +299,6 @@ export interface GeoStageHandle {
   globeLayers: StageGlobeLayersApi;
   sceneLayers: StageSceneLayersApi;
   comparator: StageComparatorApi;
-  regionDraw: StageRegionDrawApi;
+  draw: StageDrawApi;
   appearance: StageAppearanceApi;
 }

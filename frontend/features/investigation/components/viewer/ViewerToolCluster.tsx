@@ -1,7 +1,7 @@
 // features/investigation/components/viewer/ViewerToolCluster.tsx — the floating tools over the scene.
 //
-// what  : One control cluster: draw a region, sweep the comparator, play the loop, switch to volumetric,
-//         clear the spotlight, and reset the view.
+// what  : One control cluster: sweep the comparator, play the loop, switch to volumetric, clear the
+//         spotlight, and reset the view. Geometry tools live in DrawToolbar, beside this.
 // where : Rendered into the centre column of InvestigationScreen — the free space between the panels.
 // how   : It lives in the centre column rather than being anchored to the viewport, so it can never end
 //         up underneath a panel at any panel width. That was a real defect on Mission Command and this
@@ -24,27 +24,12 @@ import { cn } from "@/lib/utils";
 import { useInvestigationStore } from "../../store/investigation-store";
 
 export function ViewerToolCluster() {
-  const isRegionDrawArmed = useInvestigationStore((state) => state.isRegionDrawArmed);
   const isPlaybackRunning = useInvestigationStore((state) => state.isPlaybackRunning);
   const renderMode = useInvestigationStore((state) => state.renderMode);
   const spotlightClaimId = useInvestigationStore((state) => state.spotlightClaimId);
 
   return (
     <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-surface-2/80 p-1 backdrop-blur-md">
-      <ToolButton
-        label={isRegionDrawArmed ? "Cancel region" : "Draw a region to ask about"}
-        isActive={isRegionDrawArmed}
-        onClick={() =>
-          void dispatchCommand(
-            isRegionDrawArmed
-              ? COMMAND_IDS.investigation.cancelRegionDraw
-              : COMMAND_IDS.investigation.beginRegionDraw,
-          )
-        }
-      >
-        <Crosshair />
-      </ToolButton>
-
       <ToolButton
         label="Sweep before to after"
         onClick={() => void dispatchCommand(COMMAND_IDS.investigation.sweepSplit)}

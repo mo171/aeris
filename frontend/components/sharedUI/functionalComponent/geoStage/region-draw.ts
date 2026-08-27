@@ -1,245 +1,675 @@
-// components/sharedUI/functionalComponent/geoStage/region-draw.ts — drawing an area of interest on the scene.
+// components/sharedUI/functionalComponent/geoStage/region-draw.ts — drawing and measuring on the scene.
 //
-// what  : Captures a rectangle dragged on the globe, renders a live preview while the operator drags, and
-//         emits real-world bounds plus the screen anchor the follow-up prompt attaches to.
-// where : Owned by CesiumStage.tsx; driven by the Investigation Workspace's "ask this region" tool.
-// how   : Camera input is disabled for the duration of a draw. Without that, dragging to define a box
-//         also rotates the Earth underneath it, which makes the tool unusable — the single most important
-//         detail in this file.
+// what  : Rectangle, polygon, freehand and circle drawing, plus distance, area and bearing measurement.
+//         Emits committed regions with real geodesic area, and a live readout while a shape is in progress.
+// where : Owned by CesiumStage.tsx; driven by the Investigation Workspace's draw toolbar.
+// how   : Four shapes because they answer different questions. A rectangle is fastest for "this block". A
+//         polygon traces a boundary. Freehand follows a coastline without fighting vertex-by-vertex
+//         clicking. A circle asks "within N metres of here", which is how buffer questions are actually
+//         posed. Offering only a rectangle forces every question into the wrong shape.
 //
-//         The preview rectangle is a CallbackProperty over a mutable pair of corners, so dragging never
-//         rebuilds an entity. The screen anchor is captured at release rather than recomputed later: the
-//         prompt should stay attached to where the operator finished, and a camera that keeps moving
-//         would otherwise drag the popover around with it.
+//         Camera input is disabled for the duration of a draw and restored on every exit path — commit,
+//         cancel, Escape, or the tool being switched. Without that, dragging to define a box also rotates
+//         the Earth underneath it; with it done carelessly, the camera stays dead after the operator gives
+//         up. Both failures make the tool unusable, so the restore is centralised in one function.
 //
-//         Coordinates come from `globe.pick` against the camera ray rather than from `scene.pickPosition`,
+//         Area and length are GEODESIC, measured from the committed vertices — not estimated from a
+//         bounding box. An analyst sizing an area of interest is deciding whether it is the right scope,
+//         and a figure that only approximates the shape they drew is worse than no figure. The same
+//         number is what the backend will crop to.
+//
+//         Ground positions come from `globe.pick` against the camera ray rather than `scene.pickPosition`,
 //         because pickPosition depends on a depth buffer that is not guaranteed over terrain-free areas.
 
 import {
   CallbackProperty,
   Cartesian2,
+  Cartesian3,
   Cartographic,
   Color,
+  ColorMaterialProperty,
   CustomDataSource,
+  Ellipsoid,
+  EllipsoidGeodesic,
   Entity,
+  HeightReference,
+  LabelStyle,
   Math as CesiumMath,
-  Rectangle,
+  PolygonHierarchy,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
+  VerticalOrigin,
   type Viewer,
 } from "cesium";
 
 import { AERIS_COLOR_HEX } from "@/lib/constants/theme";
+import { DRAW_TOOLS } from "@/lib/constants/draw";
 
-import type { StageBoundingBox, StageDrawnRegion, StageRegionDrawMode } from "./geo-stage.types";
+import type {
+  StageBoundingBox,
+  StageDrawLiveState,
+  StageDrawMode,
+  StageDrawTool,
+  StageDrawnRegion,
+  StageGeoPoint,
+} from "./geo-stage.types";
 
-type RegionListener = (region: StageDrawnRegion | null) => void;
+type RegionListener = (regions: readonly StageDrawnRegion[]) => void;
+type LiveListener = (live: StageDrawLiveState) => void;
 
-export interface RegionDrawController {
-  begin: (mode: StageRegionDrawMode) => void;
+export interface DrawController {
+  begin: (tool: StageDrawTool) => void;
+  complete: () => void;
+  undoVertex: () => void;
   cancel: () => void;
   isDrawing: () => boolean;
-  clearRegion: () => void;
-  subscribe: (listener: RegionListener) => () => void;
+  activeTool: () => StageDrawTool | null;
+  clearAll: () => void;
+  removeRegion: (regionId: string) => void;
+  subscribeRegions: (listener: RegionListener) => () => void;
+  subscribeLive: (listener: LiveListener) => () => void;
   destroy: () => void;
 }
 
-/** Below this the operator almost certainly clicked rather than dragged, and an empty box is meaningless. */
-const MINIMUM_DRAG_PIXELS = 8;
+const MEASURE_TOOLS = new Set<StageDrawTool>(["distance", "area", "bearing"]);
 
-export function createRegionDrawController(viewer: Viewer): RegionDrawController {
-  const listeners = new Set<RegionListener>();
-  const dataSource = new CustomDataSource("aeris-region-draw");
-  void viewer.dataSources.add(dataSource);
+const IDLE_LIVE_STATE: StageDrawLiveState = {
+  tool: null,
+  isDrawing: false,
+  vertexCount: 0,
+  areaHectares: 0,
+  lengthMeters: 0,
+  bearingDegrees: null,
+  cursor: null,
+};
+
+export function createDrawController(viewer: Viewer): DrawController {
+  const regionListeners = new Set<RegionListener>();
+  const liveListeners = new Set<LiveListener>();
+
+  const draftSource = new CustomDataSource("aeris-draw-draft");
+  const committedSource = new CustomDataSource("aeris-draw-committed");
+  void viewer.dataSources.add(draftSource);
+  void viewer.dataSources.add(committedSource);
 
   const handler = new ScreenSpaceEventHandler(viewer.canvas);
-  const fillColor = Color.fromCssColorString(AERIS_COLOR_HEX.teal).withAlpha(0.12);
-  const outlineColor = Color.fromCssColorString(AERIS_COLOR_HEX.teal).withAlpha(0.9);
 
-  let isArmed = false;
-  let isDragging = false;
-  let startCartographic: Cartographic | null = null;
-  let currentCartographic: Cartographic | null = null;
-  let startScreen: Cartesian2 | null = null;
-  let previewEntity: Entity | null = null;
-  let committedEntity: Entity | null = null;
+  const accentColor = Color.fromCssColorString(AERIS_COLOR_HEX.teal);
+  const fillColor = accentColor.withAlpha(DRAW_TOOLS.fillAlpha);
+  const measureColor = Color.fromCssColorString(AERIS_COLOR_HEX.amber);
 
-  function toCartographic(screenPosition: Cartesian2): Cartographic | null {
+  let activeTool: StageDrawTool | null = null;
+  let isDrawing = false;
+  /** Vertices placed so far. For drag shapes this is [start, current]. */
+  let vertices: StageGeoPoint[] = [];
+  let cursor: StageGeoPoint | null = null;
+  /**
+   * Where the next click would land, for click-to-place tools.
+   *
+   * Without this a polygon shows nothing between clicks, so the operator cannot see the edge they are
+   * about to commit and has to guess. The rubber band is what makes tracing a boundary possible rather
+   * than merely allowed.
+   */
+  let previewPoint: StageGeoPoint | null = null;
+  let lastScreenPosition: Cartesian2 | null = null;
+  const regions: StageDrawnRegion[] = [];
+
+  // ── Geometry ──────────────────────────────────────────────────────────────────────────────────
+
+  function pickGround(screenPosition: Cartesian2): StageGeoPoint | null {
     const ray = viewer.camera.getPickRay(screenPosition);
     if (!ray) {
       return null;
     }
     const intersection = viewer.scene.globe.pick(ray, viewer.scene);
-    return intersection ? Cartographic.fromCartesian(intersection) : null;
-  }
-
-  function currentRectangle(): Rectangle {
-    if (!startCartographic || !currentCartographic) {
-      return Rectangle.MAX_VALUE;
+    if (!intersection) {
+      return null;
     }
-    return Rectangle.fromCartographicArray([startCartographic, currentCartographic]);
-  }
-
-  function toBoundingBox(rectangle: Rectangle): StageBoundingBox {
+    const carto = Cartographic.fromCartesian(intersection);
     return {
-      west: CesiumMath.toDegrees(rectangle.west),
-      south: CesiumMath.toDegrees(rectangle.south),
-      east: CesiumMath.toDegrees(rectangle.east),
-      north: CesiumMath.toDegrees(rectangle.north),
+      latitude: CesiumMath.toDegrees(carto.latitude),
+      longitude: CesiumMath.toDegrees(carto.longitude),
     };
   }
 
-  function ensurePreviewEntity(): void {
-    if (previewEntity) {
+  function toCartesian(point: StageGeoPoint): Cartesian3 {
+    return Cartesian3.fromDegrees(point.longitude, point.latitude);
+  }
+
+  function geodesicBetween(from: StageGeoPoint, to: StageGeoPoint): EllipsoidGeodesic | null {
+    if (from.latitude === to.latitude && from.longitude === to.longitude) {
+      return null;
+    }
+    return new EllipsoidGeodesic(
+      Cartographic.fromDegrees(from.longitude, from.latitude),
+      Cartographic.fromDegrees(to.longitude, to.latitude),
+      Ellipsoid.WGS84,
+    );
+  }
+
+  function pathLengthMeters(points: readonly StageGeoPoint[]): number {
+    let total = 0;
+    for (let index = 1; index < points.length; index += 1) {
+      total += geodesicBetween(points[index - 1], points[index])?.surfaceDistance ?? 0;
+    }
+    return total;
+  }
+
+  /** Shoelace over a local metric projection. Accurate at the scale an area of interest is drawn at. */
+  function ringAreaHectares(ring: readonly StageGeoPoint[]): number {
+    if (ring.length < 3) {
+      return 0;
+    }
+
+    const originLatitude = ring[0].latitude;
+    const metresPerDegreeLatitude = 110_540;
+    const metresPerDegreeLongitude = 111_320 * Math.cos((originLatitude * Math.PI) / 180);
+
+    let doubleArea = 0;
+    for (let index = 0; index < ring.length; index += 1) {
+      const current = ring[index];
+      const next = ring[(index + 1) % ring.length];
+      const currentX = (current.longitude - ring[0].longitude) * metresPerDegreeLongitude;
+      const currentY = (current.latitude - originLatitude) * metresPerDegreeLatitude;
+      const nextX = (next.longitude - ring[0].longitude) * metresPerDegreeLongitude;
+      const nextY = (next.latitude - originLatitude) * metresPerDegreeLatitude;
+      doubleArea += currentX * nextY - nextX * currentY;
+    }
+
+    return Math.abs(doubleArea) / 2 / 10_000;
+  }
+
+  function boundsOfRing(ring: readonly StageGeoPoint[]): StageBoundingBox {
+    return ring.reduce<StageBoundingBox>(
+      (box, point) => ({
+        west: Math.min(box.west, point.longitude),
+        south: Math.min(box.south, point.latitude),
+        east: Math.max(box.east, point.longitude),
+        north: Math.max(box.north, point.latitude),
+      }),
+      {
+        west: Number.POSITIVE_INFINITY,
+        south: Number.POSITIVE_INFINITY,
+        east: Number.NEGATIVE_INFINITY,
+        north: Number.NEGATIVE_INFINITY,
+      },
+    );
+  }
+
+  function rectangleRing(corner: StageGeoPoint, opposite: StageGeoPoint): StageGeoPoint[] {
+    const west = Math.min(corner.longitude, opposite.longitude);
+    const east = Math.max(corner.longitude, opposite.longitude);
+    const south = Math.min(corner.latitude, opposite.latitude);
+    const north = Math.max(corner.latitude, opposite.latitude);
+
+    return [
+      { longitude: west, latitude: south },
+      { longitude: east, latitude: south },
+      { longitude: east, latitude: north },
+      { longitude: west, latitude: north },
+    ];
+  }
+
+  /** A circle on the ellipsoid: points at a constant geodesic distance, not a screen-space circle. */
+  function circleRing(centre: StageGeoPoint, edge: StageGeoPoint): StageGeoPoint[] {
+    const geodesic = geodesicBetween(centre, edge);
+    if (!geodesic) {
+      return [];
+    }
+
+    const radiusMeters = geodesic.surfaceDistance;
+    const metresPerDegreeLatitude = 110_540;
+    const metresPerDegreeLongitude = 111_320 * Math.cos((centre.latitude * Math.PI) / 180);
+
+    return Array.from({ length: DRAW_TOOLS.circleVertexCount }, (_, index) => {
+      const angle = (index / DRAW_TOOLS.circleVertexCount) * Math.PI * 2;
+      return {
+        latitude: centre.latitude + (Math.sin(angle) * radiusMeters) / metresPerDegreeLatitude,
+        longitude: centre.longitude + (Math.cos(angle) * radiusMeters) / metresPerDegreeLongitude,
+      };
+    });
+  }
+
+  /** The shape the current vertices describe, whichever tool is active. */
+  function currentRing(): StageGeoPoint[] {
+    if (activeTool === "rectangle" && vertices.length >= 2) {
+      return rectangleRing(vertices[0], vertices[vertices.length - 1]);
+    }
+    if (activeTool === "circle" && vertices.length >= 2) {
+      return circleRing(vertices[0], vertices[vertices.length - 1]);
+    }
+    // Click-to-place tools trail the pointer, so the operator sees the edge before committing it.
+    if (isDrawing && !usesDrag(activeTool) && previewPoint) {
+      return [...vertices, previewPoint];
+    }
+    return vertices;
+  }
+
+  function isMeasureTool(tool: StageDrawTool | null): boolean {
+    return tool !== null && MEASURE_TOOLS.has(tool);
+  }
+
+  // ── Live state ────────────────────────────────────────────────────────────────────────────────
+
+  function buildLiveState(): StageDrawLiveState {
+    const ring = currentRing();
+    const isClosedShape =
+      activeTool !== null && !isMeasureTool(activeTool) ? true : activeTool === "area";
+
+    const bearing =
+      activeTool === "bearing" && vertices.length >= 2
+        ? (() => {
+            const geodesic = geodesicBetween(vertices[0], vertices[vertices.length - 1]);
+            if (!geodesic) {
+              return null;
+            }
+            // Normalised to a compass bearing, because a negative heading is not something an analyst
+            // reads off a map.
+            return (CesiumMath.toDegrees(geodesic.startHeading) + 360) % 360;
+          })()
+        : null;
+
+    return {
+      tool: activeTool,
+      isDrawing,
+      vertexCount: vertices.length,
+      areaHectares: isClosedShape ? ringAreaHectares(ring) : 0,
+      lengthMeters: isClosedShape
+        ? pathLengthMeters([...ring, ring[0]].filter(Boolean))
+        : pathLengthMeters(vertices),
+      bearingDegrees: bearing,
+      cursor,
+    };
+  }
+
+  function emitLive(): void {
+    const live = buildLiveState();
+    for (const listener of liveListeners) {
+      listener(live);
+    }
+  }
+
+  function emitRegions(): void {
+    const snapshot = [...regions];
+    for (const listener of regionListeners) {
+      listener(snapshot);
+    }
+  }
+
+  // ── Rendering ─────────────────────────────────────────────────────────────────────────────────
+
+  function ensureDraftEntities(): void {
+    if (draftSource.entities.values.length > 0) {
       return;
     }
-    previewEntity = new Entity({
-      rectangle: {
-        coordinates: new CallbackProperty(() => currentRectangle(), false),
-        material: fillColor,
-        outline: true,
-        outlineColor,
-        outlineWidth: 2,
-        height: 0,
-      },
-    });
-    dataSource.entities.add(previewEntity);
+
+    const outlineColor = isMeasureTool(activeTool) ? measureColor : accentColor;
+
+    // A closed shape gets a fill; a measurement path does not — filling a distance measurement would
+    // imply an area the operator never asked for.
+    if (!isMeasureTool(activeTool) || activeTool === "area") {
+      draftSource.entities.add(
+        new Entity({
+          polygon: {
+            hierarchy: new CallbackProperty(() => {
+              const ring = currentRing();
+              return ring.length >= 3 ? new PolygonHierarchy(ring.map(toCartesian)) : undefined;
+            }, false),
+            material: new ColorMaterialProperty(
+              new CallbackProperty(
+                () => (isMeasureTool(activeTool) ? measureColor : accentColor).withAlpha(
+                  DRAW_TOOLS.fillAlpha,
+                ),
+                false,
+              ),
+            ),
+            heightReference: HeightReference.CLAMP_TO_GROUND,
+          },
+        }),
+      );
+    }
+
+    draftSource.entities.add(
+      new Entity({
+        polyline: {
+          positions: new CallbackProperty(() => {
+            const ring = currentRing();
+            if (ring.length < 2) {
+              return undefined;
+            }
+            const shouldClose = !isMeasureTool(activeTool) || activeTool === "area";
+            const points = shouldClose ? [...ring, ring[0]] : ring;
+            return points.map(toCartesian);
+          }, false),
+          width: DRAW_TOOLS.outlineWidthPixels,
+          clampToGround: true,
+          material: new ColorMaterialProperty(outlineColor.withAlpha(0.95)),
+        },
+      }),
+    );
   }
 
-  function removePreviewEntity(): void {
-    if (previewEntity) {
-      dataSource.entities.remove(previewEntity);
-      previewEntity = null;
-    }
+  function clearDraft(): void {
+    draftSource.entities.removeAll();
   }
 
-  function notify(region: StageDrawnRegion | null): void {
-    for (const listener of listeners) {
-      listener(region);
+  function commitRegion(): void {
+    const ring = currentRing();
+    if (ring.length < 3 || activeTool === null || isMeasureTool(activeTool)) {
+      return;
     }
+
+    const region: StageDrawnRegion = {
+      id: `aoi_${Date.now().toString(36)}`,
+      mode: activeTool as StageDrawMode,
+      bounds: boundsOfRing(ring),
+      ring,
+      areaHectares: ringAreaHectares(ring),
+      perimeterMeters: pathLengthMeters([...ring, ring[0]]),
+      screenAnchor: { x: lastScreenPosition?.x ?? 0, y: lastScreenPosition?.y ?? 0 },
+    };
+
+    regions.push(region);
+
+    committedSource.entities.add(
+      new Entity({
+        id: region.id,
+        polygon: {
+          hierarchy: new PolygonHierarchy(ring.map(toCartesian)),
+          material: fillColor,
+          heightReference: HeightReference.CLAMP_TO_GROUND,
+        },
+      }),
+    );
+    committedSource.entities.add(
+      new Entity({
+        polyline: {
+          positions: [...ring, ring[0]].map(toCartesian),
+          width: DRAW_TOOLS.outlineWidthPixels,
+          clampToGround: true,
+          material: new ColorMaterialProperty(accentColor.withAlpha(0.95)),
+        },
+      }),
+    );
+
+    emitRegions();
   }
+
+  function commitMeasurement(): void {
+    const ring = currentRing();
+    if (ring.length < 2 || !isMeasureTool(activeTool)) {
+      return;
+    }
+
+    const live = buildLiveState();
+    const label =
+      activeTool === "area"
+        ? `${live.areaHectares.toFixed(2)} ha`
+        : activeTool === "bearing"
+          ? `${(live.bearingDegrees ?? 0).toFixed(1)}°`
+          : formatDistance(live.lengthMeters);
+
+    const anchor = ring[ring.length - 1];
+
+    committedSource.entities.add(
+      new Entity({
+        position: toCartesian(anchor),
+        polyline:
+          activeTool === "area"
+            ? undefined
+            : {
+                positions: ring.map(toCartesian),
+                width: DRAW_TOOLS.outlineWidthPixels,
+                clampToGround: true,
+                material: new ColorMaterialProperty(measureColor.withAlpha(0.95)),
+              },
+        polygon:
+          activeTool === "area"
+            ? {
+                hierarchy: new PolygonHierarchy(ring.map(toCartesian)),
+                material: measureColor.withAlpha(DRAW_TOOLS.fillAlpha),
+                heightReference: HeightReference.CLAMP_TO_GROUND,
+              }
+            : undefined,
+        label: {
+          text: label,
+          font: DRAW_TOOLS.labelFont,
+          fillColor: measureColor,
+          showBackground: true,
+          backgroundColor: Color.fromCssColorString(AERIS_COLOR_HEX.obsidian).withAlpha(0.85),
+          verticalOrigin: VerticalOrigin.BOTTOM,
+          style: LabelStyle.FILL,
+          heightReference: HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      }),
+    );
+  }
+
+  // ── Camera arbitration ────────────────────────────────────────────────────────────────────────
 
   function setCameraInputEnabled(isEnabled: boolean): void {
-    viewer.scene.screenSpaceCameraController.enableInputs = isEnabled;
+    if (!viewer.isDestroyed()) {
+      viewer.scene.screenSpaceCameraController.enableInputs = isEnabled;
+    }
   }
 
-  function finishDrag(endScreen: Cartesian2): void {
-    const draggedFarEnough =
-      startScreen !== null &&
-      Cartesian2.distance(startScreen, endScreen) >= MINIMUM_DRAG_PIXELS;
-
-    isDragging = false;
-    isArmed = false;
+  /** Every exit path routes through here, so the camera can never be left disabled. */
+  function endSession(): void {
+    activeTool = null;
+    isDrawing = false;
+    vertices = [];
+    previewPoint = null;
+    clearDraft();
     setCameraInputEnabled(true);
-
-    if (!draggedFarEnough || !startCartographic || !currentCartographic) {
-      removePreviewEntity();
-      notify(null);
-      return;
-    }
-
-    const rectangle = currentRectangle();
-    const bounds = toBoundingBox(rectangle);
-
-    removePreviewEntity();
-    if (committedEntity) {
-      dataSource.entities.remove(committedEntity);
-    }
-    committedEntity = new Entity({
-      rectangle: {
-        coordinates: rectangle,
-        material: fillColor,
-        outline: true,
-        outlineColor,
-        outlineWidth: 2,
-        height: 0,
-      },
-    });
-    dataSource.entities.add(committedEntity);
-
-    notify({
-      bounds,
-      ring: [
-        { longitude: bounds.west, latitude: bounds.south },
-        { longitude: bounds.east, latitude: bounds.south },
-        { longitude: bounds.east, latitude: bounds.north },
-        { longitude: bounds.west, latitude: bounds.north },
-      ],
-      screenAnchor: { x: endScreen.x, y: endScreen.y },
-    });
+    emitLive();
   }
 
-  handler.setInputAction((movement: { position: Cartesian2 }) => {
-    if (!isArmed) {
-      return;
-    }
-    const picked = toCartographic(movement.position);
-    if (!picked) {
+  // ── Input ─────────────────────────────────────────────────────────────────────────────────────
+
+  const usesDrag = (tool: StageDrawTool | null) =>
+    tool === "rectangle" || tool === "circle" || tool === "freehand";
+
+  handler.setInputAction(({ position }: { position: Cartesian2 }) => {
+    if (activeTool === null) {
       return;
     }
 
-    isDragging = true;
-    startCartographic = picked;
-    currentCartographic = picked;
-    startScreen = Cartesian2.clone(movement.position);
-    ensurePreviewEntity();
+    const point = pickGround(position);
+    if (!point) {
+      return;
+    }
+
+    lastScreenPosition = Cartesian2.clone(position);
+    ensureDraftEntities();
+
+    if (usesDrag(activeTool)) {
+      isDrawing = true;
+      vertices = [point, point];
+    } else {
+      // Click-to-place tools accumulate vertices; the first click starts the shape.
+      isDrawing = true;
+      vertices.push(point);
+      previewPoint = point;
+    }
+
+    emitLive();
   }, ScreenSpaceEventType.LEFT_DOWN);
 
-  handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
-    if (!isDragging) {
+  handler.setInputAction(({ endPosition }: { endPosition: Cartesian2 }) => {
+    if (activeTool === null) {
       return;
     }
-    const picked = toCartographic(movement.endPosition);
-    if (picked) {
-      currentCartographic = picked;
+
+    const point = pickGround(endPosition);
+    cursor = point;
+    lastScreenPosition = Cartesian2.clone(endPosition);
+
+    if (!point || !isDrawing) {
+      emitLive();
+      return;
     }
+
+    if (activeTool === "freehand") {
+      // Sampled rather than every move event: a freehand trace at pointer rate produces thousands of
+      // near-identical vertices, which bloats the geometry the backend has to crop against.
+      const last = vertices[vertices.length - 1];
+      if (
+        !last ||
+        (geodesicBetween(last, point)?.surfaceDistance ?? 0) >
+          DRAW_TOOLS.freehandMinimumSpacingMeters
+      ) {
+        vertices.push(point);
+      }
+    } else if (usesDrag(activeTool)) {
+      vertices[vertices.length - 1] = point;
+    } else {
+      previewPoint = point;
+    }
+
+    emitLive();
   }, ScreenSpaceEventType.MOUSE_MOVE);
 
-  handler.setInputAction((movement: { position: Cartesian2 }) => {
-    if (!isDragging) {
+  handler.setInputAction(({ position }: { position: Cartesian2 }) => {
+    if (activeTool === null || !isDrawing) {
       return;
     }
-    finishDrag(movement.position);
+    lastScreenPosition = Cartesian2.clone(position);
+
+    if (usesDrag(activeTool)) {
+      complete();
+    }
   }, ScreenSpaceEventType.LEFT_UP);
 
-  function begin(): void {
-    isArmed = true;
-    isDragging = false;
+  // Double click closes a click-to-place shape, which is the convention every GIS tool uses.
+  handler.setInputAction(() => {
+    if (activeTool !== null && !usesDrag(activeTool)) {
+      complete();
+    }
+  }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (activeTool === null) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancel();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      complete();
+    } else if (event.key === "Backspace") {
+      event.preventDefault();
+      undoVertex();
+    }
+  }
+  window.addEventListener("keydown", handleKeyDown);
+
+  // ── Public surface ────────────────────────────────────────────────────────────────────────────
+
+  function begin(tool: StageDrawTool): void {
+    // Switching tools mid-draw abandons the shape rather than merging two geometries.
+    if (activeTool !== null) {
+      endSession();
+    }
+    activeTool = tool;
+    isDrawing = false;
+    vertices = [];
+    previewPoint = null;
     setCameraInputEnabled(false);
+    emitLive();
+  }
+
+  function complete(): void {
+    if (activeTool === null) {
+      return;
+    }
+
+    // A double-click fires LEFT_DOWN before LEFT_DOUBLE_CLICK, leaving a vertex on top of the previous
+    // one. Dropping it keeps the committed geometry clean without making the operator aim differently.
+    if (!usesDrag(activeTool) && vertices.length >= 2) {
+      const last = vertices[vertices.length - 1];
+      const previous = vertices[vertices.length - 2];
+      if ((geodesicBetween(previous, last)?.surfaceDistance ?? 0) < DRAW_TOOLS.duplicateVertexMeters) {
+        vertices = vertices.slice(0, -1);
+      }
+    }
+    previewPoint = null;
+
+    if (isMeasureTool(activeTool)) {
+      commitMeasurement();
+    } else {
+      commitRegion();
+    }
+
+    endSession();
+  }
+
+  function undoVertex(): void {
+    if (activeTool === null || usesDrag(activeTool) || vertices.length === 0) {
+      return;
+    }
+    vertices = vertices.slice(0, -1);
+    emitLive();
   }
 
   function cancel(): void {
-    isArmed = false;
-    isDragging = false;
-    setCameraInputEnabled(true);
-    removePreviewEntity();
-    notify(null);
+    endSession();
   }
 
-  function clearRegion(): void {
-    if (committedEntity) {
-      dataSource.entities.remove(committedEntity);
-      committedEntity = null;
+  function clearAll(): void {
+    regions.length = 0;
+    committedSource.entities.removeAll();
+    emitRegions();
+  }
+
+  function removeRegion(regionId: string): void {
+    const index = regions.findIndex((region) => region.id === regionId);
+    if (index === -1) {
+      return;
     }
-    notify(null);
+    regions.splice(index, 1);
+    committedSource.entities.removeById(regionId);
+    emitRegions();
   }
 
   return {
     begin,
+    complete,
+    undoVertex,
     cancel,
-    isDrawing: () => isArmed || isDragging,
-    clearRegion,
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+    isDrawing: () => isDrawing,
+    activeTool: () => activeTool,
+    clearAll,
+    removeRegion,
+    subscribeRegions: (listener) => {
+      regionListeners.add(listener);
+      listener([...regions]);
+      return () => regionListeners.delete(listener);
+    },
+    subscribeLive: (listener) => {
+      liveListeners.add(listener);
+      listener(activeTool === null ? IDLE_LIVE_STATE : buildLiveState());
+      return () => liveListeners.delete(listener);
     },
     destroy: () => {
+      window.removeEventListener("keydown", handleKeyDown);
       handler.destroy();
-      listeners.clear();
+      regionListeners.clear();
+      liveListeners.clear();
       if (!viewer.isDestroyed()) {
         setCameraInputEnabled(true);
-        viewer.dataSources.remove(dataSource, true);
+        viewer.dataSources.remove(draftSource, true);
+        viewer.dataSources.remove(committedSource, true);
       }
     },
   };
 }
+
+function formatDistance(meters: number): string {
+  return meters >= 1_000 ? `${(meters / 1_000).toFixed(2)} km` : `${Math.round(meters)} m`;
+}
+
+/** Exported so the workspace readout formats distances the same way the on-scene labels do. */
+export { formatDistance as formatMeasuredDistance };

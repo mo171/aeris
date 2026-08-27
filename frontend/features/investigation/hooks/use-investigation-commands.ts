@@ -267,31 +267,73 @@ export function useInvestigationCommands({
         handler: () => store().setArtefactLayerId(null),
       }),
 
-      // ── Region ─────────────────────────────────────────────────────────────────────────────────
+      // ── Geometry and measurement ───────────────────────────────────────────────────────────────
       defineCommand({
-        id: COMMAND_IDS.investigation.beginRegionDraw,
-        title: "Draw a region to ask about",
+        id: COMMAND_IDS.investigation.selectDrawTool,
+        title: "Pick a drawing or measurement tool",
         description:
-          "Arm the region tool. Dragging on the scene defines an area, and the next question is scoped to it.",
+          "Arm one of the scene tools: rectangle, polygon, freehand or circle to define an area of interest, or distance, area or bearing to measure.",
         group: "investigation",
-        keywords: ["ask this region", "select", "polygon", "box"],
+        keywords: ["draw", "ask this region", "measure", "polygon", "box", "ruler"],
         icon: Crosshair,
-        shortcut: ["shift", "r"],
-        paramsSchema: z.void(),
-        handler: () => store().setRegionDrawArmed(true),
+        paramsSchema: z.object({
+          tool: z.enum(["rectangle", "polygon", "freehand", "circle", "distance", "area", "bearing"]),
+        }),
+        handler: ({ tool }) => store().setActiveDrawTool(tool),
+        isPaletteVisible: false,
       }),
 
       defineCommand({
-        id: COMMAND_IDS.investigation.cancelRegionDraw,
-        title: "Cancel region drawing",
-        description: "Disarm the region tool and return the pointer to the camera.",
+        id: COMMAND_IDS.investigation.completeDraw,
+        title: "Finish the current shape",
+        description: "Close the shape being drawn and commit it.",
         group: "investigation",
         icon: Crosshair,
         paramsSchema: z.void(),
-        handler: () => {
-          store().setRegionDrawArmed(false);
-          store().setDrawnRegion(null);
-        },
+        handler: () => stage()?.draw.complete(),
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.undoVertex,
+        title: "Undo the last point",
+        description: "Remove the most recently placed vertex from the shape being drawn.",
+        group: "investigation",
+        icon: Crosshair,
+        paramsSchema: z.void(),
+        handler: () => stage()?.draw.undoVertex(),
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.cancelDraw,
+        title: "Cancel drawing",
+        description: "Disarm the active tool and return the pointer to the camera.",
+        group: "investigation",
+        icon: Crosshair,
+        paramsSchema: z.void(),
+        handler: () => store().setActiveDrawTool(null),
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.clearRegions,
+        title: "Clear drawn regions",
+        description: "Remove every drawn area of interest and measurement from the scene.",
+        group: "investigation",
+        icon: Crosshair,
+        paramsSchema: z.void(),
+        handler: () => stage()?.draw.clearAll(),
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.setProjection,
+        title: "Switch the map projection",
+        description:
+          "Show the scene as a 3D globe, a flat 2D map for precise digitising, or the 2.5D view that keeps height on a flat map.",
+        group: "investigation",
+        keywords: ["2d", "3d", "flat", "nadir", "map"],
+        icon: Box,
+        paramsSchema: z.object({ projection: z.enum(["3D", "2D", "columbus"]) }),
+        handler: ({ projection }) => store().setProjection(projection),
+        isPaletteVisible: false,
       }),
 
       // ── Autonomous, present, trace, report ─────────────────────────────────────────────────────

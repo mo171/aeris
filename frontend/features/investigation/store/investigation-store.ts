@@ -25,7 +25,11 @@
 
 import { create } from "zustand";
 
-import type { StageDrawnRegion } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
+import type {
+  StageDrawnRegion,
+  StageDrawTool,
+  StageProjection,
+} from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 import { INVESTIGATION_LIMITS } from "@/lib/constants/investigation";
 
 import type {
@@ -43,6 +47,8 @@ interface InvestigationState {
   // ── Viewer ───────────────────────────────────────────────────────────────────────────────────────
   comparatorBinding: InvestigationMode;
   renderMode: LayerRenderMode;
+  /** Globe, flat map, or the 2.5D middle ground. Lives here so a command and the toggle agree. */
+  projection: StageProjection;
   isPlaybackRunning: boolean;
   isPresentMode: boolean;
 
@@ -56,9 +62,13 @@ interface InvestigationState {
   /** A trace step's intermediate product, temporarily added to the scene. */
   artefactLayerId: string | null;
 
-  // ── Region drawing ───────────────────────────────────────────────────────────────────────────────
-  isRegionDrawArmed: boolean;
-  drawnRegion: StageDrawnRegion | null;
+  // ── Drawing and measurement ──────────────────────────────────────────────────────────────────────
+  /** Which tool the pointer is currently armed with. Null means the camera owns the pointer. */
+  activeDrawTool: StageDrawTool | null;
+  /** Every committed region. An analyst comparing two sites needs both on screen, not one at a time. */
+  drawnRegions: StageDrawnRegion[];
+  /** Which region scopes the next question. Null means the whole area of interest. */
+  activeRegionId: string | null;
 
   // ── Panels ───────────────────────────────────────────────────────────────────────────────────────
   isTraceExpanded: boolean;
@@ -76,6 +86,7 @@ interface InvestigationState {
   setComparatorBinding: (binding: InvestigationMode) => void;
   setRenderMode: (renderMode: LayerRenderMode) => void;
   toggleRenderMode: () => void;
+  setProjection: (projection: StageProjection) => void;
   setPlaybackRunning: (isRunning: boolean) => void;
   togglePresentMode: () => void;
 
@@ -86,8 +97,9 @@ interface InvestigationState {
   setSpotlightClaimId: (claimId: string | null) => void;
   setArtefactLayerId: (layerId: string | null) => void;
 
-  setRegionDrawArmed: (isArmed: boolean) => void;
-  setDrawnRegion: (region: StageDrawnRegion | null) => void;
+  setActiveDrawTool: (tool: StageDrawTool | null) => void;
+  setDrawnRegions: (regions: readonly StageDrawnRegion[]) => void;
+  setActiveRegionId: (regionId: string | null) => void;
 
   toggleTraceExpanded: (isExpanded?: boolean) => void;
   setReportOpen: (isOpen: boolean) => void;
@@ -130,6 +142,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
 
   comparatorBinding: "temporal",
   renderMode: "draped",
+  projection: "3D",
   isPlaybackRunning: false,
   isPresentMode: false,
 
@@ -140,8 +153,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   spotlightClaimId: null,
   artefactLayerId: null,
 
-  isRegionDrawArmed: false,
-  drawnRegion: null,
+  activeDrawTool: null,
+  drawnRegions: [],
+  activeRegionId: null,
 
   isTraceExpanded: false,
   isReportOpen: false,
@@ -157,6 +171,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       investigationId,
       comparatorBinding: mode,
       renderMode: "draped",
+      projection: "3D",
       isPlaybackRunning: false,
       isPresentMode: false,
       layerVisibilityOverrides: {},
@@ -164,8 +179,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       soloLayerId: null,
       spotlightClaimId: null,
       artefactLayerId: null,
-      isRegionDrawArmed: false,
-      drawnRegion: null,
+      activeDrawTool: null,
+      drawnRegions: [],
+      activeRegionId: null,
       isTraceExpanded: false,
       isReportOpen: false,
       activePlan: null,
@@ -180,8 +196,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       isRunning: false,
       spotlightClaimId: null,
       artefactLayerId: null,
-      drawnRegion: null,
-      isRegionDrawArmed: false,
+      drawnRegions: [],
+      activeRegionId: null,
+      activeDrawTool: null,
       isPresentMode: false,
     }),
 
@@ -189,6 +206,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   setRenderMode: (renderMode) => set({ renderMode }),
   toggleRenderMode: () =>
     set((state) => ({ renderMode: state.renderMode === "draped" ? "extruded" : "draped" })),
+  setProjection: (projection) => set({ projection }),
   setPlaybackRunning: (isPlaybackRunning) => set({ isPlaybackRunning }),
   togglePresentMode: () => set((state) => ({ isPresentMode: !state.isPresentMode })),
 
@@ -211,8 +229,22 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   setSpotlightClaimId: (spotlightClaimId) => set({ spotlightClaimId }),
   setArtefactLayerId: (artefactLayerId) => set({ artefactLayerId }),
 
-  setRegionDrawArmed: (isRegionDrawArmed) => set({ isRegionDrawArmed }),
-  setDrawnRegion: (drawnRegion) => set({ drawnRegion, isRegionDrawArmed: false }),
+  setActiveDrawTool: (activeDrawTool) => set({ activeDrawTool }),
+
+  setDrawnRegions: (regions) =>
+    set((state) => ({
+      drawnRegions: [...regions],
+      // A newly committed region becomes the active scope, because drawing one is a statement of intent
+      // about what the next question is about. Removing the active one falls back to the whole AOI.
+      activeRegionId:
+        regions.length > state.drawnRegions.length
+          ? (regions[regions.length - 1]?.id ?? null)
+          : regions.some((region) => region.id === state.activeRegionId)
+            ? state.activeRegionId
+            : null,
+    })),
+
+  setActiveRegionId: (activeRegionId) => set({ activeRegionId }),
 
   toggleTraceExpanded: (isExpanded) =>
     set((state) => ({ isTraceExpanded: isExpanded ?? !state.isTraceExpanded })),

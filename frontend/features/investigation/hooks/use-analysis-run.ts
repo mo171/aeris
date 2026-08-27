@@ -188,8 +188,10 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
         {
           investigationId,
           query: trimmedQuery,
-          // A drawn region scopes the question to what the operator outlined; the backend crops to it.
-          regionBounds: store.drawnRegion?.bounds ?? null,
+          // The active drawn region scopes the question; the backend crops to it. With several regions
+          // on screen only the selected one applies, so asking never silently uses the wrong shape.
+          regionBounds:
+            store.drawnRegions.find((region) => region.id === store.activeRegionId)?.bounds ?? null,
           planId: options?.planId ?? null,
         },
         { onEvent: handleEvent },

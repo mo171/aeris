@@ -34,6 +34,7 @@ import type {
   RegionSuggestion,
 } from "@/features/investigation/types/analysis.types";
 import type {
+  Acquisition,
   Investigation,
   InvestigationSceneSlot,
   InvestigationSummary,
@@ -67,6 +68,11 @@ const STAND_IN_TILES = {
  * kilometre box would be a land-use survey, not a construction finding.
  */
 const AOI_HALF_SPAN_DEGREES = 0.02;
+
+/** Acquisitions generated per investigation. Enough history for a timeline to be worth scrubbing. */
+const ACQUISITION_COUNT = 9;
+/** Zoom level a quicklook tile is taken at. 12 covers roughly a city and reads as a recognisable place. */
+const QUICKLOOK_ZOOM = 12;
 
 const CHANGE_POLYGON_COUNT = 11;
 const DETECTION_BOX_COUNT = 18;
@@ -133,6 +139,27 @@ function seedFromIds(sceneIds: readonly string[]): number {
 
 function traceIdFromSeed(seed: number): string {
   return seed.toString(16).padStart(6, "0").slice(-6);
+}
+
+/**
+ * A single tile covering a point, used as a scene quicklook.
+ *
+ * Real quicklooks come from the backend in Phase 2. Deriving one from the same tile source the scene
+ * renders from means the preview is genuinely a picture of that place rather than a placeholder — which
+ * is the whole point of a quicklook: deciding whether a scene is worth opening.
+ */
+function buildQuicklookUrl(template: string, latitude: number, longitude: number): string {
+  const scale = 2 ** QUICKLOOK_ZOOM;
+  const latitudeRadians = (latitude * Math.PI) / 180;
+  const x = Math.floor(((longitude + 180) / 360) * scale);
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latitudeRadians) + 1 / Math.cos(latitudeRadians)) / Math.PI) / 2) * scale,
+  );
+
+  return template
+    .replace("{z}", String(QUICKLOOK_ZOOM))
+    .replace("{x}", String(x))
+    .replace("{y}", String(y));
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────────────────────────
@@ -257,6 +284,8 @@ function generate(
     });
   }
 
+  const acquisitions = buildAcquisitions(investigationId, random, area);
+
   const investigation: Investigation = {
     id: investigationId,
     name: `Urban expansion — ${area.name}`,
@@ -268,6 +297,7 @@ function generate(
     createdAt: "2026-08-27T08:12:00.000Z",
     updatedAt: "2026-08-27T08:12:00.000Z",
     sceneSlots,
+    acquisitions,
     cameraBookmark: null,
     seedQuery,
     missionId,
@@ -285,6 +315,47 @@ function generate(
     answer: analysis.answer,
     traceSteps: analysis.traceSteps,
   };
+}
+
+/**
+ * The acquisition history over the area of interest, oldest first.
+ *
+ * Roughly one per year with a couple of clustered revisits, because that is what a real optical archive
+ * over one place looks like — regular coverage with gaps where cloud made a pass useless. A perfectly
+ * even series would make the timeline look synthetic and would hide the gap-handling the UI has to do.
+ */
+function buildAcquisitions(
+  investigationId: string,
+  random: () => number,
+  area: (typeof MOCK_AREAS)[number],
+): Acquisition[] {
+  return Array.from({ length: ACQUISITION_COUNT }, (_, index) => {
+    const year = 2018 + index;
+    const month = Math.floor(randomFloat(random, 1, 12));
+    const day = Math.floor(randomFloat(random, 1, 27));
+    const isSar = index % 4 === 3;
+    const cloud = isSar ? null : Math.round(randomFloat(random, 0, 46));
+
+    return {
+      id: `${investigationId}-acq-${index}`,
+      sceneId: `${investigationId}-scene-${index}`,
+      capturedAt: new Date(Date.UTC(year, month - 1, day, 5, 24)).toISOString(),
+      modality: isSar ? ("sar" as const) : ("optical" as const),
+      sensorPlatform: isSar ? "Sentinel-1A" : index % 2 === 0 ? "Sentinel-2A" : "Sentinel-2B",
+      groundSampleDistanceMeters: isSar ? 20 : 10,
+      cloudCoverPercentage: cloud,
+      quicklookUrl: buildQuicklookUrl(
+        index < ACQUISITION_COUNT / 2
+          ? STAND_IN_TILES.sentinel2Archive.url
+          : STAND_IN_TILES.recentImagery.url,
+        area.latitude,
+        area.longitude,
+      ),
+      // Heavy cloud makes an acquisition catalogued but not analysable, which the timeline must show
+      // rather than silently offering a scene that cannot answer anything.
+      isAvailable: cloud === null || cloud < 40,
+    };
+  });
 }
 
 function buildSceneLayers(
@@ -894,6 +965,96 @@ export function selectMockAnalysisScript(
     confidence: 0.91,
     insufficientEvidence: null,
   };
+}
+
+/**
+ * Binds an acquisition into a comparison role.
+ *
+ * The layer the role renders through is reused rather than created, because the comparator binds roles to
+ * layer ids: swapping which acquisition a role points at must not invalidate the binding, or the split
+ * would go blank every time the operator changed a scene.
+ */
+export function attachMockScene(
+  investigationId: string,
+  sceneId: string,
+  role: "t0" | "t1" | "sar",
+): Investigation | null {
+  const generated = investigationsById.get(investigationId);
+  if (!generated) {
+    return null;
+  }
+
+  const acquisition = generated.investigation.acquisitions.find(
+    (candidate) => candidate.sceneId === sceneId,
+  );
+  if (!acquisition) {
+    return null;
+  }
+
+  const existingSlot = generated.investigation.sceneSlots.find((slot) => slot.role === role);
+  const layerId = existingSlot?.layerId ?? `${investigationId}-layer-${role}`;
+
+  const nextSlot: InvestigationSceneSlot = {
+    role,
+    sceneId: acquisition.sceneId,
+    name: `${generated.investigation.areaOfInterestName} · ${acquisition.capturedAt.slice(0, 10)}`,
+    capturedAt: acquisition.capturedAt,
+    modality: acquisition.modality,
+    sensorPlatform: acquisition.sensorPlatform,
+    groundSampleDistanceMeters: acquisition.groundSampleDistanceMeters,
+    cloudCoverPercentage: acquisition.cloudCoverPercentage,
+    coordinateReferenceSystem: "EPSG:32643",
+    layerId,
+  };
+
+  generated.investigation = {
+    ...generated.investigation,
+    updatedAt: new Date().toISOString(),
+    sceneSlots: existingSlot
+      ? generated.investigation.sceneSlots.map((slot) => (slot.role === role ? nextSlot : slot))
+      : [...generated.investigation.sceneSlots, nextSlot],
+  };
+
+  persist();
+  return generated.investigation;
+}
+
+/** Band descriptors for the inspector, by modality. Real ones come from the raster header in Phase 2. */
+const BAND_TEMPLATES = {
+  optical: [
+    { name: "B2", wavelengthNanometres: 492, description: "Blue — water penetration, haze" },
+    { name: "B3", wavelengthNanometres: 559, description: "Green — vegetation vigour" },
+    { name: "B4", wavelengthNanometres: 665, description: "Red — chlorophyll absorption" },
+    { name: "B8", wavelengthNanometres: 833, description: "NIR — biomass, NDVI numerator" },
+    { name: "B11", wavelengthNanometres: 1610, description: "SWIR — moisture, built-up" },
+  ],
+  sar: [
+    { name: "VV", wavelengthNanometres: null, description: "Co-polarised — surface roughness" },
+    { name: "VH", wavelengthNanometres: null, description: "Cross-polarised — volume scattering" },
+  ],
+} as const;
+
+/** Resolves a scene id back to its acquisition and the investigation it belongs to. */
+export function getMockSceneInspection(sceneId: string) {
+  for (const generated of investigationsById.values()) {
+    const acquisition = generated.investigation.acquisitions.find(
+      (candidate) => candidate.sceneId === sceneId,
+    );
+    if (!acquisition) {
+      continue;
+    }
+
+    return {
+      acquisition,
+      investigationId: generated.investigation.id,
+      areaOfInterestName: generated.investigation.areaOfInterestName,
+      areaOfInterest: generated.investigation.areaOfInterest,
+      coordinateReferenceSystem: "EPSG:32643",
+      bands: [...(acquisition.modality === "sar" ? BAND_TEMPLATES.sar : BAND_TEMPLATES.optical)],
+    };
+  }
+
+  return null;
 }
 
 export function getMockRegionSuggestions(investigationId: string): RegionSuggestion[] {

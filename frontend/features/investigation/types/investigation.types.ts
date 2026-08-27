@@ -9,6 +9,7 @@
 import type { z } from "zod";
 
 import type {
+  acquisitionSchema,
   cameraBookmarkSchema,
   investigationCreateRequestSchema,
   investigationCreateResponseSchema,
@@ -19,6 +20,7 @@ import type {
   workspaceModeSchema,
 } from "../schemas/investigation.schema";
 
+export type Acquisition = z.infer<typeof acquisitionSchema>;
 export type SceneRole = z.infer<typeof sceneRoleSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;
 export type CameraBookmark = z.infer<typeof cameraBookmarkSchema>;

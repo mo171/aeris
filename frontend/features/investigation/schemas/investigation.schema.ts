@@ -31,6 +31,30 @@ export const cameraBookmarkSchema = z.object({
   pitchDegrees: z.number(),
 });
 
+/**
+ * One acquisition over the area of interest.
+ *
+ * An investigation is not a pair of images, it is a time series that a pair is currently selected from.
+ * Modelling it that way is what makes a timeline possible at all: with only T0 and T1 on the wire there
+ * is nothing to scrub through, and retrofitting the stack later would change every consumer.
+ *
+ * `quicklookUrl` is a single rendered image of the scene, not a tile template — enough to recognise the
+ * place and judge cloud cover before committing to loading it.
+ */
+export const acquisitionSchema = z.object({
+  id: z.string().min(1),
+  sceneId: z.string().min(1),
+  capturedAt: isoTimestampSchema,
+  modality: z.enum(["optical", "sar", "multispectral", "hyperspectral"]),
+  sensorPlatform: z.string().min(1),
+  groundSampleDistanceMeters: z.number().positive(),
+  /** Null for SAR, which is unaffected by cloud. Zero would claim a cloud-free radar scene. */
+  cloudCoverPercentage: z.number().min(0).max(100).nullable(),
+  quicklookUrl: z.string().nullable(),
+  /** False when the acquisition is catalogued but not yet processed to a usable product. */
+  isAvailable: z.boolean(),
+});
+
 export const investigationSceneSlotSchema = z.object({
   role: sceneRoleSchema,
   sceneId: z.string().min(1),
@@ -57,6 +81,8 @@ export const investigationSchema = z.object({
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
   sceneSlots: z.array(investigationSceneSlotSchema),
+  /** Every acquisition over this area of interest, oldest first. The timeline scrubs across these. */
+  acquisitions: z.array(acquisitionSchema),
   cameraBookmark: cameraBookmarkSchema.nullable(),
   /** The question that started this investigation, carried down from Mission Command. */
   seedQuery: z.string().nullable(),

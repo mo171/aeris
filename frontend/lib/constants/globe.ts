@@ -170,6 +170,26 @@ export const GLOBE_SATELLITE_ARCS = {
 } as const;
 
 /**
+ * Seconds spent morphing between the globe, the flat map and the 2.5D view.
+ *
+ * Long enough to read as the same Earth changing shape rather than two unrelated views being swapped,
+ * short enough that an analyst switching to 2D to digitise something is not kept waiting.
+ */
+export const GLOBE_PROJECTION_MORPH_SECONDS = 1.1;
+
+/**
+ * How often the scene is rendered while a hidden tab is still trying to reach its first frame.
+ *
+ * Browsers starve requestAnimationFrame in a hidden tab, which stops Cesium's own render loop dead: the
+ * scene never paints, readiness never fires, and an operator returning to a tab they opened earlier finds
+ * it still saying "initialising". Timers keep running when hidden, so the loop is handed to one until a
+ * frame has been painted — and then stops, because a hidden tab has nothing to show anyone and rendering
+ * a full globe on a timer forever would burn a laptop battery for no one. Browsers clamp background
+ * timers to roughly a second anyway, so asking for much less than that buys nothing.
+ */
+export const GLOBE_HIDDEN_TAB_RENDER_INTERVAL_MS = 500;
+
+/**
  * Resolution-scale ceiling. Uncapped device pixel ratio on a high-density display is the single most
  * common cause of an otherwise healthy globe running at thirty frames per second.
  */

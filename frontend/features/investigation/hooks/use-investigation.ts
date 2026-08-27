@@ -13,22 +13,25 @@
 
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect } from "react";
 
 import { QUERY_KEYS } from "@/lib/constants/query-keys";
 
-import { fetchInvestigation } from "../services/investigation.service";
+import { attachScene, fetchInvestigation } from "../services/investigation.service";
 import { useInvestigationStore } from "../store/investigation-store";
-import type { Investigation } from "../types/investigation.types";
+import type { Investigation, SceneRole } from "../types/investigation.types";
 
 interface UseInvestigationResult {
   investigation: Investigation | undefined;
   isLoading: boolean;
   error: Error | null;
+  /** Binds an acquisition into a comparison role. Used by the pop-out windows and the acquisition list. */
+  assignSceneRole: (sceneId: string, role: SceneRole) => void;
 }
 
 export function useInvestigation(investigationId: string): UseInvestigationResult {
+  const queryClient = useQueryClient();
   const enterInvestigation = useInvestigationStore((state) => state.enterInvestigation);
   const leaveInvestigation = useInvestigationStore((state) => state.leaveInvestigation);
 
@@ -52,5 +55,22 @@ export function useInvestigation(investigationId: string): UseInvestigationResul
     };
   }, [leaveInvestigation]);
 
-  return { investigation: data, isLoading, error: error as Error | null };
+  const { mutate } = useMutation({
+    mutationFn: ({ sceneId, role }: { sceneId: string; role: SceneRole }) =>
+      attachScene(investigationId, sceneId, role),
+    // The response IS the updated record, so it replaces the cache directly. Invalidating instead would
+    // leave a window where the layer stack and the comparator disagree about which scene is T1.
+    onSuccess: (updated) =>
+      queryClient.setQueryData(QUERY_KEYS.investigations.detail(investigationId), updated),
+  });
+
+  return {
+    investigation: data,
+    isLoading,
+    error: error as Error | null,
+    assignSceneRole: useCallback(
+      (sceneId: string, role: SceneRole) => mutate({ sceneId, role }),
+      [mutate],
+    ),
+  };
 }

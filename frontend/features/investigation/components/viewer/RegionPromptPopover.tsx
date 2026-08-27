@@ -52,6 +52,10 @@ export function RegionPromptPopover({
         <div className="min-w-0">
           <h3 className="aeris-technical text-aeris-teal">Ask this region</h3>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+            {region.areaHectares >= 100
+              ? `${(region.areaHectares / 100).toFixed(2)} km²`
+              : `${region.areaHectares.toFixed(2)} ha`}
+            {" · "}
             {formatCoordinates(centreLatitude, centreLongitude)}
           </p>
         </div>

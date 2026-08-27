@@ -37,6 +37,7 @@ import { useEvidenceGraph } from "../hooks/use-evidence-graph";
 import { useInvestigation } from "../hooks/use-investigation";
 import { useInvestigationCommands } from "../hooks/use-investigation-commands";
 import { useRegionSelection } from "../hooks/use-region-selection";
+import { useScenePopout } from "../hooks/use-scene-popout";
 import { useSceneStageBinding } from "../hooks/use-scene-stage-binding";
 import { useInvestigationStore } from "../store/investigation-store";
 import type { Claim } from "../types/evidence.types";
@@ -46,7 +47,11 @@ import { InvestigationHeader } from "./header/InvestigationHeader";
 import { InputsPanel } from "./inputsPanel/InputsPanel";
 import { ReportDrawer } from "./report/ReportDrawer";
 import { ExecutionSpine } from "./tracePanel/ExecutionSpine";
+import { DrawToolbar } from "./viewer/DrawToolbar";
+import { EvidenceLegend } from "./viewer/EvidenceLegend";
+import { ProjectionToggle } from "./viewer/ProjectionToggle";
 import { RegionPromptPopover } from "./viewer/RegionPromptPopover";
+import { SceneReadout } from "./viewer/SceneReadout";
 import { SplitHandle } from "./viewer/SplitHandle";
 import { TargetLockOverlay } from "./viewer/TargetLockOverlay";
 import { TemporalPlaybar } from "./viewer/TemporalPlaybar";
@@ -57,11 +62,12 @@ interface InvestigationScreenProps {
 }
 
 export function InvestigationScreen({ investigationId }: InvestigationScreenProps) {
-  const { investigation, isLoading, error } = useInvestigation(investigationId);
+  const { investigation, isLoading, error, assignSceneRole } = useInvestigation(investigationId);
   const { graph, layers, featureIdsForClaim } = useEvidenceGraph(investigationId);
   const { ask, stop } = useAnalysisRun(investigationId);
   const autonomous = useAutonomousInvestigation({ investigationId, ask });
   const regionSelection = useRegionSelection(investigationId);
+  const scenePopout = useScenePopout({ investigationId, onAssignRole: assignSceneRole });
 
   const isDataPanelOpen = useUiStore((state) => state.isDataPanelOpen);
   const isAssistantPanelOpen = useUiStore((state) => state.isAssistantPanelOpen);
@@ -74,6 +80,8 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const isRunning = useInvestigationStore((state) => state.isRunning);
   const activePlan = useInvestigationStore((state) => state.activePlan);
   const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
+  const projection = useInvestigationStore((state) => state.projection);
+  const setProjection = useInvestigationStore((state) => state.setProjection);
   const setSpotlightClaimId = useInvestigationStore((state) => state.setSpotlightClaimId);
   const toggleSoloLayer = useInvestigationStore((state) => state.toggleSoloLayer);
   const togglePlanStep = useInvestigationStore((state) => state.togglePlanStep);
@@ -121,6 +129,13 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   );
 
   const sceneSlots = useMemo(() => investigation?.sceneSlots ?? [], [investigation]);
+  const acquisitions = useMemo(() => investigation?.acquisitions ?? [], [investigation]);
+
+  /** Which scene currently occupies which role, so the acquisition list can show what is bound. */
+  const roleBySceneId = useMemo(
+    () => Object.fromEntries(sceneSlots.map((slot) => [slot.sceneId, slot.role])),
+    [sceneSlots],
+  );
 
   if (error) {
     return (
@@ -147,14 +162,14 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
       <SplitHandle />
       <TargetLockOverlay />
 
-      {regionSelection.region ? (
+      {regionSelection.activeRegion ? (
         <div className="pointer-events-none absolute inset-0">
           <RegionPromptPopover
-            region={regionSelection.region}
+            region={regionSelection.activeRegion}
             suggestions={regionSelection.suggestions}
             isLoading={regionSelection.isLoadingSuggestions}
             onAsk={(prompt) => ask(prompt)}
-            onDismiss={regionSelection.clearRegion}
+            onDismiss={() => regionSelection.setActiveRegion(null)}
           />
         </div>
       ) : null}
@@ -180,7 +195,15 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               <PanelErrorBoundary panelName="Inputs">
                 <InputsPanel
                   sceneSlots={sceneSlots}
+                  acquisitions={acquisitions}
+                  roleBySceneId={roleBySceneId}
+                  openSceneIds={scenePopout.openSceneIds}
+                  onOpenScene={scenePopout.openScene}
                   layers={layers}
+                  regions={regionSelection.regions}
+                  activeRegionId={regionSelection.activeRegion?.id ?? null}
+                  onSelectRegion={regionSelection.setActiveRegion}
+                  onRemoveRegion={regionSelection.removeRegion}
                   onFocusScene={handleFocusScene}
                 />
               </PanelErrorBoundary>
@@ -190,8 +213,21 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               The free space between the panels. The scene's own controls live here rather than being
               anchored to the viewport, so they can never end up underneath a panel at any panel width.
             */}
-            <div className="pointer-events-none relative flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
-              <ViewerToolCluster />
+            <div className="pointer-events-none relative flex min-w-0 flex-1 flex-col items-center gap-2">
+              {/* Geometry tools sit at the top of the free column, nearest the scene they act on. */}
+              <DrawToolbar
+                activeTool={regionSelection.activeTool}
+                onSelectTool={regionSelection.selectTool}
+              />
+
+              <div className="flex-1" aria-hidden="true" />
+
+              <EvidenceLegend layers={layers} />
+              <SceneReadout />
+              <div className="flex items-end gap-2">
+                <ProjectionToggle projection={projection} onChange={setProjection} />
+                <ViewerToolCluster />
+              </div>
               <TemporalPlaybar sceneSlots={sceneSlots} />
             </div>
 

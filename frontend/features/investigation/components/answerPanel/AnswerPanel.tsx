@@ -76,8 +76,10 @@ export function AnswerPanel({
   const [draft, setDraft] = useState("");
   const spotlightClaimId = useInvestigationStore((state) => state.spotlightClaimId);
   const setSpotlightClaimId = useInvestigationStore((state) => state.setSpotlightClaimId);
-  const drawnRegion = useInvestigationStore((state) => state.drawnRegion);
-  const clearRegion = useInvestigationStore((state) => state.setDrawnRegion);
+  const drawnRegions = useInvestigationStore((state) => state.drawnRegions);
+  const activeRegionId = useInvestigationStore((state) => state.activeRegionId);
+  const setActiveRegionId = useInvestigationStore((state) => state.setActiveRegionId);
+  const activeRegion = drawnRegions.find((region) => region.id === activeRegionId) ?? null;
 
   const currentRun = runs.at(-1) ?? null;
   const priorRuns = runs.slice(0, -1);
@@ -213,14 +215,22 @@ export function AnswerPanel({
           isStreaming={isRunning}
           placeholder="Ask anything about this scene…"
           contextSlot={
-            drawnRegion ? (
+            activeRegion ? (
               <button
                 type="button"
-                onClick={() => clearRegion(null)}
-                title="Clear the drawn region"
-                className={cn("rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none")}
+                onClick={() => setActiveRegionId(null)}
+                title="Ask about the whole area of interest instead"
+                className={cn(
+                  "rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                )}
               >
-                <Chip tone="teal">Scoped to drawn region · clear</Chip>
+                <Chip tone="teal">
+                  Scoped to{" "}
+                  {activeRegion.areaHectares >= 100
+                    ? `${(activeRegion.areaHectares / 100).toFixed(1)} km²`
+                    : `${activeRegion.areaHectares.toFixed(1)} ha`}{" "}
+                  region · clear
+                </Chip>
               </button>
             ) : null
           }

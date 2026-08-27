@@ -47,9 +47,10 @@ export function useSceneStageBinding({
 
   const comparatorBinding = useInvestigationStore((state) => state.comparatorBinding);
   const renderMode = useInvestigationStore((state) => state.renderMode);
+  const projection = useInvestigationStore((state) => state.projection);
   const spotlightClaimId = useInvestigationStore((state) => state.spotlightClaimId);
   const artefactLayerId = useInvestigationStore((state) => state.artefactLayerId);
-  const isRegionDrawArmed = useInvestigationStore((state) => state.isRegionDrawArmed);
+  const activeDrawTool = useInvestigationStore((state) => state.activeDrawTool);
   const isPlaybackRunning = useInvestigationStore((state) => state.isPlaybackRunning);
   const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
 
@@ -111,6 +112,10 @@ export function useSceneStageBinding({
     stage?.sceneLayers.setRenderMode(renderMode);
   }, [renderMode, stage]);
 
+  useEffect(() => {
+    stage?.appearance.setProjection(projection);
+  }, [projection, stage]);
+
   // ── Comparator ───────────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!stage || !investigation) {
@@ -142,31 +147,35 @@ export function useSceneStageBinding({
     stage.sceneLayers.setSpotlight(featureIdsForClaimRef.current(spotlightClaimId));
   }, [spotlightClaimId, stage]);
 
-  // ── Region drawing ───────────────────────────────────────────────────────────────────────────────
+  // ── Drawing and measurement ──────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!stage) {
       return;
     }
 
-    if (isRegionDrawArmed) {
-      stage.regionDraw.begin("rectangle");
+    if (activeDrawTool) {
+      stage.draw.begin(activeDrawTool);
       return;
     }
 
-    if (stage.regionDraw.isDrawing()) {
-      stage.regionDraw.cancel();
-    }
-  }, [isRegionDrawArmed, stage]);
+    // Disarming has to reach the stage even when nothing was mid-shape, because that is what restores
+    // camera input. Leaving it armed is how a draw tool ends up silently eating every drag.
+    stage.draw.cancel();
+  }, [activeDrawTool, stage]);
 
   useEffect(() => {
     if (!stage) {
       return;
     }
 
-    return stage.regionDraw.subscribe((region) => {
-      // A null region means the operator cancelled or clicked without dragging; treating that as a
-      // cleared selection is what makes escaping the tool feel unambiguous.
-      useInvestigationStore.getState().setDrawnRegion(region);
+    return stage.draw.subscribeRegions((regions) => {
+      const store = useInvestigationStore.getState();
+      store.setDrawnRegions(regions);
+      // Committing a shape ends the tool. Staying armed after a commit means the next drag starts a
+      // second shape the operator did not ask for.
+      if (regions.length > store.drawnRegions.length) {
+        store.setActiveDrawTool(null);
+      }
     });
   }, [stage]);
 

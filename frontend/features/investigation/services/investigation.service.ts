@@ -24,6 +24,7 @@ import {
 import type {
   CameraBookmark,
   Investigation,
+  SceneRole,
   InvestigationCreateRequest,
   InvestigationCreateResponse,
   InvestigationSummary,
@@ -60,6 +61,26 @@ export async function fetchInvestigations(signal?: AbortSignal): Promise<Investi
   );
 
   return list.items;
+}
+
+/**
+ * Binds an acquisition into one of the comparison roles.
+ *
+ * The server returns the updated investigation rather than an acknowledgement, so the caller can replace
+ * its cached record in one step. Re-fetching after a role change would leave a window where the layer
+ * stack and the comparator disagree about which scene is T1.
+ */
+export async function attachScene(
+  investigationId: string,
+  sceneId: string,
+  role: SceneRole,
+): Promise<Investigation> {
+  const response = await apiClient.post(REST_API.investigations.attachScene(investigationId), {
+    sceneId,
+    role,
+  });
+
+  return parseApiResponse(investigationSchema, response.data, "the attach scene endpoint");
 }
 
 /**
