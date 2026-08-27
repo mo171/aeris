@@ -1,0 +1,286 @@
+// features/investigation/components/InvestigationScreen.tsx — the Investigation Workspace surface.
+//
+// what  : Composes the four zones of the workspace — identity strip, inputs and evidence layers, the scene
+//         with its tools, the AERIS answer surface, and the execution spine — over the shared 3D stage.
+// where : Rendered by app/(geospatial)/investigation/[investigationId]/page.tsx, which contains nothing else.
+// how   : The scene is NOT rendered here. It belongs to the shared stage mounted by the route group layout,
+//         which is what lets the camera keep flying from the globe into this surface without a cut. This
+//         screen contributes the chrome that floats over it and the hooks that drive it.
+//
+//         Zones never talk to each other. The answer panel spotlights a claim by writing to the feature
+//         store; the stage binding reads that and dims the scene. Adding a fifth zone therefore means
+//         adding a component, not rewiring the four that exist.
+//
+//         Present mode removes the chrome rather than hiding it behind an opacity transition, so nothing
+//         invisible is still capturing pointer events over the scene. The comparator handle survives,
+//         because the reveal is the thing being presented.
+//
+//         Each zone has its own error boundary: a failure in the layer stack must cost the layer stack,
+//         not the answer and the trace as well.
+
+"use client";
+
+import { useCallback, useMemo } from "react";
+
+import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
+import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
+import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
+import { PanelSkeleton } from "@/components/sharedUI/functionalComponent/feedback/PanelSkeleton";
+import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
+import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
+import { useGeoStageStore } from "@/store/geo-stage-store";
+import { useUiStore } from "@/store/ui-store";
+
+import { useAnalysisRun } from "../hooks/use-analysis-run";
+import { useAutonomousInvestigation } from "../hooks/use-autonomous-investigation";
+import { useEvidenceGraph } from "../hooks/use-evidence-graph";
+import { useInvestigation } from "../hooks/use-investigation";
+import { useInvestigationCommands } from "../hooks/use-investigation-commands";
+import { useRegionSelection } from "../hooks/use-region-selection";
+import { useSceneStageBinding } from "../hooks/use-scene-stage-binding";
+import { useInvestigationStore } from "../store/investigation-store";
+import type { Claim } from "../types/evidence.types";
+import type { InvestigationSceneSlot } from "../types/investigation.types";
+import { AnswerPanel } from "./answerPanel/AnswerPanel";
+import { InvestigationHeader } from "./header/InvestigationHeader";
+import { InputsPanel } from "./inputsPanel/InputsPanel";
+import { ReportDrawer } from "./report/ReportDrawer";
+import { ExecutionSpine } from "./tracePanel/ExecutionSpine";
+import { RegionPromptPopover } from "./viewer/RegionPromptPopover";
+import { SplitHandle } from "./viewer/SplitHandle";
+import { TargetLockOverlay } from "./viewer/TargetLockOverlay";
+import { TemporalPlaybar } from "./viewer/TemporalPlaybar";
+import { ViewerToolCluster } from "./viewer/ViewerToolCluster";
+
+interface InvestigationScreenProps {
+  investigationId: string;
+}
+
+export function InvestigationScreen({ investigationId }: InvestigationScreenProps) {
+  const { investigation, isLoading, error } = useInvestigation(investigationId);
+  const { graph, layers, featureIdsForClaim } = useEvidenceGraph(investigationId);
+  const { ask, stop } = useAnalysisRun(investigationId);
+  const autonomous = useAutonomousInvestigation({ investigationId, ask });
+  const regionSelection = useRegionSelection(investigationId);
+
+  const isDataPanelOpen = useUiStore((state) => state.isDataPanelOpen);
+  const isAssistantPanelOpen = useUiStore((state) => state.isAssistantPanelOpen);
+  const dataPanelWidth = useUiStore((state) => state.dataPanelWidth);
+  const assistantPanelWidth = useUiStore((state) => state.assistantPanelWidth);
+  const setDataPanelWidth = useUiStore((state) => state.setDataPanelWidth);
+  const setAssistantPanelWidth = useUiStore((state) => state.setAssistantPanelWidth);
+
+  const runs = useInvestigationStore((state) => state.runs);
+  const isRunning = useInvestigationStore((state) => state.isRunning);
+  const activePlan = useInvestigationStore((state) => state.activePlan);
+  const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
+  const setSpotlightClaimId = useInvestigationStore((state) => state.setSpotlightClaimId);
+  const toggleSoloLayer = useInvestigationStore((state) => state.toggleSoloLayer);
+  const togglePlanStep = useInvestigationStore((state) => state.togglePlanStep);
+
+  useSceneStageBinding({ investigation, layers, featureIdsForClaim });
+
+  useInvestigationCommands({
+    ask,
+    prepareAutonomous: autonomous.prepare,
+    evidenceById: graph.evidenceById,
+    areaOfInterest: investigation?.areaOfInterest ?? null,
+  });
+
+  const handleFocusScene = useCallback(
+    (slot: InvestigationSceneSlot) => {
+      toggleSoloLayer(slot.layerId);
+      if (investigation) {
+        useGeoStageStore.getState().handle?.camera.flyToBoundingBox(investigation.areaOfInterest, {
+          durationMs: INVESTIGATION_CAMERA.localFlightDurationSeconds * 1000,
+        });
+      }
+    },
+    [investigation, toggleSoloLayer],
+  );
+
+  /** Frames the geometry behind one claim, so "show me" resolves to a place rather than a highlight. */
+  const handleFocusEvidence = useCallback(
+    (claim: Claim) => {
+      setSpotlightClaimId(claim.id);
+
+      const featureIds = new Set(featureIdsForClaim(claim.id));
+      const bounds = unionOfFeatureBounds(graph.layersById, featureIds);
+      if (bounds) {
+        useGeoStageStore.getState().handle?.camera.flyToBoundingBox(bounds, {
+          durationMs: INVESTIGATION_CAMERA.localFlightDurationSeconds * 1000,
+        });
+      }
+    },
+    [featureIdsForClaim, graph.layersById, setSpotlightClaimId],
+  );
+
+  const handleInvestigate = useCallback(
+    (claimId: string) => autonomous.prepare(claimId),
+    [autonomous],
+  );
+
+  const sceneSlots = useMemo(() => investigation?.sceneSlots ?? [], [investigation]);
+
+  if (error) {
+    return (
+      <div className="pointer-events-auto absolute inset-0 flex items-center justify-center p-6">
+        <ErrorState error={error} />
+      </div>
+    );
+  }
+
+  if (isLoading || !investigation) {
+    // Sized to the inputs panel it replaces, so nothing jumps when the record arrives.
+    return (
+      <div className="pointer-events-none absolute inset-0 flex gap-3 p-3">
+        <div style={{ width: dataPanelWidth }} className="shrink-0">
+          <PanelSkeleton rowCount={5} rowHeight={64} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Full-bleed, beneath the panels: the split runs across the whole scene, not just the gap. */}
+      <SplitHandle />
+      <TargetLockOverlay />
+
+      {regionSelection.region ? (
+        <div className="pointer-events-none absolute inset-0">
+          <RegionPromptPopover
+            region={regionSelection.region}
+            suggestions={regionSelection.suggestions}
+            isLoading={regionSelection.isLoadingSuggestions}
+            onAsk={(prompt) => ask(prompt)}
+            onDismiss={regionSelection.clearRegion}
+          />
+        </div>
+      ) : null}
+
+      {isPresentMode ? null : (
+        <div className="pointer-events-none absolute inset-0 flex flex-col gap-3 p-3">
+          <PanelErrorBoundary panelName="Investigation header">
+            <InvestigationHeader
+              investigation={investigation}
+              onFocusScene={handleFocusScene}
+            />
+          </PanelErrorBoundary>
+
+          <div className="flex min-h-0 flex-1 gap-3">
+            <PanelContainer
+              side="left"
+              isOpen={isDataPanelOpen}
+              width={dataPanelWidth}
+              onWidthCommit={setDataPanelWidth}
+              revealDelaySeconds={BOOT_SEQUENCE_DELAY.dataPanel}
+              ariaLabel="Inputs and evidence layers"
+            >
+              <PanelErrorBoundary panelName="Inputs">
+                <InputsPanel
+                  sceneSlots={sceneSlots}
+                  layers={layers}
+                  onFocusScene={handleFocusScene}
+                />
+              </PanelErrorBoundary>
+            </PanelContainer>
+
+            {/*
+              The free space between the panels. The scene's own controls live here rather than being
+              anchored to the viewport, so they can never end up underneath a panel at any panel width.
+            */}
+            <div className="pointer-events-none relative flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+              <ViewerToolCluster />
+              <TemporalPlaybar sceneSlots={sceneSlots} />
+            </div>
+
+            <PanelContainer
+              side="right"
+              isOpen={isAssistantPanelOpen}
+              width={assistantPanelWidth}
+              onWidthCommit={setAssistantPanelWidth}
+              revealDelaySeconds={BOOT_SEQUENCE_DELAY.assistantPanel}
+              ariaLabel="AERIS answer panel"
+            >
+              <PanelErrorBoundary panelName="AERIS">
+                <AnswerPanel
+                  runs={runs}
+                  isRunning={isRunning}
+                  claimsById={graph.claimsById}
+                  evidenceById={graph.evidenceById}
+                  activePlan={activePlan}
+                  onAsk={ask}
+                  onStop={stop}
+                  onInvestigate={handleInvestigate}
+                  onFocusEvidence={handleFocusEvidence}
+                  onTogglePlanStep={togglePlanStep}
+                  onExecutePlan={autonomous.execute}
+                  onDismissPlan={autonomous.dismiss}
+                />
+              </PanelErrorBoundary>
+            </PanelContainer>
+          </div>
+
+          <PanelErrorBoundary panelName="Execution trace">
+            <ExecutionSpine run={runs.at(-1) ?? null} />
+          </PanelErrorBoundary>
+        </div>
+      )}
+
+      <ReportDrawer investigationId={investigationId} investigationName={investigation.name} />
+    </>
+  );
+}
+
+/**
+ * The extent covering every feature behind a claim.
+ *
+ * Framing the union rather than the first feature matters when a change is distributed: an answer about
+ * "the north-eastern quarter" that flies to one polygon out of eleven has shown the operator a detail and
+ * called it the finding.
+ */
+function unionOfFeatureBounds(
+  layersById: Record<string, { features: readonly { id: string; geometry: unknown }[] }>,
+  featureIds: Set<string>,
+): { west: number; south: number; east: number; north: number } | null {
+  let west = Number.POSITIVE_INFINITY;
+  let south = Number.POSITIVE_INFINITY;
+  let east = Number.NEGATIVE_INFINITY;
+  let north = Number.NEGATIVE_INFINITY;
+  let hasAny = false;
+
+  const include = (longitude: number, latitude: number) => {
+    hasAny = true;
+    west = Math.min(west, longitude);
+    east = Math.max(east, longitude);
+    south = Math.min(south, latitude);
+    north = Math.max(north, latitude);
+  };
+
+  for (const layer of Object.values(layersById)) {
+    for (const feature of layer.features) {
+      if (!featureIds.has(feature.id)) {
+        continue;
+      }
+
+      const geometry = feature.geometry as
+        | { type: "polygon"; ring: { latitude: number; longitude: number }[] }
+        | { type: "point"; position: { latitude: number; longitude: number } }
+        | { type: "bbox"; bounds: { west: number; south: number; east: number; north: number } };
+
+      if (geometry.type === "polygon") {
+        for (const point of geometry.ring) {
+          include(point.longitude, point.latitude);
+        }
+      } else if (geometry.type === "point") {
+        include(geometry.position.longitude, geometry.position.latitude);
+      } else {
+        include(geometry.bounds.west, geometry.bounds.south);
+        include(geometry.bounds.east, geometry.bounds.north);
+      }
+    }
+  }
+
+  return hasAny ? { west, south, east, north } : null;
+}

@@ -9,7 +9,11 @@
 //         one section when something fails.
 //
 //         Order follows the operator's workflow: bring imagery in, find it, see what is already running,
-//         confirm the tools are up.
+//         confirm the tools are up — and then leave, into an investigation.
+//
+//         The Investigate action appears only once scenes are selected, and it is the primary way into the
+//         Investigation Workspace. It sits at the bottom of the panel rather than in the header because it
+//         is the end of that workflow, not a control over it.
 //
 //         The catalogue and the mission list are both collapsible and both claim flex space only while
 //         expanded. That is what lets one hand its height to the other, and it is also what fixed the
@@ -18,7 +22,7 @@
 
 "use client";
 
-import { X } from "lucide-react";
+import { ScanSearch, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -34,9 +38,16 @@ import { ModelStatusStrip } from "./ModelStatusStrip";
 interface DataContextPanelProps {
   onLocateScene: (scene: ImageryScene) => void;
   onLocateMission: (mission: Mission) => void;
+  onInvestigate: () => void;
+  isLaunchingInvestigation: boolean;
 }
 
-export function DataContextPanel({ onLocateScene, onLocateMission }: DataContextPanelProps) {
+export function DataContextPanel({
+  onLocateScene,
+  onLocateMission,
+  onInvestigate,
+  isLaunchingInvestigation,
+}: DataContextPanelProps) {
   const selectedSceneIds = useMissionCommandStore((state) => state.selectedSceneIds);
   const clearSceneSelection = useMissionCommandStore((state) => state.clearSceneSelection);
   const isCatalogSectionExpanded = useMissionCommandStore(
@@ -88,6 +99,23 @@ export function DataContextPanel({ onLocateScene, onLocateMission }: DataContext
         {!isCatalogSectionExpanded && !isMissionSectionExpanded ? (
           <div className="flex-1" aria-hidden="true" />
         ) : null}
+
+        {selectedSceneIds.length > 0 ? (
+          <div className="shrink-0 border-t border-border-soft p-2">
+            <Button
+              type="button"
+              size="sm"
+              className="w-full"
+              disabled={isLaunchingInvestigation}
+              onClick={onInvestigate}
+            >
+              <ScanSearch />
+              Investigate {selectedSceneIds.length}{" "}
+              {selectedSceneIds.length === 1 ? "scene" : "scenes"}
+            </Button>
+          </div>
+        ) : null}
+
         <ModelStatusStrip />
       </div>
     </div>

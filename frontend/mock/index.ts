@@ -18,7 +18,7 @@ import type { AxiosInstance } from "axios";
 
 import { setStreamTransport } from "@/lib/streaming/stream-client";
 
-import { mockAssistantStreamTransport } from "./streams/assistant-stream";
+import { mockStreamTransport } from "./streams";
 import { mockAxiosAdapter } from "./transport/mock-adapter";
 
 let isInstalled = false;
@@ -29,7 +29,7 @@ export function installMockTransport(client: AxiosInstance): void {
   }
 
   client.defaults.adapter = mockAxiosAdapter;
-  setStreamTransport(mockAssistantStreamTransport);
+  setStreamTransport(mockStreamTransport);
   isInstalled = true;
 
   if (typeof window !== "undefined") {

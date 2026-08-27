@@ -27,6 +27,8 @@ import { GLOBE_CAMERA } from "@/lib/constants/globe";
 import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
 import { useUiStore } from "@/store/ui-store";
 
+import { useInvestigationLaunch } from "@/features/investigation/hooks/use-investigation-launch";
+
 import { useGlobeStageBinding } from "../hooks/use-globe-stage-binding";
 import { useMissionCommandCommands } from "../hooks/use-mission-command-commands";
 import { useMissionCommandStore } from "../store/mission-command-store";
@@ -47,6 +49,9 @@ export function MissionCommandScreen() {
 
   const setFocusedMissionId = useMissionCommandStore((state) => state.setFocusedMissionId);
   const toggleSceneSelection = useMissionCommandStore((state) => state.toggleSceneSelection);
+
+  // Starting an investigation is investigation-domain work; only its trigger belongs to this surface.
+  const { launch, isLaunching } = useInvestigationLaunch();
 
 
   // The globe handle is read at call time rather than subscribed to: these callbacks fire from user
@@ -86,6 +91,14 @@ export function MissionCommandScreen() {
     [flyToPosition, setFocusedMissionId],
   );
 
+  const handleInvestigate = useCallback(() => {
+    const { selectedSceneIds } = useMissionCommandStore.getState();
+    if (selectedSceneIds.length === 0) {
+      return;
+    }
+    launch({ sceneIds: selectedSceneIds, seedQuery: null, missionId: null });
+  }, [launch]);
+
   // Registered after the callbacks exist so the stage can route a marker click straight into them.
   useGlobeStageBinding({ onMarkerSelect: handleMarkerSelect });
   useMissionCommandCommands();
@@ -105,6 +118,8 @@ export function MissionCommandScreen() {
             <DataContextPanel
               onLocateScene={handleLocateScene}
               onLocateMission={handleLocateMission}
+              onInvestigate={handleInvestigate}
+              isLaunchingInvestigation={isLaunching}
             />
           </PanelErrorBoundary>
         </PanelContainer>

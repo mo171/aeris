@@ -12,6 +12,14 @@ import type { ImageryScene } from "@/features/missionCommand/types/imagery.types
 import { REST_API } from "@/lib/constants/rest.api";
 
 import { MOCK_ASSISTANT_SUGGESTIONS } from "../data/assistant.data";
+import {
+  createMockInvestigation,
+  getMockEvidenceGraph,
+  getMockInvestigation,
+  getMockPlan,
+  getMockRegionSuggestions,
+  listMockInvestigations,
+} from "../data/investigation.data";
 import { insertUploadedScene, selectImageryPage } from "../data/imagery.data";
 import {
   getGlobeMarkers,
@@ -137,6 +145,86 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     method: "GET",
     match: exactPath(REST_API.assistant.suggestions),
     handle: () => ({ status: 200, data: { suggestions: MOCK_ASSISTANT_SUGGESTIONS } }),
+  },
+
+  // ── Investigations ─────────────────────────────────────────────────────────────────────────────
+  {
+    method: "POST",
+    match: exactPath(REST_API.investigations.create),
+    handle: ({ body }) => {
+      const request = body as {
+        sceneIds?: string[];
+        seedQuery?: string | null;
+        missionId?: string | null;
+      };
+      const investigation = createMockInvestigation(
+        request?.sceneIds ?? [],
+        request?.seedQuery ?? null,
+        request?.missionId ?? null,
+      );
+
+      return {
+        status: 201,
+        data: {
+          investigationId: investigation.id,
+          areaOfInterestName: investigation.areaOfInterestName,
+          areaOfInterest: investigation.areaOfInterest,
+          cameraTarget: {
+            latitude: investigation.centroid.latitude,
+            longitude: investigation.centroid.longitude,
+            altitudeMeters: 9_000,
+          },
+        },
+      };
+    },
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.investigations.create),
+    handle: () => ({ status: 200, data: { items: listMockInvestigations() } }),
+  },
+  {
+    method: "GET",
+    match: patternPath(/^\/api\/v1\/investigations\/([^/]+)\/evidence$/),
+    handle: ({ pathParameters }) => {
+      const graph = getMockEvidenceGraph(pathParameters[0]);
+      return graph
+        ? { status: 200, data: graph }
+        : { status: 404, data: { message: "Investigation not found" } };
+    },
+  },
+  {
+    method: "GET",
+    match: patternPath(/^\/api\/v1\/investigations\/([^/]+)\/plan$/),
+    handle: ({ pathParameters }) => {
+      const plan = getMockPlan(pathParameters[0]);
+      return plan
+        ? { status: 200, data: plan }
+        : { status: 404, data: { message: "Investigation not found" } };
+    },
+  },
+  {
+    method: "GET",
+    match: patternPath(/^\/api\/v1\/investigations\/([^/]+)$/),
+    handle: ({ pathParameters }) => {
+      const investigation = getMockInvestigation(pathParameters[0]);
+      return investigation
+        ? { status: 200, data: investigation }
+        : { status: 404, data: { message: "Investigation not found" } };
+    },
+  },
+  {
+    method: "POST",
+    match: patternPath(/^\/api\/v1\/investigations\/([^/]+)$/),
+    handle: () => ({ status: 204, data: null }),
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.regions.suggestions),
+    handle: ({ query }) => ({
+      status: 200,
+      data: { suggestions: getMockRegionSuggestions(query.investigationId ?? "") },
+    }),
   },
 ];
 

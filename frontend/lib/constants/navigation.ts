@@ -44,7 +44,7 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     description: "Analyse a scene with overlays, answers and execution traces",
     href: ROUTES.INVESTIGATION,
     icon: ScanSearch,
-    isAvailable: false,
+    isAvailable: true,
   },
   {
     id: "cross-modal",
