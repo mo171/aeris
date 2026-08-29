@@ -32,12 +32,14 @@ import {
   Entity,
   HeightReference,
   PolygonHierarchy,
+  PolylineDashMaterialProperty,
   StripeMaterialProperty,
   StripeOrientation,
   type Viewer,
 } from "cesium";
 
 import {
+  CONFIDENCE_HATCHING,
   MAGNITUDE_SHADING,
   LAYER_RENDERING,
   MASK_HATCH_REPEAT,
@@ -137,13 +139,25 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
       classId: feature.classId,
     });
 
+    // Masks hatch rather than fill so they can never be mistaken at a glance for a coloured finding.
+    // Stripes are Cesium's own material, so this costs no texture generation and survives every mode.
+    const isMask = findOverlay(descriptor.overlayId)?.rendersAsHatch ?? false;
+
+    // Below the threshold a finding is hatched too, along the OTHER axis. Null confidence is left solid:
+    // "the model declined to assert one" is not "the model is unsure", and only one of those is a claim.
+    const isUncertain =
+      !isMask &&
+      feature.confidence !== null &&
+      feature.confidence < CONFIDENCE_HATCHING.threshold;
+
     return {
       fill: Color.fromCssColorString(style?.fill ?? fallback.fill),
       outline: Color.fromCssColorString(style?.outline ?? fallback.outline),
       highlight: Color.fromCssColorString(fallback.highlight),
-      // Masks hatch rather than fill so they can never be mistaken at a glance for a coloured finding.
-      // Stripes are Cesium's own material, so this costs no texture generation and survives every mode.
-      isHatched: findOverlay(descriptor.overlayId)?.rendersAsHatch ?? false,
+      isHatched: isMask || isUncertain,
+      hatchOrientation: isMask ? StripeOrientation.VERTICAL : StripeOrientation.HORIZONTAL,
+      hatchRepeat: isMask ? MASK_HATCH_REPEAT : CONFIDENCE_HATCHING.repeat,
+      isUncertain,
     };
   }
 
@@ -210,8 +224,8 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
       ? new StripeMaterialProperty({
           evenColor: new CallbackProperty(() => resolveFillColor(), false),
           oddColor: new CallbackProperty(() => Color.TRANSPARENT, false),
-          repeat: MASK_HATCH_REPEAT,
-          orientation: StripeOrientation.VERTICAL,
+          repeat: palette.hatchRepeat,
+          orientation: palette.hatchOrientation,
         })
       : new ColorMaterialProperty(
           new CallbackProperty(() => resolveFillColor(), false),
@@ -301,6 +315,11 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
       { longitude: bounds.west, latitude: bounds.south },
     ];
 
+    const resolveOutlineColor = () =>
+      (tracked.state.isSpotlit ? highlightColor : outlineColor).withAlpha(
+        resolveAlpha(tracked, layerId, 1),
+      );
+
     return [
       new Entity({
         polyline: {
@@ -309,15 +328,17 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
           ),
           width: LAYER_RENDERING.bboxOutlineWidthPixels,
           clampToGround: true,
-          material: new ColorMaterialProperty(
-            new CallbackProperty(
-              () =>
-                (tracked.state.isSpotlit ? highlightColor : outlineColor).withAlpha(
-                  resolveAlpha(tracked, layerId, 1),
-                ),
-              false,
-            ),
-          ),
+          // A box has no fill to hatch, so uncertainty moves into the line. Dashed is the same statement
+          // in the channel this geometry actually has — a solid box around a weak detection asserts more
+          // than the detector did.
+          material: palette.isUncertain
+            ? new PolylineDashMaterialProperty({
+                color: new CallbackProperty(() => resolveOutlineColor(), false),
+                dashLength: CONFIDENCE_HATCHING.dashLengthPixels,
+              })
+            : new ColorMaterialProperty(
+                new CallbackProperty(() => resolveOutlineColor(), false),
+              ),
         },
       }),
     ];

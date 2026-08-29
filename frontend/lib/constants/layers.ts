@@ -98,6 +98,41 @@ export const MAGNITUDE_SHADING = {
  */
 export const MASK_HATCH_REPEAT = 26;
 
+/**
+ * When a finding is drawn as uncertain, and how.
+ *
+ * A weakly-supported detection currently renders identically to a strong one, only fainter — and "faint"
+ * is not a statement, it is a rendering artefact an operator learns to ignore. In a system whose whole
+ * argument is that every claim can be audited, evidence the model is unsure about has to LOOK unsure.
+ *
+ * Hatched, like a mask, but along the other axis. Masks stripe vertically and mean "nothing can be
+ * asserted here"; low confidence stripes HORIZONTALLY and means "something is asserted here, weakly".
+ * Two different statements need two different marks, and hatch angle is how cartography has always
+ * separated them — using the same angle for both would collapse a distinction the product depends on.
+ *
+ * `threshold` is a PRODUCT decision, not a scientific constant. 0.7 is the point past which most
+ * detectors' precision falls off sharply enough that an analyst should verify before acting on a finding
+ * rather than after. It belongs here so it can be tuned per deployment without touching the renderer.
+ *
+ * A NULL confidence is never hatched. Null means the model declined to assert one, which is a different
+ * statement from asserting a low one — drawing it as uncertain would put a claim in the picture that
+ * nothing in the pipeline made.
+ */
+export const CONFIDENCE_HATCHING = {
+  threshold: 0.7,
+  /**
+   * Deliberately COARSER than a mask's hatching, and the difference is not only decorative.
+   *
+   * Cesium repeats stripes across the geometry's own texture coordinates, not across the screen, so the
+   * count is relative to the polygon. Masks are large blobs and carry 26; a change region is a fraction
+   * of that size, and the same count on one would moiré into a grey wash at any oblique angle. Ten reads
+   * as hatching on a small polygon and leaves dense-vertical unambiguously the mask's mark.
+   */
+  repeat: 10,
+  /** Dash length in pixels for outline-only features, which have no fill to hatch. */
+  dashLengthPixels: 10,
+} as const;
+
 export const LAYER_RENDERING = {
   /** Starting opacity per layer kind. The operator can override any of them from the layer stack. */
   defaultOpacity: {

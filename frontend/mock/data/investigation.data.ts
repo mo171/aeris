@@ -540,7 +540,10 @@ function buildAnalysisProducts(
       label: `Change region ${index + 1}`,
       geometry: { type: "polygon", ring },
       magnitude: Math.min(1, radius / 0.0018),
-      confidence: randomFloat(random, 0.72, 0.97),
+      // Spread deliberately across the hatching threshold. A generated run where every finding is
+      // confident would leave the uncertainty rendering unexercisable, and a real change run is not
+      // uniformly sure of itself — the weakest regions are exactly the ones an analyst must check.
+      confidence: randomFloat(random, 0.44, 0.97),
       areaHectares,
       // The share of the region that actually changed. Correlated with magnitude but NOT equal to it:
       // magnitude ranks the finding, this is the measurement the answer quotes and the bin scheme reads.
@@ -569,7 +572,7 @@ function buildAnalysisProducts(
           },
         },
         magnitude: randomFloat(random, 0.3, 0.9),
-        confidence: randomFloat(random, 0.68, 0.95),
+        confidence: randomFloat(random, 0.41, 0.95),
         areaHectares: null,
         value: null,
         classId: "building",
@@ -675,7 +678,7 @@ function buildAnalysisProducts(
         label: `Segment ${index + 1}`,
         geometry: { type: "polygon" as const, ring },
         magnitude: randomFloat(random, 0.2, 0.8),
-        confidence: randomFloat(random, 0.61, 0.94),
+        confidence: randomFloat(random, 0.52, 0.94),
         areaHectares: hectaresForRing(ring),
         // Categorical products have no scalar. Emitting one anyway would invent an ordering across
         // classes that have none — water is not more than cropland.

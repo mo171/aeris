@@ -43,7 +43,7 @@ import {
   sampleRamp,
   type OverlayDefinition,
 } from "@/lib/constants/overlays";
-import { VECTOR_PALETTE } from "@/lib/constants/layers";
+import { CONFIDENCE_HATCHING, VECTOR_PALETTE } from "@/lib/constants/layers";
 
 import { useInvestigationStore } from "../../store/investigation-store";
 import type { EvidenceLayer } from "../../types/layer.types";
@@ -101,6 +101,15 @@ export function EvidenceLegend({ layers }: EvidenceLegendProps) {
 function LayerKey({ layer, isExtruded }: { layer: EvidenceLayer; isExtruded: boolean }) {
   const overlay = findOverlay(layer.overlayId);
 
+  // Only said when the scene actually contains one. A permanent note explaining a mark nobody can see
+  // teaches the operator to stop reading the legend.
+  const hasUncertainFeatures =
+    !overlay?.rendersAsHatch &&
+    layer.features.some(
+      (feature) =>
+        feature.confidence !== null && feature.confidence < CONFIDENCE_HATCHING.threshold,
+    );
+
   return (
     <div className="flex flex-col gap-1">
       <p className="font-mono text-[10px] whitespace-nowrap text-foreground">{layer.title}</p>
@@ -109,6 +118,21 @@ function LayerKey({ layer, isExtruded }: { layer: EvidenceLayer; isExtruded: boo
       ) : (
         <UncataloguedKey layer={layer} />
       )}
+      {hasUncertainFeatures ? (
+        <span className="flex items-center gap-1.5">
+          <span
+            className="size-2 shrink-0 rounded-[1px] border border-border-soft"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(0deg, currentColor 0 1px, transparent 1px 3px)",
+            }}
+            aria-hidden="true"
+          />
+          <span className="font-mono text-[9px] text-muted-foreground">
+            hatched = below {Math.round(CONFIDENCE_HATCHING.threshold * 100)}% confidence
+          </span>
+        </span>
+      ) : null}
     </div>
   );
 }
