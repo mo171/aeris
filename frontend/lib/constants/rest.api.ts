@@ -17,6 +17,13 @@ export const REST_API = {
     createUploadTicket: `${API_VERSION_PREFIX}/imagery/upload-ticket`,
     confirmUpload: (sceneId: string) => `${API_VERSION_PREFIX}/imagery/${sceneId}/confirm`,
   },
+  catalogue: {
+    /**
+     * The temporal archive query: an area, a window and a quality ceiling in, the acquisitions that
+     * exist plus the pair the catalogue would choose out. POST because the body carries geometry.
+     */
+    search: `${API_VERSION_PREFIX}/catalogue/search`,
+  },
   missions: {
     list: `${API_VERSION_PREFIX}/missions`,
     detail: (missionId: string) => `${API_VERSION_PREFIX}/missions/${missionId}`,

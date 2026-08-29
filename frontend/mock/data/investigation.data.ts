@@ -70,7 +70,22 @@ const STAND_IN_TILES = {
 const AOI_HALF_SPAN_DEGREES = 0.02;
 
 /** Acquisitions generated per investigation. Enough history for a timeline to be worth scrubbing. */
-const ACQUISITION_COUNT = 9;
+const ACQUISITION_COUNT = 17;
+
+/**
+ * Days between consecutive acquisitions, walked in order from the archive start.
+ *
+ * Deliberately uneven. A real optical archive over one place is clustered revisits separated by stretches
+ * where nothing was tasked or nothing was usable, and the two long entries here are those stretches — they
+ * are what makes the timeline's coverage-hole rendering exercisable at all. An evenly spaced series would
+ * look synthetic and, worse, would mean the gap handling never runs in the one place it is meant to prove.
+ */
+const ACQUISITION_INTERVAL_DAYS = [
+  80, 110, 45, 140, 700, 90, 60, 130, 170, 95, 850, 75, 120, 55, 190, 100,
+] as const;
+
+/** Where the archive starts. Fixed so the demo narrative always spans the same eight years. */
+const ARCHIVE_START = Date.UTC(2018, 1, 6, 5, 24);
 /** Zoom level a quicklook tile is taken at. 12 covers roughly a city and reads as a recognisable place. */
 const QUICKLOOK_ZOOM = 12;
 
@@ -241,50 +256,54 @@ function generate(
 
   const hasSar = sceneIds.length >= 3;
 
+  // Acquisitions first, because the role slots are DERIVED from them.
+  //
+  // A slot naming a scene the archive does not contain is exactly the incoherence the timeline exists to
+  // prevent: the comparator would show imagery the scrubber cannot find, and binding a role from the
+  // acquisition list would fail to match anything. Generating the archive and then choosing from it makes
+  // that class of bug unrepresentable rather than merely absent today.
+  const acquisitions = buildAcquisitions(investigationId, random, area);
+
+  // The opening pair is the CLEAREST wide pair, not merely the first and last usable ones.
+  //
+  // That is what a backend creating an investigation would do, and it matters for more than tidiness: an
+  // operator who arrives already looking at a degraded comparison has no way to tell whether the warning
+  // is about their data or about the tool. Opening clean means the verdict changes when they move a
+  // handle, which is the only way the warning teaches them anything.
+  const usableOptical = acquisitions.filter(
+    (acquisition) => acquisition.modality === "optical" && acquisition.isAvailable,
+  );
+  const openingPair = choosePair(usableOptical);
+
+  const baselineAcquisition = openingPair?.t0 ?? acquisitions[0];
+  const comparisonAcquisition = openingPair?.t1 ?? acquisitions[acquisitions.length - 1];
+  const radarAcquisition = [...acquisitions].reverse().find((acquisition) => acquisition.modality === "sar");
+
+  const slotFromAcquisition = (
+    acquisition: Acquisition,
+    role: "t0" | "t1" | "sar",
+  ): InvestigationSceneSlot => ({
+    role,
+    sceneId: acquisition.sceneId,
+    name: `${area.name} · ${acquisition.capturedAt.slice(0, 10)}`,
+    capturedAt: acquisition.capturedAt,
+    modality: acquisition.modality,
+    sensorPlatform: acquisition.sensorPlatform,
+    groundSampleDistanceMeters: acquisition.groundSampleDistanceMeters,
+    // Null, not zero, for radar: it is unaffected by cloud, and zero would claim a cloud-free radar scene.
+    cloudCoverPercentage: acquisition.cloudCoverPercentage,
+    coordinateReferenceSystem: "EPSG:32643",
+    layerId: `${investigationId}-layer-${role}`,
+  });
+
   const sceneSlots: InvestigationSceneSlot[] = [
-    {
-      role: "t0",
-      sceneId: sceneIds[0] ?? `${investigationId}-t0`,
-      name: `${area.name} · 2018-03-14`,
-      capturedAt: "2018-03-14T05:22:00.000Z",
-      modality: "optical",
-      sensorPlatform: "Sentinel-2A",
-      groundSampleDistanceMeters: 10,
-      cloudCoverPercentage: 4,
-      coordinateReferenceSystem: "EPSG:32643",
-      layerId: `${investigationId}-layer-t0`,
-    },
-    {
-      role: "t1",
-      sceneId: sceneIds[1] ?? `${investigationId}-t1`,
-      name: `${area.name} · 2026-07-29`,
-      capturedAt: "2026-07-29T05:31:00.000Z",
-      modality: "optical",
-      sensorPlatform: "Sentinel-2B",
-      groundSampleDistanceMeters: 10,
-      cloudCoverPercentage: 2,
-      coordinateReferenceSystem: "EPSG:32643",
-      layerId: `${investigationId}-layer-t1`,
-    },
+    slotFromAcquisition(baselineAcquisition, "t0"),
+    slotFromAcquisition(comparisonAcquisition, "t1"),
   ];
 
-  if (hasSar) {
-    sceneSlots.push({
-      role: "sar",
-      sceneId: sceneIds[2] ?? `${investigationId}-sar`,
-      name: `${area.name} · SAR 2026-07-27`,
-      capturedAt: "2026-07-27T17:48:00.000Z",
-      modality: "sar",
-      sensorPlatform: "Sentinel-1A",
-      groundSampleDistanceMeters: 20,
-      // Null, not zero: SAR is unaffected by cloud, and zero would claim a cloud-free radar scene.
-      cloudCoverPercentage: null,
-      coordinateReferenceSystem: "EPSG:32643",
-      layerId: `${investigationId}-layer-sar`,
-    });
+  if (hasSar && radarAcquisition) {
+    sceneSlots.push(slotFromAcquisition(radarAcquisition, "sar"));
   }
-
-  const acquisitions = buildAcquisitions(investigationId, random, area);
 
   const investigation: Investigation = {
     id: investigationId,
@@ -304,7 +323,7 @@ function generate(
     traceId,
   };
 
-  const sceneLayers = buildSceneLayers(investigationId, areaOfInterest, hasSar);
+  const sceneLayers = buildSceneLayers(investigationId, areaOfInterest, sceneSlots, acquisitions);
   const analysis = buildAnalysisProducts(investigationId, random, area, areaOfInterest, hasSar);
 
   return {
@@ -320,37 +339,57 @@ function generate(
 /**
  * The acquisition history over the area of interest, oldest first.
  *
- * Roughly one per year with a couple of clustered revisits, because that is what a real optical archive
- * over one place looks like — regular coverage with gaps where cloud made a pass useless. A perfectly
- * even series would make the timeline look synthetic and would hide the gap-handling the UI has to do.
+ * Clustered revisits separated by two long stretches with nothing usable, because that is what an optical
+ * archive over one place actually looks like: regular passes, then a season lost to cloud or to nothing
+ * being tasked. A perfectly even series would make the timeline look synthetic and would hide the
+ * gap-handling the interface exists to do.
+ *
+ * Radar is interleaved rather than given its own cadence, so the operator blocked by cloud in the optical
+ * lane has somewhere to drop to for roughly the same window — the move the two lanes exist to make
+ * obvious.
  */
 function buildAcquisitions(
   investigationId: string,
   random: () => number,
   area: (typeof MOCK_AREAS)[number],
 ): Acquisition[] {
+  let capturedMs = ARCHIVE_START;
+
   return Array.from({ length: ACQUISITION_COUNT }, (_, index) => {
-    const year = 2018 + index;
-    const month = Math.floor(randomFloat(random, 1, 12));
-    const day = Math.floor(randomFloat(random, 1, 27));
+    if (index > 0) {
+      const interval = ACQUISITION_INTERVAL_DAYS[(index - 1) % ACQUISITION_INTERVAL_DAYS.length];
+      // A few days of jitter on top, so no two archives land on the same calendar dates.
+      capturedMs += (interval + Math.floor(randomFloat(random, -6, 6))) * 86_400_000;
+    }
+
     const isSar = index % 4 === 3;
-    const cloud = isSar ? null : Math.round(randomFloat(random, 0, 46));
+    // Cloud is bimodal, not uniform: most optical passes over a place are usable and a minority are
+    // written off entirely. A uniform spread produces an archive with no clear scenes at either end,
+    // which is both unrealistic and useless for a demo — every pair would open degraded.
+    const isOvercast = index % 3 === 2;
+    const cloud = isSar
+      ? null
+      : Math.round(isOvercast ? randomFloat(random, 46, 88) : randomFloat(random, 0, 22));
+    const source =
+      index < ACQUISITION_COUNT / 2 ? STAND_IN_TILES.sentinel2Archive : STAND_IN_TILES.recentImagery;
 
     return {
       id: `${investigationId}-acq-${index}`,
       sceneId: `${investigationId}-scene-${index}`,
-      capturedAt: new Date(Date.UTC(year, month - 1, day, 5, 24)).toISOString(),
+      capturedAt: new Date(capturedMs).toISOString(),
       modality: isSar ? ("sar" as const) : ("optical" as const),
       sensorPlatform: isSar ? "Sentinel-1A" : index % 2 === 0 ? "Sentinel-2A" : "Sentinel-2B",
       groundSampleDistanceMeters: isSar ? 20 : 10,
       cloudCoverPercentage: cloud,
-      quicklookUrl: buildQuicklookUrl(
-        index < ACQUISITION_COUNT / 2
-          ? STAND_IN_TILES.sentinel2Archive.url
-          : STAND_IN_TILES.recentImagery.url,
-        area.latitude,
-        area.longitude,
-      ),
+      quicklookUrl: buildQuicklookUrl(source.url, area.latitude, area.longitude),
+      // Where the scrubber fetches this date's pixels from. Two genuinely different sources across the
+      // series so scrubbing reveals a real difference rather than reloading the same picture.
+      tiles: {
+        urlTemplate: source.url,
+        attribution: source.attribution,
+        minimumZoom: 3,
+        maximumZoom: source.maximumZoom,
+      },
       // Heavy cloud makes an acquisition catalogued but not analysable, which the timeline must show
       // rather than silently offering a scene that cannot answer anything.
       isAvailable: cloud === null || cloud < 40,
@@ -361,7 +400,8 @@ function buildAcquisitions(
 function buildSceneLayers(
   investigationId: string,
   bounds: { west: number; south: number; east: number; north: number },
-  hasSar: boolean,
+  slots: readonly InvestigationSceneSlot[],
+  acquisitions: readonly Acquisition[],
 ): EvidenceLayer[] {
   const base = {
     kind: "raster-tiles" as const,
@@ -373,62 +413,37 @@ function buildSceneLayers(
     features: [],
   };
 
-  const layers: EvidenceLayer[] = [
-    {
-      ...base,
-      id: `${investigationId}-layer-t0`,
-      title: "T0 · Sentinel-2 2018",
-      colorRampId: "true-color",
-      comparatorSide: "left",
-      tileUrlTemplate: STAND_IN_TILES.sentinel2Archive.url,
-      attribution: STAND_IN_TILES.sentinel2Archive.attribution,
-      maximumZoom: STAND_IN_TILES.sentinel2Archive.maximumZoom,
-      provenance: {
-        modelId: "ingest",
-        modelVersion: "1.4.0",
-        traceStepId: `${investigationId}-step-S1`,
-        confidence: null,
-      },
-    },
-    {
-      ...base,
-      id: `${investigationId}-layer-t1`,
-      title: "T1 · Sentinel-2 2026",
-      colorRampId: "true-color",
-      comparatorSide: "right",
-      tileUrlTemplate: STAND_IN_TILES.recentImagery.url,
+  // Built from the slots rather than from a fixed pair, so the imagery a role draws is always the imagery
+  // of the acquisition that role actually names.
+  return slots.map((slot) => {
+    const acquisition = acquisitions.find((candidate) => candidate.sceneId === slot.sceneId);
+    const tiles = acquisition?.tiles ?? {
+      urlTemplate: STAND_IN_TILES.recentImagery.url,
       attribution: STAND_IN_TILES.recentImagery.attribution,
       maximumZoom: STAND_IN_TILES.recentImagery.maximumZoom,
-      provenance: {
-        modelId: "ingest",
-        modelVersion: "1.4.0",
-        traceStepId: `${investigationId}-step-S1`,
-        confidence: null,
-      },
-    },
-  ];
+    };
 
-  if (hasSar) {
-    layers.push({
+    return {
       ...base,
-      id: `${investigationId}-layer-sar`,
-      title: "SAR · Sentinel-1 backscatter",
-      colorRampId: "sar-grayscale",
-      comparatorSide: "both",
-      isVisible: false,
-      tileUrlTemplate: STAND_IN_TILES.recentImagery.url,
-      attribution: STAND_IN_TILES.recentImagery.attribution,
-      maximumZoom: STAND_IN_TILES.recentImagery.maximumZoom,
+      id: slot.layerId,
+      title: `${slot.role.toUpperCase()} · ${slot.sensorPlatform} ${slot.capturedAt.slice(0, 10)}`,
+      colorRampId: slot.modality === "sar" ? ("sar-grayscale" as const) : ("true-color" as const),
+      comparatorSide:
+        slot.role === "t0" ? ("left" as const) : slot.role === "t1" ? ("right" as const) : ("both" as const),
+      // The radar reference is loaded but off by default: it is the cross-modal comparison's input, not
+      // part of the temporal one the workspace opens on.
+      isVisible: slot.role !== "sar",
+      tileUrlTemplate: tiles.urlTemplate,
+      attribution: tiles.attribution,
+      maximumZoom: tiles.maximumZoom,
       provenance: {
-        modelId: "sar-preprocess",
-        modelVersion: "0.9.2",
-        traceStepId: `${investigationId}-step-S8`,
+        modelId: slot.modality === "sar" ? "sar-preprocess" : "ingest",
+        modelVersion: slot.modality === "sar" ? "0.9.2" : "1.4.0",
+        traceStepId: `${investigationId}-step-${slot.modality === "sar" ? "S8" : "S1"}`,
         confidence: null,
       },
-    });
-  }
-
-  return layers;
+    };
+  });
 }
 
 interface AnalysisProducts {
@@ -1220,4 +1235,239 @@ export function getMockReportSections(investigationId: string): ReportSection[] 
       layerIds: [],
     },
   ];
+}
+
+/**
+ * The archive's answer to a temporal query.
+ *
+ * PHASE 1 ONLY, but held to the contract the backend will have to honour: it filters the generated series
+ * to the requested window and modalities, reports the holes it found, and — the part that matters — is
+ * allowed to DISAGREE with the operator by naming a better pair than the one currently selected.
+ *
+ * The recommendation is the whole reason this endpoint exists rather than the frontend simply choosing two
+ * scenes. Only the side holding the catalogue can say "the pair you would have picked straddles a cloudy
+ * pass, there is a clean one eleven days later" — and it can only say it if it is asked about a WINDOW
+ * rather than handed a selection.
+ */
+export function searchMockCatalogue(query: {
+  areaOfInterest: { west: number; south: number; east: number; north: number };
+  from: string;
+  to: string;
+  modalities: string[];
+  maximumCloudPercentage: number;
+}) {
+  // Resolved by geometry, not by investigation id, because that is how the real endpoint works: the
+  // archive is asked about ground, and knows nothing about who is asking or why.
+  const generated = findInvestigationCovering(query.areaOfInterest);
+  if (!generated) {
+    return null;
+  }
+
+  const fromMs = Date.parse(query.from);
+  const toMs = Date.parse(query.to);
+
+  const acquisitions = generated.investigation.acquisitions.filter((acquisition) => {
+    const capturedMs = Date.parse(acquisition.capturedAt);
+    return (
+      capturedMs >= fromMs && capturedMs <= toMs && query.modalities.includes(acquisition.modality)
+    );
+  });
+
+  const usable = acquisitions.filter(
+    (acquisition) =>
+      acquisition.isAvailable &&
+      (acquisition.cloudCoverPercentage === null ||
+        acquisition.cloudCoverPercentage <= query.maximumCloudPercentage),
+  );
+
+  return {
+    query: { ...query, areaOfInterest: generated.investigation.areaOfInterest },
+    acquisitions,
+    coverageGaps: buildCoverageGaps(acquisitions, query.maximumCloudPercentage),
+    recommendedPair: recommendPair(usable),
+    advisory: buildAdvisory(acquisitions, usable),
+  };
+}
+
+/** Spans between usable acquisitions longer than twice the median cadence. */
+function buildCoverageGaps(acquisitions: Acquisition[], maximumCloudPercentage: number) {
+  const usable = acquisitions
+    .filter(
+      (acquisition) =>
+        acquisition.isAvailable &&
+        (acquisition.cloudCoverPercentage === null ||
+          acquisition.cloudCoverPercentage <= maximumCloudPercentage),
+    )
+    .map((acquisition) => Date.parse(acquisition.capturedAt))
+    .sort((left, right) => left - right);
+
+  if (usable.length < 3) {
+    return [];
+  }
+
+  const intervals = usable.slice(1).map((time, index) => time - usable[index]);
+  const median = [...intervals].sort((left, right) => left - right)[
+    Math.floor(intervals.length / 2)
+  ];
+
+  const gaps: { from: string; to: string; days: number; reason: string }[] = [];
+  for (let index = 1; index < usable.length; index += 1) {
+    const span = usable[index] - usable[index - 1];
+    if (span <= median * 2) {
+      continue;
+    }
+
+    // Whether anything was flown but discarded is the distinction that matters to an operator: "no pass"
+    // is a tasking problem, "every pass too cloudy" is a sensor-choice problem with a radar answer.
+    const blockedByCloud = acquisitions.some((acquisition) => {
+      const capturedMs = Date.parse(acquisition.capturedAt);
+      return (
+        capturedMs > usable[index - 1] &&
+        capturedMs < usable[index] &&
+        acquisition.cloudCoverPercentage !== null &&
+        acquisition.cloudCoverPercentage > maximumCloudPercentage
+      );
+    });
+
+    gaps.push({
+      from: new Date(usable[index - 1]).toISOString(),
+      to: new Date(usable[index]).toISOString(),
+      days: Math.round(span / 86_400_000),
+      reason: blockedByCloud
+        ? `every pass over this window exceeded ${maximumCloudPercentage}% cloud`
+        : "no acquisition over this area in this window",
+    });
+  }
+
+  return gaps;
+}
+
+/** Day-of-year separation, folded so December and January read as one month apart. */
+function seasonalOffsetDays(earlierMs: number, laterMs: number): number {
+  const dayOfYear = (ms: number) => {
+    const date = new Date(ms);
+    return Math.floor(
+      (Date.UTC(2001, date.getUTCMonth(), date.getUTCDate()) - Date.UTC(2001, 0, 1)) / 86_400_000,
+    );
+  };
+
+  const difference = Math.abs(dayOfYear(earlierMs) - dayOfYear(laterMs));
+  return Math.min(difference, 365 - difference);
+}
+
+/**
+ * The widest, clearest, season-matched pair available.
+ *
+ * Season matching is the part that is easy to leave out and expensive to get wrong. Comparing February
+ * against April over farmland produces a large, real difference that is the crop cycle rather than
+ * anything anyone asked about — so a catalogue that recommends such a pair is recommending an artefact.
+ * The same chooser picks the investigation's opening pair, which is what stops the mock from handing the
+ * operator a selection its own interface immediately criticises.
+ *
+ * Season match is preferred, not required: an archive with no season-matched pair still has to answer,
+ * so the constraint is relaxed rather than returning nothing.
+ */
+function choosePair(candidates: readonly Acquisition[]): { t0: Acquisition; t1: Acquisition } | null {
+  if (candidates.length < 2) {
+    return null;
+  }
+
+  const sorted = [...candidates].sort(
+    (left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt),
+  );
+  const totalSpan = Math.max(
+    1,
+    Date.parse(sorted[sorted.length - 1].capturedAt) - Date.parse(sorted[0].capturedAt),
+  );
+
+  let best: { t0: Acquisition; t1: Acquisition; score: number } | null = null;
+
+  for (let earlier = 0; earlier < sorted.length - 1; earlier += 1) {
+    for (let later = earlier + 1; later < sorted.length; later += 1) {
+      const t0 = sorted[earlier];
+      const t1 = sorted[later];
+      const earlierMs = Date.parse(t0.capturedAt);
+      const laterMs = Date.parse(t1.capturedAt);
+
+      const span = (laterMs - earlierMs) / totalSpan;
+      const cloud = ((t0.cloudCoverPercentage ?? 0) + (t1.cloudCoverPercentage ?? 0)) / 200;
+      const seasonal = seasonalOffsetDays(earlierMs, laterMs) / 182;
+
+      // Span is what makes a comparison worth running; cloud and season are what make it trustworthy.
+      const score = span - cloud - seasonal * 1.5;
+
+      if (!best || score > best.score) {
+        best = { t0, t1, score };
+      }
+    }
+  }
+
+  return best ? { t0: best.t0, t1: best.t1 } : null;
+}
+
+function recommendPair(usable: Acquisition[]) {
+  const pair = choosePair(usable);
+  if (!pair) {
+    return null;
+  }
+
+  const separationDays = Math.round(
+    (Date.parse(pair.t1.capturedAt) - Date.parse(pair.t0.capturedAt)) / 86_400_000,
+  );
+  const combinedCloud = Math.round(
+    (pair.t0.cloudCoverPercentage ?? 0) + (pair.t1.cloudCoverPercentage ?? 0),
+  );
+  const seasonal = seasonalOffsetDays(Date.parse(pair.t0.capturedAt), Date.parse(pair.t1.capturedAt));
+
+  return {
+    t0SceneId: pair.t0.sceneId,
+    t1SceneId: pair.t1.sceneId,
+    separationDays,
+    reason: `Widest season-matched span in the window — ${combinedCloud}% combined cloud, ${seasonal} days apart in the season, across ${pair.t0.capturedAt.slice(0, 10)} and ${pair.t1.capturedAt.slice(0, 10)}.`,
+  };
+}
+
+/** One sentence when the catalogue has something to say about the window it was handed. */
+function buildAdvisory(acquisitions: Acquisition[], usable: Acquisition[]): string | null {
+  if (acquisitions.length === 0) {
+    return "Nothing catalogued over this area in the requested window. Widen the dates or add radar.";
+  }
+
+  if (usable.length === 0) {
+    return "Every acquisition in this window exceeds the cloud ceiling. Radar is unaffected by cloud and covers the same dates.";
+  }
+
+  if (usable.length === 1) {
+    return "Only one usable acquisition in this window — change detection needs two. Widen the dates or raise the cloud ceiling.";
+  }
+
+  const discarded = acquisitions.length - usable.length;
+  return discarded > 0
+    ? `${usable.length} usable of ${acquisitions.length} catalogued; ${discarded} held back by cloud or processing state.`
+    : null;
+}
+
+/** The generated investigation whose extent contains the queried centre. */
+function findInvestigationCovering(bounds: {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}): GeneratedInvestigation | null {
+  const centreLatitude = (bounds.north + bounds.south) / 2;
+  const centreLongitude = (bounds.east + bounds.west) / 2;
+
+  for (const generated of investigationsById.values()) {
+    const area = generated.investigation.areaOfInterest;
+    if (
+      centreLatitude >= area.south &&
+      centreLatitude <= area.north &&
+      centreLongitude >= area.west &&
+      centreLongitude <= area.east
+    ) {
+      return generated;
+    }
+  }
+
+  return null;
 }

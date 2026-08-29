@@ -41,16 +41,39 @@ export const cameraBookmarkSchema = z.object({
  * `quicklookUrl` is a single rendered image of the scene, not a tile template — enough to recognise the
  * place and judge cloud cover before committing to loading it.
  */
+export const acquisitionModalitySchema = z.enum([
+  "optical",
+  "sar",
+  "multispectral",
+  "hyperspectral",
+]);
+
+/**
+ * Where the pixels for one acquisition actually live.
+ *
+ * Carried on the acquisition rather than resolved separately, because scrubbing the timeline has to be
+ * able to put any date on the scene without a second round trip. A catalogue that lists observations but
+ * cannot say where to fetch them turns every scrub into a request the operator waits on.
+ */
+export const acquisitionTilesSchema = z.object({
+  urlTemplate: z.string().min(1),
+  attribution: z.string().nullable(),
+  minimumZoom: z.number().int().nonnegative(),
+  maximumZoom: z.number().int().nonnegative(),
+});
+
 export const acquisitionSchema = z.object({
   id: z.string().min(1),
   sceneId: z.string().min(1),
   capturedAt: isoTimestampSchema,
-  modality: z.enum(["optical", "sar", "multispectral", "hyperspectral"]),
+  modality: acquisitionModalitySchema,
   sensorPlatform: z.string().min(1),
   groundSampleDistanceMeters: z.number().positive(),
   /** Null for SAR, which is unaffected by cloud. Zero would claim a cloud-free radar scene. */
   cloudCoverPercentage: z.number().min(0).max(100).nullable(),
   quicklookUrl: z.string().nullable(),
+  /** Null when the acquisition is catalogued but has not been tiled, so it cannot be scrubbed to. */
+  tiles: acquisitionTilesSchema.nullable(),
   /** False when the acquisition is catalogued but not yet processed to a usable product. */
   isAvailable: z.boolean(),
 });

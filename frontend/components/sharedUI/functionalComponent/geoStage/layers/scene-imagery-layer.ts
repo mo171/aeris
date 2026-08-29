@@ -31,11 +31,25 @@ import type { StageComparatorSide, StageLayer } from "../geo-stage.types";
 /** Milliseconds a newly added raster takes to reach its target opacity. */
 const FADE_IN_MS = 420;
 
+/**
+ * Milliseconds a removed raster is kept on the globe while it fades out.
+ *
+ * Removing on the same frame the replacement is added drops straight through to the basemap for the
+ * duration of the incoming fade. That is invisible when layers change once, and impossible to miss when
+ * the operator is scrubbing a timeline — every step would flash. Overlapping the two is what makes a
+ * scrub read as one scene changing date rather than as a series of separate loads.
+ */
+const FADE_OUT_MS = 420;
+
 interface TrackedRaster {
   layer: ImageryLayer;
   descriptor: StageLayer;
   targetAlpha: number;
   fadeStartedAt: number;
+  /** Set when the descriptor list stopped containing this layer. Removed once it has faded out. */
+  retiringSince: number | null;
+  /** Opacity at the moment retirement began, so the fade interpolates rather than compounding. */
+  retiringFromAlpha: number;
 }
 
 export interface SceneImageryLayerSet {
@@ -56,6 +70,9 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
   let globalDim = 1;
 
   function resolveAlpha(entry: TrackedRaster): number {
+    if (entry.retiringSince !== null) {
+      return 0;
+    }
     return entry.descriptor.isVisible ? entry.targetAlpha * globalDim : 0;
   }
 
@@ -103,13 +120,13 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
     );
     const incomingIds = new Set(rasterLayers.map((layer) => layer.id));
     const addedIds: string[] = [];
+    const now = performance.now();
 
     for (const [layerId, entry] of tracked) {
-      if (!incomingIds.has(layerId)) {
-        if (!scene.imageryLayers.isDestroyed()) {
-          scene.imageryLayers.remove(entry.layer, true);
-        }
-        tracked.delete(layerId);
+      if (!incomingIds.has(layerId) && entry.retiringSince === null) {
+        // Marked, not removed. update() takes it off the globe once it has faded out.
+        entry.retiringSince = now;
+        entry.retiringFromAlpha = entry.layer.alpha;
       }
     }
 
@@ -121,6 +138,12 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
         existing.descriptor = descriptor;
         existing.targetAlpha = descriptor.opacity;
         applyGrading(existing.layer, descriptor);
+        if (existing.retiringSince !== null) {
+          // Scrubbed away and back again before the fade finished. The tiles are still resident, so it
+          // returns to full opacity immediately rather than fading in over imagery already on screen.
+          existing.retiringSince = null;
+          existing.fadeStartedAt = 0;
+        }
         continue;
       }
 
@@ -134,7 +157,9 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
         layer,
         descriptor,
         targetAlpha: descriptor.opacity,
-        fadeStartedAt: performance.now(),
+        fadeStartedAt: now,
+        retiringSince: null,
+        retiringFromAlpha: 0,
       });
       addedIds.push(descriptor.id);
     }
@@ -173,7 +198,11 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
 
   function bindComparator(leftLayerId: string | null, rightLayerId: string | null): void {
     for (const entry of tracked.values()) {
-      entry.layer.splitDirection = SplitDirection.NONE;
+      // A retiring layer keeps the side it was bound to. Releasing it to NONE would spread the outgoing
+      // date across the whole scene for the length of its fade — visible on every scrub step.
+      if (entry.retiringSince === null) {
+        entry.layer.splitDirection = SplitDirection.NONE;
+      }
     }
     assignSide(leftLayerId, "left");
     assignSide(rightLayerId, "right");
@@ -184,7 +213,21 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
   }
 
   function update(nowMs: number): void {
-    for (const entry of tracked.values()) {
+    for (const [layerId, entry] of tracked) {
+      if (entry.retiringSince !== null) {
+        const retiredFor = nowMs - entry.retiringSince;
+        if (retiredFor >= FADE_OUT_MS) {
+          if (!scene.imageryLayers.isDestroyed()) {
+            scene.imageryLayers.remove(entry.layer, true);
+          }
+          tracked.delete(layerId);
+          continue;
+        }
+
+        entry.layer.alpha = entry.retiringFromAlpha * (1 - retiredFor / FADE_OUT_MS);
+        continue;
+      }
+
       const target = resolveAlpha(entry);
       const elapsed = nowMs - entry.fadeStartedAt;
 

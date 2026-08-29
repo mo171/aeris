@@ -31,6 +31,7 @@ import type {
   StageProjection,
 } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 import { INVESTIGATION_LIMITS } from "@/lib/constants/investigation";
+import { TIMELINE_PLAYBACK, TIMELINE_QUERY } from "@/lib/constants/timeline";
 
 import type {
   AnalysisPlan,
@@ -61,6 +62,24 @@ interface InvestigationState {
   spotlightClaimId: string | null;
   /** A trace step's intermediate product, temporarily added to the scene. */
   artefactLayerId: string | null;
+
+  // ── The temporal selection ───────────────────────────────────────────────────────────────────────
+  //
+  // Which two observations the comparator is showing, chosen on the timeline. Scene ids rather than
+  // acquisition ids because that is what the layer stack, the pop-out inspector and the backend all key
+  // on — an acquisition id would need translating at three call sites.
+  //
+  // These are the whole reason the timeline exists: the pair is the single input that determines the
+  // answer, and it now lives in one place that a drag, a keystroke, a command and a backend suggestion
+  // all write to. Null means "fall back to whichever scene occupies that role", which is the state on
+  // arrival, before the operator has moved anything.
+  timelineBaselineSceneId: string | null;
+  timelineComparisonSceneId: string | null;
+  /** Stepping through the archive one acquisition at a time. Distinct from the comparator's dissolve. */
+  isTimelinePlaying: boolean;
+  timelinePlaybackRate: number;
+  /** Optical acquisitions above this are shown on the timeline but cannot be selected as inputs. */
+  timelineCloudCeilingPercentage: number;
 
   // ── Drawing and measurement ──────────────────────────────────────────────────────────────────────
   /** Which tool the pointer is currently armed with. Null means the camera owns the pointer. */
@@ -96,6 +115,13 @@ interface InvestigationState {
 
   setSpotlightClaimId: (claimId: string | null) => void;
   setArtefactLayerId: (layerId: string | null) => void;
+
+  setTimelineSelection: (role: "baseline" | "comparison", sceneId: string | null) => void;
+  /** Applies a pair in one write, so a recommendation cannot land as two separate scene changes. */
+  setTimelinePair: (baselineSceneId: string, comparisonSceneId: string) => void;
+  setTimelinePlaying: (isPlaying: boolean) => void;
+  setTimelinePlaybackRate: (rate: number) => void;
+  setTimelineCloudCeiling: (percentage: number) => void;
 
   setActiveDrawTool: (tool: StageDrawTool | null) => void;
   setDrawnRegions: (regions: readonly StageDrawnRegion[]) => void;
@@ -153,6 +179,12 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   spotlightClaimId: null,
   artefactLayerId: null,
 
+  timelineBaselineSceneId: null,
+  timelineComparisonSceneId: null,
+  isTimelinePlaying: false,
+  timelinePlaybackRate: TIMELINE_PLAYBACK.defaultRate,
+  timelineCloudCeilingPercentage: TIMELINE_QUERY.defaultMaximumCloudPercentage,
+
   activeDrawTool: null,
   drawnRegions: [],
   activeRegionId: null,
@@ -179,6 +211,11 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       soloLayerId: null,
       spotlightClaimId: null,
       artefactLayerId: null,
+      timelineBaselineSceneId: null,
+      timelineComparisonSceneId: null,
+      isTimelinePlaying: false,
+      timelinePlaybackRate: TIMELINE_PLAYBACK.defaultRate,
+      timelineCloudCeilingPercentage: TIMELINE_QUERY.defaultMaximumCloudPercentage,
       activeDrawTool: null,
       drawnRegions: [],
       activeRegionId: null,
@@ -196,6 +233,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       isRunning: false,
       spotlightClaimId: null,
       artefactLayerId: null,
+      timelineBaselineSceneId: null,
+      timelineComparisonSceneId: null,
+      isTimelinePlaying: false,
       drawnRegions: [],
       activeRegionId: null,
       activeDrawTool: null,
@@ -228,6 +268,25 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
 
   setSpotlightClaimId: (spotlightClaimId) => set({ spotlightClaimId }),
   setArtefactLayerId: (artefactLayerId) => set({ artefactLayerId }),
+
+  setTimelineSelection: (role, sceneId) =>
+    set(
+      role === "baseline"
+        ? { timelineBaselineSceneId: sceneId }
+        : { timelineComparisonSceneId: sceneId },
+    ),
+
+  setTimelinePair: (timelineBaselineSceneId, timelineComparisonSceneId) =>
+    set({ timelineBaselineSceneId, timelineComparisonSceneId }),
+
+  setTimelinePlaying: (isTimelinePlaying) => set({ isTimelinePlaying }),
+  setTimelinePlaybackRate: (timelinePlaybackRate) => set({ timelinePlaybackRate }),
+
+  // Raising the ceiling only widens what is selectable, so it cannot invalidate a selection. Lowering it
+  // can, and deliberately does not clear one: an operator who has explicitly chosen a cloudy scene has
+  // made a decision, and having a filter silently undo it is worse than the pair verdict warning about it.
+  setTimelineCloudCeiling: (timelineCloudCeilingPercentage) =>
+    set({ timelineCloudCeilingPercentage }),
 
   setActiveDrawTool: (activeDrawTool) => set({ activeDrawTool }),
 

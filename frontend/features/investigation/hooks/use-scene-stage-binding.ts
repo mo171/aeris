@@ -23,6 +23,7 @@
 
 import { useEffect, useRef } from "react";
 
+import type { StageLayer } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 import { COMPARATOR_BINDING, INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
@@ -33,6 +34,17 @@ import type { EvidenceLayer } from "../types/layer.types";
 interface SceneStageBindingOptions {
   investigation: Investigation | undefined;
   layers: EvidenceLayer[];
+  /**
+   * Imagery the timeline scrubbed to that no role slot already draws. Pushed BENEATH the evidence,
+   * because it is the ground an analysis ran on rather than a product of one — evidence drawn under the
+   * pixels it describes would be evidence nobody can see.
+   */
+  baseLayers?: readonly StageLayer[];
+  /**
+   * Comparator sides chosen on the timeline. Null leaves the role-based binding in charge, which is the
+   * state on arrival and whenever the cross-modal binding is active.
+   */
+  comparatorOverride?: { left: string | null; right: string | null } | null;
   /** Resolves the claim under the pointer into the stage features that support it. */
   featureIdsForClaim: (claimId: string) => string[];
 }
@@ -40,6 +52,8 @@ interface SceneStageBindingOptions {
 export function useSceneStageBinding({
   investigation,
   layers,
+  baseLayers,
+  comparatorOverride,
   featureIdsForClaim,
 }: SceneStageBindingOptions): void {
   const stage = useGeoStageStore((state) => state.handle);
@@ -105,8 +119,8 @@ export function useSceneStageBinding({
             layer.id === artefactLayerId ? { ...layer, isVisible: true } : layer,
           );
 
-    stage.sceneLayers.setLayers(renderedLayers);
-  }, [artefactLayerId, layers, stage]);
+    stage.sceneLayers.setLayers([...(baseLayers ?? []), ...renderedLayers]);
+  }, [artefactLayerId, baseLayers, layers, stage]);
 
   useEffect(() => {
     stage?.sceneLayers.setRenderMode(renderMode);
@@ -126,8 +140,14 @@ export function useSceneStageBinding({
     const layerIdForRole = (role: string) =>
       investigation.sceneSlots.find((slot) => slot.role === role)?.layerId ?? null;
 
-    stage.comparator.bind(layerIdForRole(binding.left), layerIdForRole(binding.right));
-  }, [comparatorBinding, investigation, stage]);
+    // The timeline wins when it has an opinion. A side it could not resolve — an acquisition the archive
+    // has catalogued but not tiled — falls back to its role slot rather than binding to nothing, so a
+    // scrub onto an untiled date leaves the previous imagery up instead of emptying half the scene.
+    const left = comparatorOverride?.left ?? layerIdForRole(binding.left);
+    const right = comparatorOverride?.right ?? layerIdForRole(binding.right);
+
+    stage.comparator.bind(left, right);
+  }, [comparatorBinding, comparatorOverride, investigation, stage]);
 
   useEffect(() => {
     stage?.comparator.setPlayback(isPlaybackRunning);

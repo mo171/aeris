@@ -21,6 +21,7 @@ import {
   getMockRegionSuggestions,
   getMockSceneInspection,
   listMockInvestigations,
+  searchMockCatalogue,
 } from "../data/investigation.data";
 import { insertUploadedScene, selectImageryPage } from "../data/imagery.data";
 import {
@@ -243,6 +244,18 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
       return inspection
         ? { status: 200, data: inspection }
         : { status: 404, data: { message: "Scene not found" } };
+    },
+  },
+  {
+    method: "POST",
+    match: exactPath(REST_API.catalogue.search),
+    handle: ({ body }) => {
+      const query = body as Parameters<typeof searchMockCatalogue>[0] | undefined;
+      const result = query?.areaOfInterest ? searchMockCatalogue(query) : null;
+
+      return result
+        ? { status: 200, data: result }
+        : { status: 404, data: { message: "No archive coverage for this area" } };
     },
   },
   {

@@ -25,6 +25,7 @@
 
 import {
   Box,
+  CalendarClock,
   Crosshair,
   Eye,
   FileText,
@@ -44,11 +45,20 @@ import { COMMAND_IDS } from "@/lib/constants/commands";
 import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
+import {
+  computeDomain,
+  nearestAcquisition,
+  positionForTime,
+  stepAcquisition,
+} from "../lib/timeline-geometry";
 import { useInvestigationStore } from "../store/investigation-store";
 import type { EvidenceItem } from "../types/evidence.types";
+import type { Acquisition } from "../types/investigation.types";
 
 interface InvestigationCommandOptions {
   ask: (query: string) => void;
+  /** The archive over this area, so temporal commands resolve a date to an observation that exists. */
+  acquisitions: Acquisition[];
   /** Opens the autonomous plan for review. Nothing executes until the operator approves it. */
   prepareAutonomous: (fromClaimId: string) => void;
   /** Evidence by id, so focus commands frame real geometry rather than guessing at it. */
@@ -59,6 +69,7 @@ interface InvestigationCommandOptions {
 
 export function useInvestigationCommands({
   ask,
+  acquisitions,
   prepareAutonomous,
   evidenceById,
   areaOfInterest,
@@ -336,6 +347,106 @@ export function useInvestigationCommands({
         isPaletteVisible: false,
       }),
 
+      // ── The temporal selection ─────────────────────────────────────────────────────────────────
+      //
+      // The pair is the one input that determines the answer, so it is agent-invocable like everything
+      // else. "Compare against 2019" is a legitimate instruction, and it has to reach the same selection
+      // a drag would — otherwise the machine and the operator are working two different timelines.
+      defineCommand({
+        id: COMMAND_IDS.investigation.scrubTo,
+        title: "Compare against a date",
+        description:
+          "Move one end of the comparison to the acquisition nearest a date. Snaps to a real observation, because a date with no pass behind it cannot be shown.",
+        group: "investigation",
+        keywords: ["timeline", "date", "scrub", "when", "compare against"],
+        icon: CalendarClock,
+        paramsSchema: z.object({
+          date: z.string().min(4),
+          end: z.enum(["baseline", "comparison"]).optional(),
+        }),
+        handler: ({ date, end }) => {
+          const targetMs = Date.parse(date);
+          if (!Number.isFinite(targetMs)) {
+            return;
+          }
+
+          const domain = computeDomain(acquisitions);
+          if (!domain) {
+            return;
+          }
+
+          const match = nearestAcquisition(
+            acquisitions,
+            positionForTime(targetMs, domain),
+            domain,
+            {
+              onlySelectable: true,
+              maximumCloudPercentage: store().timelineCloudCeilingPercentage,
+            },
+          );
+
+          if (match) {
+            store().setTimelineSelection(end ?? "comparison", match.sceneId);
+          }
+        },
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.stepAcquisition,
+        title: "Step to the next or previous acquisition",
+        description:
+          "Move one end of the comparison by one observation along the archive, skipping anything the cloud ceiling has ruled out.",
+        group: "investigation",
+        keywords: ["next", "previous", "advance", "timeline"],
+        icon: CalendarClock,
+        paramsSchema: z.object({
+          direction: z.enum(["next", "previous"]),
+          end: z.enum(["baseline", "comparison"]).optional(),
+        }),
+        handler: ({ direction, end }) => {
+          const role = end ?? "comparison";
+          const currentSceneId =
+            role === "baseline" ? store().timelineBaselineSceneId : store().timelineComparisonSceneId;
+
+          const next = stepAcquisition(
+            acquisitions,
+            currentSceneId,
+            direction === "next" ? 1 : -1,
+            store().timelineCloudCeilingPercentage,
+          );
+
+          if (next) {
+            store().setTimelineSelection(role, next.sceneId);
+          }
+        },
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.toggleTimelinePlayback,
+        title: "Play through the archive",
+        description:
+          "Step the comparison through every usable acquisition in turn, so the whole series is seen rather than one pair from it.",
+        group: "investigation",
+        keywords: ["timelapse", "series", "history", "play"],
+        icon: CalendarClock,
+        paramsSchema: z.void(),
+        handler: () => store().setTimelinePlaying(!store().isTimelinePlaying),
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.setCloudCeiling,
+        title: "Set the cloud ceiling",
+        description:
+          "Optical acquisitions above this percentage stay visible on the timeline but stop being offered as analysis inputs.",
+        group: "investigation",
+        icon: CalendarClock,
+        paramsSchema: z.object({ percentage: z.number().min(0).max(100) }),
+        handler: ({ percentage }) => store().setTimelineCloudCeiling(percentage),
+        isPaletteVisible: false,
+      }),
+
       // ── Autonomous, present, trace, report ─────────────────────────────────────────────────────
       defineCommand({
         id: COMMAND_IDS.investigation.runAutonomous,
@@ -410,7 +521,7 @@ export function useInvestigationCommands({
         },
       }),
     ];
-  }, [areaOfInterest, ask, evidenceById, prepareAutonomous]);
+  }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous]);
 
   useRegisterCommands(commands);
 }

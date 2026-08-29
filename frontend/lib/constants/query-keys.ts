@@ -12,6 +12,11 @@ export const QUERY_KEYS = {
     catalog: (search: string) => ["imagery", "catalog", search] as const,
     detail: (sceneId: string) => ["imagery", "detail", sceneId] as const,
   },
+  catalogue: {
+    all: ["catalogue"] as const,
+    /** Keyed by the serialised query, so two different windows over one area are two different caches. */
+    search: (queryKey: string) => ["catalogue", "search", queryKey] as const,
+  },
   missions: {
     all: ["missions"] as const,
     active: () => ["missions", "active"] as const,

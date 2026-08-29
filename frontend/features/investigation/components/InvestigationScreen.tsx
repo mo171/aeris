@@ -33,12 +33,14 @@ import { useUiStore } from "@/store/ui-store";
 
 import { useAnalysisRun } from "../hooks/use-analysis-run";
 import { useAutonomousInvestigation } from "../hooks/use-autonomous-investigation";
+import { useCatalogueSearch } from "../hooks/use-catalogue-search";
 import { useEvidenceGraph } from "../hooks/use-evidence-graph";
 import { useInvestigation } from "../hooks/use-investigation";
 import { useInvestigationCommands } from "../hooks/use-investigation-commands";
 import { useRegionSelection } from "../hooks/use-region-selection";
 import { useScenePopout } from "../hooks/use-scene-popout";
 import { useSceneStageBinding } from "../hooks/use-scene-stage-binding";
+import { useTimeline } from "../hooks/use-timeline";
 import { useInvestigationStore } from "../store/investigation-store";
 import type { Claim } from "../types/evidence.types";
 import type { InvestigationSceneSlot } from "../types/investigation.types";
@@ -55,6 +57,7 @@ import { SceneReadout } from "./viewer/SceneReadout";
 import { SplitHandle } from "./viewer/SplitHandle";
 import { TargetLockOverlay } from "./viewer/TargetLockOverlay";
 import { TemporalPlaybar } from "./viewer/TemporalPlaybar";
+import { TimelineScrubber } from "./viewer/TimelineScrubber";
 import { ViewerToolCluster } from "./viewer/ViewerToolCluster";
 
 interface InvestigationScreenProps {
@@ -68,6 +71,30 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const autonomous = useAutonomousInvestigation({ investigationId, ask });
   const regionSelection = useRegionSelection(investigationId);
   const scenePopout = useScenePopout({ investigationId, onAssignRole: assignSceneRole });
+  const catalogue = useCatalogueSearch(investigationId);
+
+  const sceneSlots = useMemo(() => investigation?.sceneSlots ?? [], [investigation]);
+  const acquisitions = useMemo(() => investigation?.acquisitions ?? [], [investigation]);
+
+  /** Which scene currently occupies which role, so the acquisition list can show what is bound. */
+  const roleBySceneId = useMemo(
+    () => Object.fromEntries(sceneSlots.map((slot) => [slot.sceneId, slot.role])),
+    [sceneSlots],
+  );
+
+
+  /**
+   * Which acquisitions the answer on screen actually drew from.
+   *
+   * Marked on the timeline so the operator can see that a claim about 2019 rests on the 2019 pass and not
+   * on a neighbouring one — the difference between an answer and an answer you can check.
+   */
+  const citedSceneIds = useMemo(
+    () => [...new Set(Object.values(graph.evidenceById).flatMap((item) => item.sourceSceneIds))],
+    [graph.evidenceById],
+  );
+
+  const timeline = useTimeline({ investigation, citedSceneIds });
 
   const isDataPanelOpen = useUiStore((state) => state.isDataPanelOpen);
   const isAssistantPanelOpen = useUiStore((state) => state.isAssistantPanelOpen);
@@ -86,10 +113,44 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const toggleSoloLayer = useInvestigationStore((state) => state.toggleSoloLayer);
   const togglePlanStep = useInvestigationStore((state) => state.togglePlanStep);
 
-  useSceneStageBinding({ investigation, layers, featureIdsForClaim });
+  useSceneStageBinding({
+    investigation,
+    layers,
+    baseLayers: timeline.layers,
+    comparatorOverride: timeline.comparatorOverride,
+    featureIdsForClaim,
+  });
+
+  /** Turns the popover's window into the temporal query the archive is actually asked. */
+  const handleArchiveSearch = useCallback(
+    (window: {
+      from: string;
+      to: string;
+      modalities: Parameters<typeof catalogue.search>[0]["modalities"];
+      cloudCeilingPercentage: number;
+    }) => {
+      if (!investigation) {
+        return;
+      }
+
+      // The ceiling is applied locally as well as sent, so the timeline stops offering scenes the query
+      // has already declared unusable rather than waiting for the response to disagree with it.
+      timeline.setCloudCeiling(window.cloudCeilingPercentage);
+
+      catalogue.search({
+        areaOfInterest: investigation.areaOfInterest,
+        from: window.from,
+        to: window.to,
+        modalities: window.modalities,
+        maximumCloudPercentage: window.cloudCeilingPercentage,
+      });
+    },
+    [catalogue, investigation, timeline],
+  );
 
   useInvestigationCommands({
     ask,
+    acquisitions,
     prepareAutonomous: autonomous.prepare,
     evidenceById: graph.evidenceById,
     areaOfInterest: investigation?.areaOfInterest ?? null,
@@ -126,15 +187,6 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const handleInvestigate = useCallback(
     (claimId: string) => autonomous.prepare(claimId),
     [autonomous],
-  );
-
-  const sceneSlots = useMemo(() => investigation?.sceneSlots ?? [], [investigation]);
-  const acquisitions = useMemo(() => investigation?.acquisitions ?? [], [investigation]);
-
-  /** Which scene currently occupies which role, so the acquisition list can show what is bound. */
-  const roleBySceneId = useMemo(
-    () => Object.fromEntries(sceneSlots.map((slot) => [slot.sceneId, slot.role])),
-    [sceneSlots],
   );
 
   if (error) {
@@ -229,6 +281,18 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                 <ViewerToolCluster />
               </div>
               <TemporalPlaybar sceneSlots={sceneSlots} />
+              <TimelineScrubber
+                timeline={timeline}
+                archive={{
+                  isSearching: catalogue.isSearching,
+                  error: catalogue.error,
+                  coverageGaps: catalogue.coverageGaps,
+                  recommendation: catalogue.recommendation,
+                  advisory: catalogue.advisory,
+                  onSearch: handleArchiveSearch,
+                  onDismissRecommendation: catalogue.dismissRecommendation,
+                }}
+              />
             </div>
 
             <PanelContainer
