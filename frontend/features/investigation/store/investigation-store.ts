@@ -26,6 +26,7 @@
 import { create } from "zustand";
 
 import type {
+  StageBuildingMode,
   StageDrawnRegion,
   StageDrawTool,
   StageProjection,
@@ -51,16 +52,25 @@ interface InvestigationState {
   /** Globe, flat map, or the 2.5D middle ground. Lives here so a command and the toggle agree. */
   projection: StageProjection;
   /**
-   * Whether building massing is drawn over the scene, and how much terrain height is exaggerated.
+   * How the built environment renders, and how much terrain height is exaggerated.
    *
    * Here rather than read back off the stage for the same reason projection is: a command, a button and
    * the renderer must not each hold their own opinion about what is on screen. It also keeps the control
    * out of the "mirror external state into React on mount" pattern, which is a stale-UI bug waiting.
    */
-  hasBuildingMassing: boolean;
+  buildingMode: StageBuildingMode;
   terrainExaggeration: number;
   isPlaybackRunning: boolean;
   isPresentMode: boolean;
+
+  /**
+   * Visibility and opacity for the reference catalogue — terrain shading, boundaries, roads.
+   *
+   * Kept apart from the evidence overrides below on purpose. Reference layers are context nobody asserted;
+   * evidence layers are model output that must carry provenance. One map for both would let a boundary be
+   * handled like a finding, which is the confusion the whole separation exists to prevent.
+   */
+  referenceLayerState: Record<string, { isVisible: boolean; opacity: number }>;
 
   /** Operator overrides on top of what the backend declared. Absent means "use the descriptor". */
   layerVisibilityOverrides: Record<string, boolean>;
@@ -123,6 +133,15 @@ interface InvestigationState {
   // ── The analysis run ─────────────────────────────────────────────────────────────────────────────
   runs: AnalysisRun[];
   isRunning: boolean;
+  /**
+   * Which past run the answer surface is showing. Null follows the newest.
+   *
+   * Without this a second question made the first answer unrecoverable — the panel always rendered
+   * `runs.at(-1)` and the history could only RE-ASK, which reruns the models and may not even reproduce
+   * the same numbers. For a product whose whole claim is auditability, an answer you cannot go back to is
+   * not audited.
+   */
+  selectedRunId: string | null;
 
   // ── Actions ──────────────────────────────────────────────────────────────────────────────────────
   enterInvestigation: (investigationId: string, mode: InvestigationMode) => void;
@@ -132,10 +151,13 @@ interface InvestigationState {
   setRenderMode: (renderMode: LayerRenderMode) => void;
   toggleRenderMode: () => void;
   setProjection: (projection: StageProjection) => void;
-  setBuildingMassing: (hasBuildingMassing: boolean) => void;
+  setBuildingMode: (mode: StageBuildingMode) => void;
   setTerrainExaggeration: (factor: number) => void;
   setPlaybackRunning: (isRunning: boolean) => void;
   togglePresentMode: () => void;
+
+  setReferenceLayerVisibility: (layerId: string, isVisible: boolean) => void;
+  setReferenceLayerOpacity: (layerId: string, opacity: number) => void;
 
   setLayerVisibility: (layerId: string, isVisible: boolean) => void;
   setLayerOpacity: (layerId: string, opacity: number) => void;
@@ -162,6 +184,7 @@ interface InvestigationState {
   setActivePlan: (plan: AnalysisPlan | null) => void;
   togglePlanStep: (stepId: string) => void;
 
+  selectRun: (runId: string | null) => void;
   startRun: (run: AnalysisRun) => void;
   upsertTraceStep: (runId: string, step: AnalysisTraceStep) => void;
   appendAnswerText: (runId: string, text: string) => void;
@@ -199,11 +222,12 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   comparatorBinding: "temporal",
   renderMode: "draped",
   projection: "3D",
-  hasBuildingMassing: SCENE_RELIEF.showBuildingsInSceneMode,
-  terrainExaggeration: SCENE_RELIEF.terrainExaggeration,
+  buildingMode: SCENE_RELIEF.defaultBuildingMode,
+  terrainExaggeration: SCENE_RELIEF.defaultTerrainExaggeration,
   isPlaybackRunning: false,
   isPresentMode: false,
 
+  referenceLayerState: {},
   layerVisibilityOverrides: {},
   layerOpacityOverrides: {},
   soloLayerId: null,
@@ -229,6 +253,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
 
   runs: [],
   isRunning: false,
+  selectedRunId: null,
 
   // Entering resets everything view-scoped. Carrying one investigation's hidden layers into the next
   // would make the workspace feel haunted.
@@ -238,10 +263,11 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       comparatorBinding: mode,
       renderMode: "draped",
       projection: "3D",
-      hasBuildingMassing: SCENE_RELIEF.showBuildingsInSceneMode,
-      terrainExaggeration: SCENE_RELIEF.terrainExaggeration,
+      buildingMode: SCENE_RELIEF.defaultBuildingMode,
+      terrainExaggeration: SCENE_RELIEF.defaultTerrainExaggeration,
       isPlaybackRunning: false,
       isPresentMode: false,
+      referenceLayerState: {},
       layerVisibilityOverrides: {},
       layerOpacityOverrides: {},
       soloLayerId: null,
@@ -262,6 +288,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       activePlan: null,
       runs: [],
       isRunning: false,
+      selectedRunId: null,
     }),
 
   leaveInvestigation: () =>
@@ -269,6 +296,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       investigationId: null,
       runs: [],
       isRunning: false,
+      selectedRunId: null,
       spotlightClaimId: null,
       artefactLayerId: null,
       inspectedFeature: null,
@@ -287,10 +315,32 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   toggleRenderMode: () =>
     set((state) => ({ renderMode: state.renderMode === "draped" ? "extruded" : "draped" })),
   setProjection: (projection) => set({ projection }),
-  setBuildingMassing: (hasBuildingMassing) => set({ hasBuildingMassing }),
+  setBuildingMode: (buildingMode) => set({ buildingMode }),
   setTerrainExaggeration: (terrainExaggeration) => set({ terrainExaggeration }),
   setPlaybackRunning: (isPlaybackRunning) => set({ isPlaybackRunning }),
   togglePresentMode: () => set((state) => ({ isPresentMode: !state.isPresentMode })),
+
+  setReferenceLayerVisibility: (layerId, isVisible) =>
+    set((state) => ({
+      referenceLayerState: {
+        ...state.referenceLayerState,
+        [layerId]: {
+          opacity: state.referenceLayerState[layerId]?.opacity ?? 1,
+          isVisible,
+        },
+      },
+    })),
+
+  setReferenceLayerOpacity: (layerId, opacity) =>
+    set((state) => ({
+      referenceLayerState: {
+        ...state.referenceLayerState,
+        [layerId]: {
+          isVisible: state.referenceLayerState[layerId]?.isVisible ?? true,
+          opacity,
+        },
+      },
+    })),
 
   setLayerVisibility: (layerId, isVisible) =>
     set((state) => ({
@@ -368,7 +418,12 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
           },
     ),
 
-  startRun: (run) => set((state) => ({ runs: [...state.runs, run], isRunning: true })),
+  selectRun: (selectedRunId) => set({ selectedRunId }),
+
+  // A new run always takes the surface. Leaving an old answer on screen while the machine works below it
+  // is how an operator reads a stale number as a fresh one.
+  startRun: (run) =>
+    set((state) => ({ runs: [...state.runs, run], isRunning: true, selectedRunId: null })),
 
   upsertTraceStep: (runId, step) =>
     set((state) => ({

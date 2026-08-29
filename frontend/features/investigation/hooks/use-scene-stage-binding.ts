@@ -42,6 +42,14 @@ interface SceneStageBindingOptions {
    */
   baseLayers?: readonly StageLayer[];
   /**
+   * Context layers, split by where they belong in the draw order.
+   *
+   * `under` is ground the imagery sits on — shaded relief. `over` is annotation that would be invisible
+   * beneath it — boundaries, roads. Both are pushed as plain stage layers with no provenance, because
+   * nothing asserted them.
+   */
+  referenceLayers?: { under: readonly StageLayer[]; over: readonly StageLayer[] };
+  /**
    * Comparator sides chosen on the timeline. Null leaves the role-based binding in charge, which is the
    * state on arrival and whenever the cross-modal binding is active.
    */
@@ -62,6 +70,7 @@ export function useSceneStageBinding({
   investigation,
   layers,
   baseLayers,
+  referenceLayers,
   comparatorOverride,
   featureIdsForClaim,
   illuminationTime,
@@ -72,7 +81,7 @@ export function useSceneStageBinding({
   const comparatorBinding = useInvestigationStore((state) => state.comparatorBinding);
   const renderMode = useInvestigationStore((state) => state.renderMode);
   const projection = useInvestigationStore((state) => state.projection);
-  const hasBuildingMassing = useInvestigationStore((state) => state.hasBuildingMassing);
+  const buildingMode = useInvestigationStore((state) => state.buildingMode);
   const terrainExaggeration = useInvestigationStore((state) => state.terrainExaggeration);
   const spotlightClaimId = useInvestigationStore((state) => state.spotlightClaimId);
   const artefactLayerId = useInvestigationStore((state) => state.artefactLayerId);
@@ -133,12 +142,27 @@ export function useSceneStageBinding({
             layer.id === artefactLayerId ? { ...layer, isVisible: true } : layer,
           );
 
-    stage.sceneLayers.setLayers([...(baseLayers ?? []), ...renderedLayers]);
-  }, [artefactLayerId, baseLayers, layers, stage]);
+    // Draw order IS descriptor order, so this list is the stack from the ground up: relief, then the
+    // operator's imagery, then annotation over it, then the evidence on top of everything.
+    stage.sceneLayers.setLayers([
+      ...(referenceLayers?.under ?? []),
+      ...(baseLayers ?? []),
+      ...renderedLayers.filter((layer) => layer.kind === "raster-tiles"),
+      ...(referenceLayers?.over ?? []),
+      ...renderedLayers.filter((layer) => layer.kind !== "raster-tiles"),
+    ]);
+  }, [artefactLayerId, baseLayers, layers, referenceLayers, stage]);
 
   useEffect(() => {
     stage?.sceneLayers.setRenderMode(renderMode);
   }, [renderMode, stage]);
+
+  // Magnitude moves from height to colour exactly when the scene has no height to spend: a flat
+  // projection cannot extrude at all, and draped mode chooses not to. Without this every change region
+  // renders identically however much changed, dropping the most important number on the feature.
+  useEffect(() => {
+    stage?.sceneLayers.setMagnitudeShading(projection === "2D" || renderMode === "draped");
+  }, [projection, renderMode, stage]);
 
   // A scrub replaces the imagery on every step. The fade tuned for a deliberate layer change reads as lag
   // when it happens ten times inside one drag, so it shortens while the operator is moving through time
@@ -158,12 +182,19 @@ export function useSceneStageBinding({
   // Relief is pushed after the mode switch has already applied its defaults, so an operator override
   // survives — entering scene mode sets a starting point, it does not overrule a choice already made.
   useEffect(() => {
-    stage?.appearance.setBuildingsVisible(hasBuildingMassing);
-  }, [hasBuildingMassing, stage]);
+    stage?.appearance.setBuildingMode(buildingMode);
+  }, [buildingMode, stage]);
 
+  // Building massing and terrain exaggeration are alternative ways to convey height, and they fight each
+  // other. In a city the vertical information is in the BUILDINGS — a 30 m-posting elevation model holds
+  // none of it — so exaggerating the ground under un-exaggerated massing only breaks the relationship
+  // between them. In open landscape there are no buildings and exaggeration is exactly the right tool.
+  // Whichever one is carrying the height gets to be the one that does.
   useEffect(() => {
-    stage?.appearance.setTerrainExaggeration(terrainExaggeration);
-  }, [stage, terrainExaggeration]);
+    stage?.appearance.setTerrainExaggeration(
+      buildingMode === "none" ? terrainExaggeration : 1,
+    );
+  }, [buildingMode, stage, terrainExaggeration]);
 
   useEffect(() => {
     stage?.appearance.setIlluminationTime(illuminationTime ?? null);

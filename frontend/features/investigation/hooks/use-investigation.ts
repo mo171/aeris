@@ -18,9 +18,13 @@ import { useCallback, useEffect } from "react";
 
 import { QUERY_KEYS } from "@/lib/constants/query-keys";
 
-import { attachScene, fetchInvestigation } from "../services/investigation.service";
+import {
+  attachScene,
+  fetchInvestigation,
+  saveCameraBookmark,
+} from "../services/investigation.service";
 import { useInvestigationStore } from "../store/investigation-store";
-import type { Investigation, SceneRole } from "../types/investigation.types";
+import type { CameraBookmark, Investigation, SceneRole } from "../types/investigation.types";
 
 interface UseInvestigationResult {
   investigation: Investigation | undefined;
@@ -28,6 +32,9 @@ interface UseInvestigationResult {
   error: Error | null;
   /** Binds an acquisition into a comparison role. Used by the pop-out windows and the acquisition list. */
   assignSceneRole: (sceneId: string, role: SceneRole) => void;
+  /** Persists the current camera pose so the investigation's link reopens this exact framing. */
+  saveCameraView: (bookmark: CameraBookmark) => void;
+  isSavingCameraView: boolean;
 }
 
 export function useInvestigation(investigationId: string): UseInvestigationResult {
@@ -64,6 +71,22 @@ export function useInvestigation(investigationId: string): UseInvestigationResul
       queryClient.setQueryData(QUERY_KEYS.investigations.detail(investigationId), updated),
   });
 
+  /**
+   * Persists the current camera pose against the investigation.
+   *
+   * Written on an explicit save, never on camera movement: the camera changes every frame and mirroring
+   * that to the backend would be thousands of requests a session. The cached record is patched optimistically
+   * so the header can confirm the view was saved without waiting for a round trip it does not need.
+   */
+  const { mutate: mutateBookmark, isPending: isSavingBookmark } = useMutation({
+    mutationFn: (bookmark: CameraBookmark) => saveCameraBookmark(investigationId, bookmark),
+    onSuccess: (_result, bookmark) =>
+      queryClient.setQueryData<Investigation>(
+        QUERY_KEYS.investigations.detail(investigationId),
+        (current) => (current ? { ...current, cameraBookmark: bookmark } : current),
+      ),
+  });
+
   return {
     investigation: data,
     isLoading,
@@ -72,5 +95,10 @@ export function useInvestigation(investigationId: string): UseInvestigationResul
       (sceneId: string, role: SceneRole) => mutate({ sceneId, role }),
       [mutate],
     ),
+    saveCameraView: useCallback(
+      (bookmark: CameraBookmark) => mutateBookmark(bookmark),
+      [mutateBookmark],
+    ),
+    isSavingCameraView: isSavingBookmark,
   };
 }

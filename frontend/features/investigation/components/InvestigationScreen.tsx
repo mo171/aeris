@@ -26,6 +26,7 @@ import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShe
 import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
 import { PanelSkeleton } from "@/components/sharedUI/functionalComponent/feedback/PanelSkeleton";
+import { ANALYSIS_OPERATIONS } from "@/lib/constants/analysis-operations";
 import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
 import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
 import { useGeoStageStore } from "@/store/geo-stage-store";
@@ -39,6 +40,7 @@ import { useInvestigation } from "../hooks/use-investigation";
 import { useInvestigationCommands } from "../hooks/use-investigation-commands";
 import { useRegionSelection } from "../hooks/use-region-selection";
 import { useScenePopout } from "../hooks/use-scene-popout";
+import { useReferenceLayers } from "../hooks/use-reference-layers";
 import { useSceneStageBinding } from "../hooks/use-scene-stage-binding";
 import { useTimeline } from "../hooks/use-timeline";
 import { useInvestigationStore } from "../store/investigation-store";
@@ -66,13 +68,15 @@ interface InvestigationScreenProps {
 }
 
 export function InvestigationScreen({ investigationId }: InvestigationScreenProps) {
-  const { investigation, isLoading, error, assignSceneRole } = useInvestigation(investigationId);
+  const { investigation, isLoading, error, assignSceneRole, saveCameraView } =
+    useInvestigation(investigationId);
   const { graph, layers, featureIdsForClaim } = useEvidenceGraph(investigationId);
   const { ask, stop } = useAnalysisRun(investigationId);
   const autonomous = useAutonomousInvestigation({ investigationId, ask });
   const regionSelection = useRegionSelection(investigationId);
   const scenePopout = useScenePopout({ investigationId, onAssignRole: assignSceneRole });
   const catalogue = useCatalogueSearch(investigationId);
+  const referenceLayers = useReferenceLayers();
 
   const sceneSlots = useMemo(() => investigation?.sceneSlots ?? [], [investigation]);
   const acquisitions = useMemo(() => investigation?.acquisitions ?? [], [investigation]);
@@ -146,12 +150,45 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
     investigation,
     layers,
     baseLayers: timeline.layers,
+    referenceLayers,
     comparatorOverride: timeline.comparatorOverride,
     featureIdsForClaim,
     // The scene is lit for the moment the comparison observation was taken, so its shadows agree with its
     // pixels rather than with the operator's wall clock.
     illuminationTime: timeline.comparison?.capturedAt ?? null,
   });
+
+  /**
+   * What the investigation can currently satisfy, so each Toolbox operation can say what it is waiting
+   * for rather than appearing broken.
+   */
+  const analysisReadiness = useMemo(
+    () => ({
+      pair: timeline.baseline !== null && timeline.comparison !== null,
+      optical: timeline.comparison?.modality !== "sar",
+      sar: sceneSlots.some((slot) => slot.role === "sar"),
+      evidence: layers.some((layer) => layer.features.length > 0),
+      scopeLabel: regionSelection.activeRegion ? "the drawn region" : "the area of interest",
+    }),
+    [layers, regionSelection.activeRegion, sceneSlots, timeline.baseline, timeline.comparison],
+  );
+
+  /**
+   * Runs a named operation.
+   *
+   * It goes through the SAME analysis run as a typed question — one pipeline, two ways in — but carries
+   * the operation id on the wire so the backend dispatches directly instead of classifying intent from a
+   * sentence it might read wrong.
+   */
+  const handleRunOperation = useCallback(
+    (operationId: string) => {
+      const operation = ANALYSIS_OPERATIONS.find((candidate) => candidate.id === operationId);
+      if (operation) {
+        ask(operation.prompt, { operationId });
+      }
+    },
+    [ask],
+  );
 
   /** Turns the popover's window into the temporal query the archive is actually asked. */
   const handleArchiveSearch = useCallback(
@@ -183,6 +220,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   useInvestigationCommands({
     ask,
     acquisitions,
+    saveCameraView,
     prepareAutonomous: autonomous.prepare,
     evidenceById: graph.evidenceById,
     areaOfInterest: investigation?.areaOfInterest ?? null,
@@ -278,6 +316,8 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
             >
               <PanelErrorBoundary panelName="Inputs">
                 <LeftPanelTabs
+                  readiness={analysisReadiness}
+                  onRunOperation={handleRunOperation}
                   sceneSlots={sceneSlots}
                   acquisitions={acquisitions}
                   roleBySceneId={roleBySceneId}

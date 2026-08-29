@@ -71,6 +71,24 @@ export const VECTOR_PALETTE: Readonly<
   "artefact-neutral": { fill: AERIS_COLOR_HEX.blue, outline: AERIS_COLOR_HEX.blue, highlight: AERIS_COLOR_HEX.white },
 };
 
+/**
+ * How magnitude is encoded in colour when it cannot be encoded in height.
+ *
+ * Extrusion is the primary magnitude channel, and it does not exist in a flat projection or in draped
+ * mode — every change region then renders identically regardless of how much changed, which drops the
+ * single most important attribute on the feature. Graduating the fill restores it.
+ *
+ * The floor matters: a low-magnitude region must stay VISIBLE. Fading it to nothing would hide real
+ * evidence for being small, which is a different statement from showing it as minor.
+ */
+export const MAGNITUDE_SHADING = {
+  minimumWeight: 0.4,
+  maximumWeight: 1,
+  /** Above this share of full magnitude the fill also lightens, so the strongest regions separate. */
+  brightenAboveMagnitude: 0.66,
+  brightenAmount: 0.32,
+} as const;
+
 export const LAYER_RENDERING = {
   /** Starting opacity per layer kind. The operator can override any of them from the layer stack. */
   defaultOpacity: {

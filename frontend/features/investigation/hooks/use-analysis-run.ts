@@ -45,7 +45,7 @@ const EMPTY_GRAPH: NormalisedEvidenceGraph = {
 };
 
 interface AnalysisRunControls {
-  ask: (query: string, options?: { planId?: string }) => void;
+  ask: (query: string, options?: { planId?: string; operationId?: string }) => void;
   stop: () => void;
 }
 
@@ -171,7 +171,7 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
   );
 
   const ask = useCallback(
-    (query: string, options?: { planId?: string }) => {
+    (query: string, options?: { planId?: string; operationId?: string }) => {
       const trimmedQuery = query.trim();
       if (trimmedQuery.length === 0 || abortControllerRef.current) {
         return;
@@ -193,6 +193,7 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
           regionBounds:
             store.drawnRegions.find((region) => region.id === store.activeRegionId)?.bounds ?? null,
           planId: options?.planId ?? null,
+          operationId: options?.operationId ?? null,
         },
         { onEvent: handleEvent },
         abortController.signal,

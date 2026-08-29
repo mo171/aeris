@@ -14,14 +14,15 @@
 //         The fallback exists so the application never boots to a black sphere, not as an equal option.
 
 import {
+  Cesium3DTileset,
   Cesium3DTileStyle,
+  createGooglePhotorealistic3DTileset,
   EllipsoidTerrainProvider,
   ImageryLayer,
   Ion,
   UrlTemplateImageryProvider,
   createOsmBuildingsAsync,
   createWorldTerrainAsync,
-  type Cesium3DTileset,
   type TerrainProvider,
   type Viewer,
 } from "cesium";
@@ -41,6 +42,7 @@ if (typeof window !== "undefined") {
 }
 
 const ionAccessToken = env.NEXT_PUBLIC_CESIUM_ION_TOKEN.trim();
+const googleMapsApiKey = env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.trim();
 
 if (ionAccessToken.length > 0) {
   Ion.defaultAccessToken = ionAccessToken;
@@ -150,6 +152,53 @@ export async function createBuildingMassing(): Promise<Cesium3DTileset | null> {
     return tileset;
   } catch (error) {
     console.warn("[AERIS] Building massing unavailable, the scene stays flat.", error);
+    return null;
+  }
+}
+
+/**
+ * Google Photorealistic 3D Tiles — textured photogrammetry of the real city.
+ *
+ * NOT a replacement for building massing, and not an analysis surface. The trade, stated honestly:
+ *
+ *   MASSING (createBuildingMassing, above) is free, is grey untextured boxes, and sits ON TOP of the
+ *   operator's imagery — so the comparator, the change mask and every raster stay visible underneath.
+ *   It is the analysis default and stays the default. NOTHING about it changed when this was added.
+ *
+ *   PHOTOREALISTIC is metered per tile, is beautiful, and REPLACES the ground. It carries its own terrain
+ *   and texture, so Cesium's guidance is to hide the globe beneath it — which means the operator's T0/T1
+ *   rasters and the before/after split have nothing left to draw on. Draped vector evidence survives only
+ *   because the layer set is switched to classify onto 3D tiles as well as terrain.
+ *
+ * Reached through `createGooglePhotorealistic3DTileset`, the documented API, which needs a Google Maps
+ * key with the Map Tiles API enabled.
+ *
+ * The other route is Cesium Ion asset 2275207 via `Cesium3DTileset.fromIonAssetId`, which would reuse the
+ * existing Ion token and need no second key. It is recorded here because it is the obvious thing to reach
+ * for — and because it does NOT work as of Cesium 1.144: the asset is an external one, and the promise
+ * neither resolves nor rejects, issuing no request at all. Measured, not assumed. Do not spend an
+ * afternoon rediscovering it.
+ */
+const PHOTOREALISTIC_ION_ASSET_ID = 2275207;
+
+/** Whether the photorealistic mode can be offered at all, so the control can say why when it cannot. */
+export function hasPhotorealisticAccess(): boolean {
+  return googleMapsApiKey.length > 0;
+}
+
+export async function createPhotorealisticTileset(): Promise<Cesium3DTileset | null> {
+  if (!hasPhotorealisticAccess()) {
+    return null;
+  }
+
+  try {
+    // Created only when the mode actually selects it — every tile it fetches is billed.
+    return await createGooglePhotorealistic3DTileset({ key: googleMapsApiKey });
+  } catch (error) {
+    console.warn(
+      `[AERIS] Photorealistic 3D Tiles unavailable. The Ion route (asset ${PHOTOREALISTIC_ION_ASSET_ID}) is the documented alternative.`,
+      error,
+    );
     return null;
   }
 }

@@ -78,6 +78,12 @@ const BINDING_LABEL: Record<WorkspaceMode, string> = {
   crossModal: "Cross-modal",
 };
 
+/** Said in terms of what the operator will see, not of which slots are bound. */
+const BINDING_HINT: Record<WorkspaceMode, string> = {
+  temporal: "Compare the two dates — the same sensor, before against after",
+  crossModal: "Compare radar against optical — does backscatter agree with reflectance?",
+};
+
 export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: TimelineScrubberProps) {
   const {
     lanes,
@@ -298,6 +304,39 @@ export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: Time
 
         <span className="flex-1" />
 
+        {/*
+          Which PAIR is being compared stays visible at all times. It was briefly folded into the expand
+          alongside the speeds, and that was wrong: a playback rate is a preference, but temporal against
+          cross-modal changes what the whole comparator is showing, and a mode switch nobody can see is a
+          mode nobody knows they are in.
+        */}
+        <span className="flex items-center gap-0.5">
+          {(Object.keys(BINDING_LABEL) as WorkspaceMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              disabled={mode === "crossModal" && !hasCrossModalScene}
+              onClick={() => setComparatorBinding(mode)}
+              aria-pressed={comparatorBinding === mode}
+              title={
+                mode === "crossModal" && !hasCrossModalScene
+                  ? "No radar scene attached to compare against"
+                  : BINDING_HINT[mode]
+              }
+              className={cn(
+                "rounded-sm px-1.5 py-0.5 font-mono text-[10px] tracking-wide transition-colors duration-fast disabled:opacity-35",
+                comparatorBinding === mode
+                  ? "bg-aeris-teal/10 text-aeris-teal"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {BINDING_LABEL[mode]}
+            </button>
+          ))}
+        </span>
+
+        <span className="h-3 w-px bg-border" aria-hidden="true" />
+
         <div className="flex items-center gap-0.5">
           <Button
             type="button"
@@ -449,30 +488,6 @@ export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: Time
                 )}
               >
                 {rate}×
-              </button>
-            ))}
-          </span>
-
-          <span className="h-3 w-px bg-border" aria-hidden="true" />
-
-          {/* Absorbed from the comparator playbar: "what is compared" and "when" are one question. */}
-          <span className="flex items-center gap-1">
-            <span className="aeris-technical">Compare</span>
-            {(Object.keys(BINDING_LABEL) as WorkspaceMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                disabled={mode === "crossModal" && !hasCrossModalScene}
-                onClick={() => setComparatorBinding(mode)}
-                aria-pressed={comparatorBinding === mode}
-                className={cn(
-                  "rounded-sm px-1 font-mono text-[10px] transition-colors duration-fast disabled:opacity-40",
-                  comparatorBinding === mode
-                    ? "text-aeris-teal"
-                    : "text-muted-foreground/60 hover:text-foreground",
-                )}
-              >
-                {BINDING_LABEL[mode]}
               </button>
             ))}
           </span>

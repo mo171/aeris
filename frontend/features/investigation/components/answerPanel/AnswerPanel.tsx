@@ -12,6 +12,11 @@
 //         The claims carry the spotlight interaction, so hovering an answer dims the scene and raises the
 //         geometry supporting it. That is the evidence-first principle made operable rather than stated.
 //
+//         Prior runs are REOPENABLE, not merely re-askable. Re-asking reruns the models, which costs time
+//         and may not reproduce the same numbers; for a product whose claim is auditability, an answer you
+//         cannot return to has not been audited. Each row carries when it ran, how long it took and what
+//         confidence it reached, so the history reads as a record rather than as a list of old questions.
+//
 //         A drawn region appears as a chip above the composer. The operator must be able to see that the
 //         next question is scoped before they ask it — discovering it afterwards, from a surprisingly
 //         narrow answer, is the kind of thing that destroys trust in a tool like this.
@@ -27,7 +32,7 @@ import { EmptyState } from "@/components/sharedUI/functionalComponent/feedback/E
 import { PromptComposer } from "@/components/sharedUI/functionalComponent/input/PromptComposer";
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
 import { Button } from "@/components/ui/button";
-import { formatDurationMs } from "@/lib/formatters";
+import { formatDurationMs, formatPercentage, formatRelativeTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
 import { useInvestigationStore } from "../../store/investigation-store";
@@ -81,8 +86,15 @@ export function AnswerPanel({
   const setActiveRegionId = useInvestigationStore((state) => state.setActiveRegionId);
   const activeRegion = drawnRegions.find((region) => region.id === activeRegionId) ?? null;
 
-  const currentRun = runs.at(-1) ?? null;
-  const priorRuns = runs.slice(0, -1);
+  const selectedRunId = useInvestigationStore((state) => state.selectedRunId);
+  const selectRun = useInvestigationStore((state) => state.selectRun);
+
+  // Null selection follows the newest run, which is what an operator wants while one is streaming.
+  const currentRun =
+    (selectedRunId === null ? null : (runs.find((run) => run.id === selectedRunId) ?? null)) ??
+    runs.at(-1) ??
+    null;
+  const priorRuns = runs.filter((run) => run.id !== currentRun?.id);
 
   const submit = (prompt: string) => {
     const trimmed = prompt.trim();
@@ -108,20 +120,50 @@ export function AnswerPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {priorRuns.length > 0 ? (
-          <ol className="mb-3 flex flex-col gap-1 border-b border-border-soft pb-2">
+          <ol className="mb-3 flex flex-col gap-0.5 border-b border-border-soft pb-2">
             {priorRuns.map((run) => (
               <li key={run.id}>
                 <button
                   type="button"
-                  onClick={() => submit(run.query)}
-                  title="Ask this again"
-                  className="w-full truncate rounded-sm text-left font-mono text-[11px] text-muted-foreground transition-colors duration-fast hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => selectRun(run.id)}
+                  title="Reopen this answer"
+                  className="flex w-full flex-col gap-0.5 rounded-sm px-1 py-1 text-left transition-colors duration-fast hover:bg-aeris-teal/8 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
-                  {run.query}
+                  <span className="truncate font-mono text-[11px] text-muted-foreground">
+                    {run.query}
+                  </span>
+                  <span className="flex items-center gap-1.5 font-mono text-[9px] tracking-wide text-muted-foreground/55 uppercase">
+                    <span>{formatRelativeTime(run.startedAt)}</span>
+                    {run.totalDurationMs !== null ? (
+                      <span>· {formatDurationMs(run.totalDurationMs)}</span>
+                    ) : null}
+                    {run.confidence !== null ? (
+                      <span>· {formatPercentage(run.confidence)}</span>
+                    ) : null}
+                    {run.insufficientEvidence !== null ? (
+                      <span className="text-aeris-amber/70">· insufficient evidence</span>
+                    ) : null}
+                  </span>
                 </button>
               </li>
             ))}
           </ol>
+        ) : null}
+
+        {/* Reading an older answer is a state the operator must be able to see and leave. */}
+        {selectedRunId !== null && runs.at(-1)?.id !== selectedRunId ? (
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-aeris-amber/35 bg-aeris-amber/5 px-2 py-1.5">
+            <span className="flex-1 text-[11px] text-aeris-amber">Showing an earlier answer.</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => selectRun(null)}
+            >
+              Back to latest
+            </Button>
+          </div>
         ) : null}
 
         {currentRun === null ? (

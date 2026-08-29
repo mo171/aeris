@@ -35,7 +35,11 @@ export async function mockAnalysisStream({
 }: StreamRequestConfig): Promise<void> {
   const request = body as AnalysisRunRequest;
   const runId = `run_${Date.now().toString(36)}`;
-  const script = selectMockAnalysisScript(request.investigationId, request.query);
+  const script = selectMockAnalysisScript(
+    request.investigationId,
+    request.query,
+    request.operationId,
+  );
 
   const emit = (payload: unknown) => onMessage(JSON.stringify(payload));
 

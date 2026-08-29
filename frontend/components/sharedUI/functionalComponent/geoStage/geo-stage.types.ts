@@ -87,6 +87,28 @@ export interface StageCameraState {
   groundMetersPerPixel: number | null;
 }
 
+/**
+ * Whether building footprints exist over the area currently in view.
+ *
+ * `unavailable` means no Ion token; `none` means the tileset loaded and this ground has no footprints.
+ * Those are different failures and the operator is told which.
+ */
+export type StageBuildingCoverage = "unavailable" | "loading" | "present" | "none";
+
+/**
+ * How the scene renders the built environment.
+ *
+ * `massing` is OpenStreetMap footprints extruded to real heights — free, untextured, and drawn ON TOP of
+ * the operator's imagery, so the comparator and every raster stay visible underneath. It is the analysis
+ * default and should stay it.
+ *
+ * `photorealistic` is Google's textured photogrammetry. It is metered per tile, and it REPLACES the
+ * ground rather than sitting on it, so the operator's own imagery and the before/after split are
+ * suspended while it is on. A presentation mode, not an analysis one — the interface says so plainly
+ * rather than letting an operator wonder where their scene went.
+ */
+export type StageBuildingMode = "none" | "massing" | "photorealistic";
+
 /** A change to where the camera looks from, leaving the point it looks AT alone. */
 export interface StageOrientation {
   headingDegrees?: number;
@@ -229,6 +251,14 @@ export interface StageSceneLayersApi {
   /** Switches every extrudable vector layer between draped and volumetric, with an animated growth. */
   setRenderMode: (renderMode: StageLayerRenderMode) => void;
   /**
+   * Graduates evidence fill colour by magnitude.
+   *
+   * Height is the primary magnitude channel and it does not exist in a flat projection or in draped mode,
+   * where every change region would otherwise render identically however much changed. The caller turns
+   * this on exactly when the scene has no height to spend.
+   */
+  setMagnitudeShading: (isEnabled: boolean) => void;
+  /**
    * Raises the named features and mutes everything else, including the basemap.
    * Null clears the spotlight and restores normal rendering.
    */
@@ -355,8 +385,22 @@ export interface StageAppearanceApi {
    * where the vertical information in a city actually is, so this is the control that decides whether the
    * scene reads as a photograph or as a place.
    */
-  setBuildingsVisible: (isVisible: boolean) => void;
-  areBuildingsVisible: () => boolean;
+  /** Lazily loads whichever tileset the mode names. Nothing is fetched until a mode actually selects it. */
+  setBuildingMode: (mode: StageBuildingMode) => void;
+  getBuildingMode: () => StageBuildingMode;
+  /** False when no Google Maps key is configured, so the control can state the reason. */
+  isPhotorealisticAvailable: () => boolean;
+  /**
+   * Whether this area actually HAS building footprints, once the tileset has settled.
+   *
+   * OpenStreetMap building coverage is dense in cities and effectively absent over farmland, desert and
+   * most of the global south's rural areas. Without this the toggle is a button that silently does
+   * nothing over half the planet, and the operator is left assuming the feature is broken rather than
+   * learning something true about the data.
+   */
+  subscribeBuildingCoverage: (
+    listener: (coverage: StageBuildingCoverage) => void,
+  ) => () => void;
   /**
    * Multiplies terrain height. 1 is true scale.
    *

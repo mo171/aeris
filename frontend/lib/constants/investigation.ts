@@ -56,24 +56,47 @@ export const INVESTIGATION_CAMERA = {
  */
 export const SCENE_RELIEF = {
   /**
-   * Terrain height multiplier in scene mode.
+   * Terrain exaggeration on ARRIVAL: true scale.
    *
-   * Chosen to sit where relief becomes readable without the ground starting to look like a mountain range
-   * that is not there. Horizontal position and every measured area are untouched — only height scales —
-   * and the factor is shown to the operator so the scene never silently claims true scale.
+   * The scene should not distort before anyone has asked it to. An operator who descends onto a place and
+   * is shown terrain 2.4 times its real height has been handed a picture that disagrees with every
+   * measurement on the page, without being told.
    */
-  terrainExaggeration: 2.4,
-  exaggerationRange: { minimum: 1, maximum: 5, step: 0.2 },
-  /** Buildings are loaded in scene mode only. At orbital altitude they are below a pixel. */
-  showBuildingsInSceneMode: true,
+  defaultTerrainExaggeration: 1,
+
   /**
-   * Massing colour. Deliberately a desaturated slate rather than the default white.
+   * The boost an operator opts into, for open landscape.
    *
-   * Buildings are context here, not the finding. White massing out-contrasts every evidence colour on the
-   * scene and turns an analysis surface into an architectural render.
+   * Where there are no buildings, a 30 m elevation model holds the only vertical information there is, and
+   * relief across a few kilometres of farmland or desert is a fraction of a percent of the view. Scaling
+   * height makes that readable. It scales height ONLY — horizontal position and every measured area are
+   * untouched — and the factor is shown, so the scene never silently claims true scale.
    */
-  buildingColorCss: "#1B2733",
-  buildingAlpha: 0.94,
+  boostedTerrainExaggeration: 2.4,
+  exaggerationRange: { minimum: 1, maximum: 5, step: 0.2 },
+  /**
+   * How the built environment renders on entering the workspace: nothing.
+   *
+   * The descent lands on the operator's imagery and nothing else. Massing is genuinely useful but it is a
+   * choice about how to READ the scene, and making it the default meant every investigation opened with
+   * geometry nobody asked for, fetching tiles nobody had requested, over ground that in half the world has
+   * no footprints anyway.
+   *
+   * Both alternatives stay one click away, and both are honest about their cost: massing is free and sits
+   * on top of the imagery; photorealistic is metered and replaces it.
+   */
+  defaultBuildingMode: "none" as const,
+  /**
+   * Massing colour. A mid slate — desaturated, but light enough to read.
+   *
+   * Buildings are context here, not the finding, so this is deliberately not the default white, which
+   * out-contrasts every evidence colour and turns an analysis surface into an architectural render. The
+   * first attempt went too far the other way: near-black massing over dark imagery is invisible, which is
+   * no better than not drawing it. The tileset carries normals, so sunlight separates the faces and a
+   * mid-tone reads as volume without shouting.
+   */
+  buildingColorCss: "#33414F",
+  buildingAlpha: 0.96,
 } as const;
 
 export const INVESTIGATION_COMPARATOR = {

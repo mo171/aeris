@@ -20,7 +20,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 import { InputsPanel } from "./InputsPanel";
-import { ToolboxPanel } from "./ToolboxPanel";
+import { ToolboxPanel, type AnalysisReadiness } from "./ToolboxPanel";
 
 type LeftPanelTab = "inputs" | "toolbox";
 
@@ -29,7 +29,12 @@ const TABS: readonly { id: LeftPanelTab; label: string; icon: typeof Layers }[] 
   { id: "toolbox", label: "Toolbox", icon: Wrench },
 ];
 
-export function LeftPanelTabs(props: React.ComponentProps<typeof InputsPanel>) {
+interface LeftPanelTabsProps extends React.ComponentProps<typeof InputsPanel> {
+  readiness: AnalysisReadiness;
+  onRunOperation: (operationId: string) => void;
+}
+
+export function LeftPanelTabs({ readiness, onRunOperation, ...inputsProps }: LeftPanelTabsProps) {
   const [tab, setTab] = useState<LeftPanelTab>("inputs");
 
   return (
@@ -65,10 +70,10 @@ export function LeftPanelTabs(props: React.ComponentProps<typeof InputsPanel>) {
         glanced at the toolbox.
       */}
       <div className={cn("min-h-0 flex-1", tab === "inputs" ? "flex" : "hidden")} role="tabpanel">
-        <InputsPanel {...props} />
+        <InputsPanel {...inputsProps} />
       </div>
       <div className={cn("min-h-0 flex-1", tab === "toolbox" ? "flex" : "hidden")} role="tabpanel">
-        <ToolboxPanel />
+        <ToolboxPanel readiness={readiness} onRunOperation={onRunOperation} />
       </div>
     </div>
   );

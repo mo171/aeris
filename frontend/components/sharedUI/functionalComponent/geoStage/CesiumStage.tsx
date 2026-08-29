@@ -68,6 +68,8 @@ import { useGeoStageStore } from "@/store/geo-stage-store";
 
 import {
   createBuildingMassing,
+  createPhotorealisticTileset,
+  hasPhotorealisticAccess,
   createEllipsoidTerrain,
   createFallbackImageryLayer,
   hasIonAccess,
@@ -77,6 +79,8 @@ import type {
   GeoStageHandle,
   StageBoundingBox,
   StageCameraBookmark,
+  StageBuildingCoverage,
+  StageBuildingMode,
   StageCameraState,
   StageOrientation,
   StageFlyToTarget,
@@ -176,11 +180,26 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     /** The extent the scene is framing, kept so tilt and orbit have something to pivot around. */
     let sceneTargetBounds: StageBoundingBox | null = null;
     let buildings: Cesium3DTileset | null = null;
-    let wantsBuildings = false;
+    let photorealistic: Cesium3DTileset | null = null;
+    let buildingMode: StageBuildingMode = "none";
     let isLoadingBuildings = false;
+    let isLoadingPhotorealistic = false;
+    let buildingCoverage: StageBuildingCoverage = hasIonAccess() ? "loading" : "unavailable";
+    const buildingCoverageListeners = new Set<(coverage: StageBuildingCoverage) => void>();
+
+    const publishBuildingCoverage = (next: StageBuildingCoverage) => {
+      if (next === buildingCoverage) {
+        return;
+      }
+      buildingCoverage = next;
+      for (const listener of buildingCoverageListeners) {
+        listener(next);
+      }
+    };
     let terrainExaggeration = 1;
     const cameraStateListeners = new Set<(state: StageCameraState) => void>();
     let lastCameraSampleMs = 0;
+    let hasReportedCameraStateFailure = false;
 
     const clearResumeTimer = () => {
       if (resumeTimeoutId !== null) {
@@ -235,10 +254,22 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
       // showcase, so the readout writes to the DOM the same way the comparator handle does.
       if (cameraStateListeners.size > 0 && now - lastCameraSampleMs >= CAMERA_SAMPLE_INTERVAL_MS) {
         lastCameraSampleMs = now;
-        const state = readCameraState();
-        if (state) {
-          for (const listener of cameraStateListeners) {
-            listener(state);
+
+        // Contained deliberately. Anything that throws inside a preUpdate listener stops Cesium's render
+        // loop for good — the scene dies with "Rendering has stopped" and does not recover. A coordinate
+        // readout is a convenience and must never be able to take the Earth down with it, so it degrades
+        // to silence instead. Reported once, so a real fault still surfaces rather than hiding here.
+        try {
+          const state = readCameraState();
+          if (state) {
+            for (const listener of cameraStateListeners) {
+              listener(state);
+            }
+          }
+        } catch (error) {
+          if (!hasReportedCameraStateFailure) {
+            hasReportedCameraStateFailure = true;
+            console.warn("[AERIS] Camera readout suspended after an error.", error);
           }
         }
       }
@@ -470,17 +501,42 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
       });
     };
 
+    /**
+     * Camera heading and pitch in degrees, or null while they cannot be read.
+     *
+     * Cesium returns `undefined` from both getters whenever the scene is MORPHING between projections,
+     * and `toDegrees` throws on undefined. Every caller below can coincide with a 2D/3D morph — the
+     * per-frame state publish certainly does — so this has to be a question that can be answered "not
+     * right now" instead of one that throws.
+     */
+    const readOrientationDegrees = (): { headingDegrees: number; pitchDegrees: number } | null => {
+      const { heading, pitch } = camera;
+      if (!Number.isFinite(heading) || !Number.isFinite(pitch)) {
+        return null;
+      }
+      return {
+        headingDegrees: CesiumMath.toDegrees(heading),
+        pitchDegrees: CesiumMath.toDegrees(pitch),
+      };
+    };
+
     const getBookmark = (): StageCameraBookmark | null => {
       if (viewer.isDestroyed()) {
         return null;
       }
+      const orientation = readOrientationDegrees();
+      if (!orientation) {
+        // Mid-morph there is no meaningful pose to save; the operator can save once it settles.
+        return null;
+      }
+
       const position = camera.positionCartographic;
       return {
         latitude: CesiumMath.toDegrees(position.latitude),
         longitude: CesiumMath.toDegrees(position.longitude),
         altitudeMeters: position.height,
-        headingDegrees: CesiumMath.toDegrees(camera.heading),
-        pitchDegrees: CesiumMath.toDegrees(camera.pitch),
+        headingDegrees: orientation.headingDegrees,
+        pitchDegrees: orientation.pitchDegrees,
       };
     };
 
@@ -539,12 +595,19 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
         return;
       }
 
+      // Re-aiming needs a current pose to fill in whichever axis the caller left out, and there is no
+      // readable pose mid-morph. Refusing is right: the morph is itself a camera move in progress.
+      const current = readOrientationDegrees();
+      if (!current && (orientation.headingDegrees === undefined || orientation.pitchDegrees === undefined)) {
+        return;
+      }
+
       const sphere = targetSphere();
       const headingRadians = CesiumMath.toRadians(
-        orientation.headingDegrees ?? CesiumMath.toDegrees(camera.heading),
+        orientation.headingDegrees ?? current?.headingDegrees ?? 0,
       );
       const pitchRadians = CesiumMath.toRadians(
-        orientation.pitchDegrees ?? CesiumMath.toDegrees(camera.pitch),
+        orientation.pitchDegrees ?? current?.pitchDegrees ?? INVESTIGATION_CAMERA.restingPitchDegrees,
       );
       const durationSeconds = isMotionReducedRef.current
         ? 0
@@ -575,7 +638,11 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     };
 
     const orbitByDegrees = (deltaHeadingDegrees: number) => {
-      orient({ headingDegrees: CesiumMath.toDegrees(camera.heading) + deltaHeadingDegrees });
+      const current = readOrientationDegrees();
+      if (!current) {
+        return;
+      }
+      orient({ headingDegrees: current.headingDegrees + deltaHeadingDegrees });
     };
 
     /**
@@ -605,13 +672,20 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
       if (viewer.isDestroyed()) {
         return null;
       }
+      const orientation = readOrientationDegrees();
+      if (!orientation) {
+        // Morphing. Subscribers keep their last value rather than being handed a broken one, and the
+        // readout simply holds still for the length of the transition.
+        return null;
+      }
+
       const position = camera.positionCartographic;
       return {
         latitude: CesiumMath.toDegrees(position.latitude),
         longitude: CesiumMath.toDegrees(position.longitude),
         altitudeMeters: position.height,
-        headingDegrees: CesiumMath.toDegrees(camera.heading),
-        pitchDegrees: CesiumMath.toDegrees(camera.pitch),
+        headingDegrees: orientation.headingDegrees,
+        pitchDegrees: orientation.pitchDegrees,
         groundMetersPerPixel: groundMetersPerPixel(),
       };
     };
@@ -682,6 +756,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           renderMode = nextRenderMode;
           evidenceVectors.setRenderMode(nextRenderMode);
         },
+        setMagnitudeShading: (isEnabled) => evidenceVectors.setMagnitudeShading(isEnabled),
         setSpotlight: (featureIds) => {
           if (viewer.isDestroyed()) {
             return;
@@ -765,7 +840,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
             // keeps north up while the planet turns underneath.
             camera.constrainedAxis = Cartesian3.UNIT_Z;
             handle.appearance.setTerrainExaggeration(1);
-            handle.appearance.setBuildingsVisible(false);
+            handle.appearance.setBuildingMode("none");
           } else {
             handle.globeLayers.clear();
             applyZoomLimits(
@@ -783,8 +858,8 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
             // which is exactly why this belongs in the mode switch rather than in one-time setup.
             camera.constrainedAxis = undefined;
 
-            handle.appearance.setTerrainExaggeration(SCENE_RELIEF.terrainExaggeration);
-            handle.appearance.setBuildingsVisible(SCENE_RELIEF.showBuildingsInSceneMode);
+            handle.appearance.setTerrainExaggeration(SCENE_RELIEF.defaultTerrainExaggeration);
+            handle.appearance.setBuildingMode(SCENE_RELIEF.defaultBuildingMode);
           }
 
           basemapLayer.brightness = basemapBrightness;
@@ -827,46 +902,106 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           }
         },
 
-        setBuildingsVisible: (isVisible) => {
-          wantsBuildings = isVisible;
+        setBuildingMode: (mode) => {
+          if (viewer.isDestroyed() || mode === buildingMode) {
+            return;
+          }
+          buildingMode = mode;
+
+          // Photorealistic tiles carry their own ground and texture, so Cesium's guidance is to hide the
+          // globe under them. That is also exactly why this mode suspends analysis: hiding the globe takes
+          // the operator's rasters and the comparator split with it.
+          scene.globe.show = mode !== "photorealistic";
+          evidenceVectors.setClassificationTarget(mode === "photorealistic" ? "both" : "terrain");
 
           if (buildings) {
-            buildings.show = isVisible;
-            return;
+            buildings.show = mode === "massing";
+          }
+          if (photorealistic) {
+            photorealistic.show = mode === "photorealistic";
           }
 
-          // Guarded against a second request while the first is still in flight. The mode switch and the
-          // store both push this on entering the workspace, and without the guard each call would start
-          // its own tileset — three copies of every building, all paying for their own tiles.
-          if (!isVisible || isLoadingBuildings) {
-            return;
+          if (mode === "massing" && !buildings && !isLoadingBuildings) {
+            // Loaded on first request rather than at boot: a large tileset Mission Command never needs.
+            isLoadingBuildings = true;
+            publishBuildingCoverage("loading");
+
+            void createBuildingMassing().then((tileset) => {
+              isLoadingBuildings = false;
+              if (!tileset) {
+                publishBuildingCoverage("unavailable");
+                return;
+              }
+              if (viewer.isDestroyed()) {
+                tileset.destroy();
+                return;
+              }
+
+              buildings = tileset;
+              buildings.show = buildingMode === "massing";
+              scene.primitives.add(buildings);
+
+              // Coverage is answered by what actually renders, not by whether the tileset exists. The
+              // tileset is global; the footprints in it are not, so the only honest test is whether any
+              // tile carrying content was selected for the current view.
+              let renderedTiles = 0;
+              tileset.tileVisible.addEventListener(() => {
+                renderedTiles += 1;
+              });
+              tileset.allTilesLoaded.addEventListener(() => {
+                publishBuildingCoverage(renderedTiles > 0 ? "present" : "none");
+                renderedTiles = 0;
+              });
+            });
           }
 
-          // Loaded on first request rather than at boot: it is a large tileset and Mission Command never
-          // needs it. The flag is re-read on arrival because the operator may have left scene mode while
-          // the request was in flight.
-          isLoadingBuildings = true;
-          void createBuildingMassing().then((tileset) => {
-            isLoadingBuildings = false;
-            if (!tileset) {
-              return;
-            }
-            if (viewer.isDestroyed()) {
-              tileset.destroy();
-              return;
-            }
-            buildings = tileset;
-            buildings.show = wantsBuildings;
-            scene.primitives.add(buildings);
-          });
+          if (mode === "photorealistic" && !photorealistic && !isLoadingPhotorealistic) {
+            // Every tile this fetches is billed, so it is created only when the mode actually selects it
+            // and never speculatively.
+            isLoadingPhotorealistic = true;
+
+            void createPhotorealisticTileset().then((tileset) => {
+              isLoadingPhotorealistic = false;
+              if (!tileset) {
+                return;
+              }
+              if (viewer.isDestroyed()) {
+                tileset.destroy();
+                return;
+              }
+
+              photorealistic = tileset;
+              photorealistic.show = buildingMode === "photorealistic";
+              scene.primitives.add(photorealistic);
+            });
+          }
         },
-        areBuildingsVisible: () => wantsBuildings,
+        getBuildingMode: () => buildingMode,
+        isPhotorealisticAvailable: hasPhotorealisticAccess,
+        subscribeBuildingCoverage: (listener) => {
+          buildingCoverageListeners.add(listener);
+          listener(buildingCoverage);
+          return () => buildingCoverageListeners.delete(listener);
+        },
 
         setTerrainExaggeration: (factor) => {
           if (viewer.isDestroyed()) {
             return;
           }
           terrainExaggeration = factor;
+
+          // Exaggeration MUST pivot around the ground being looked at, not around sea level.
+          //
+          // Cesium's default `verticalExaggerationRelativeHeight` is 0, which scales height about the
+          // ellipsoid. Over São Paulo at ~760 m that renders the terrain surface at ~1,824 m — a kilometre
+          // above where it actually is — and everything positioned at true height (3D Tiles bounding
+          // volumes, clamped geometry) ends up in a different vertical frame from the ground it belongs to.
+          // Pivoting at the local terrain height exaggerates RELIEF, which is the point, without moving
+          // the place.
+          const groundHeight = scene.globe.getHeight(camera.positionCartographic);
+          scene.verticalExaggerationRelativeHeight = Number.isFinite(groundHeight ?? NaN)
+            ? (groundHeight as number)
+            : 0;
           scene.verticalExaggeration = factor;
         },
         getTerrainExaggeration: () => terrainExaggeration,
@@ -927,13 +1062,18 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
       store.setReady(false);
 
       cameraStateListeners.clear();
+      buildingCoverageListeners.clear();
 
       if (!viewer.isDestroyed()) {
         scene.preUpdate.removeEventListener(onPreUpdate);
         if (buildings && !buildings.isDestroyed()) {
           scene.primitives.remove(buildings);
         }
+        if (photorealistic && !photorealistic.isDestroyed()) {
+          scene.primitives.remove(photorealistic);
+        }
         buildings = null;
+        photorealistic = null;
         viewer.destroy();
       }
     };

@@ -21,6 +21,7 @@ import {
   getMockRegionSuggestions,
   getMockSceneInspection,
   listMockInvestigations,
+  saveMockCameraBookmark,
   searchMockCatalogue,
 } from "../data/investigation.data";
 import { insertUploadedScene, selectImageryPage } from "../data/imagery.data";
@@ -217,9 +218,16 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     },
   },
   {
+    // The camera bookmark. Persisted for real so a reload genuinely reopens the saved framing — a mock
+    // that acknowledged the save without storing it would make the feature look broken on refresh.
     method: "POST",
     match: patternPath(/^\/api\/v1\/investigations\/([^/]+)$/),
-    handle: () => ({ status: 204, data: null }),
+    handle: ({ pathParameters, body }) => {
+      const request = body as { cameraBookmark?: unknown };
+      return request?.cameraBookmark
+        ? { status: 204, data: saveMockCameraBookmark(pathParameters[0], request.cameraBookmark) }
+        : { status: 204, data: null };
+    },
   },
   {
     method: "POST",

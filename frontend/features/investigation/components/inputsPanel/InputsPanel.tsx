@@ -1,7 +1,8 @@
 // features/investigation/components/inputsPanel/InputsPanel.tsx — the left zone: inputs and evidence layers.
 //
-// what  : Four collapsible sections — the scenes currently bound to comparison roles, the full acquisition
-//         history over the area, the regions the operator has drawn, and the evidence layers produced.
+// what  : Five collapsible sections — the scenes bound to comparison roles, the acquisition history over
+//         the area, the regions the operator has drawn, the evidence layers produced, and the reference
+//         context those are read against.
 // where : The left zone of InvestigationScreen.
 // how   : The sections compete for the same vertical space, and which one matters depends entirely on
 //         what the operator is doing — checking what went in, or controlling what came out. Each claims
@@ -29,8 +30,11 @@ import type {
 import type { EvidenceLayer } from "../../types/layer.types";
 import type { StageDrawnRegion } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 
+import { REFERENCE_LAYERS } from "@/lib/constants/reference-layers";
+
 import { AcquisitionList } from "./AcquisitionList";
 import { EvidenceLayerRow } from "./EvidenceLayerRow";
+import { ReferenceLayerList } from "./ReferenceLayerList";
 import { RegionList } from "./RegionList";
 import { SceneSlotCard } from "./SceneSlotCard";
 
@@ -66,6 +70,8 @@ export function InputsPanel({
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
   const [isRegionsExpanded, setIsRegionsExpanded] = useState(true);
   const [isLayersExpanded, setIsLayersExpanded] = useState(true);
+  // Collapsed by default: context is what an operator reaches for when a specific question needs it.
+  const [isReferenceExpanded, setIsReferenceExpanded] = useState(false);
 
   const visibilityOverrides = useInvestigationStore((state) => state.layerVisibilityOverrides);
   const soloLayerId = useInvestigationStore((state) => state.soloLayerId);
@@ -222,6 +228,29 @@ export function InputsPanel({
                 ))}
               </div>
             )}
+          </div>
+        ) : null}
+      </section>
+
+      {/*
+        Context, kept visually distinct from the evidence above it. An evidence row names the model that
+        asserted it; a reference row names a source and a purpose, because nothing asserted a coastline.
+      */}
+      <section className={cn("flex flex-col", isReferenceExpanded ? "min-h-0 flex-1" : "shrink-0")}>
+        <SectionHeader
+          title="Reference"
+          isExpanded={isReferenceExpanded}
+          onToggle={() => setIsReferenceExpanded((current) => !current)}
+          trailing={
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {REFERENCE_LAYERS.length}
+            </span>
+          }
+        />
+
+        {isReferenceExpanded ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            <ReferenceLayerList />
           </div>
         ) : null}
       </section>

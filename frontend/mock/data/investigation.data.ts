@@ -934,6 +934,7 @@ export interface MockAnalysisScript {
 export function selectMockAnalysisScript(
   investigationId: string,
   query: string,
+  operationId?: string | null,
 ): MockAnalysisScript | null {
   const generated = ensure(investigationId);
   if (!generated) {
@@ -942,7 +943,14 @@ export function selectMockAnalysisScript(
 
   const normalisedQuery = query.toLowerCase();
   const hasSar = generated.investigation.sceneSlots.some((slot) => slot.role === "sar");
-  const asksForSar = normalisedQuery.includes("sar") || normalisedQuery.includes("radar");
+
+  // A named operation is authoritative. Keyword sniffing is the fallback for genuinely free text, and it
+  // is exactly the guesswork the operationId exists to remove: "does the radar agree?" and "is this
+  // radar-visible?" are the same intent and only one of them contains a word this could match.
+  const asksForSar =
+    operationId === "sar-analysis" ||
+    (operationId == null &&
+      (normalisedQuery.includes("sar") || normalisedQuery.includes("radar")));
 
   if (asksForSar && !hasSar) {
     return {
@@ -1469,5 +1477,25 @@ function findInvestigationCovering(bounds: {
     }
   }
 
+  return null;
+}
+
+/**
+ * Stores the operator's saved camera pose against the investigation.
+ *
+ * Actually persisted rather than acknowledged and dropped: the feature's whole claim is that a reload
+ * reopens the saved framing, and a mock that returned 204 without writing anything would make it look
+ * broken exactly where it is supposed to prove itself.
+ */
+export function saveMockCameraBookmark(investigationId: string, cameraBookmark: unknown): null {
+  const generated = investigationsById.get(investigationId);
+  if (generated) {
+    generated.investigation = {
+      ...generated.investigation,
+      cameraBookmark: cameraBookmark as Investigation["cameraBookmark"],
+      updatedAt: new Date().toISOString(),
+    };
+    persist();
+  }
   return null;
 }

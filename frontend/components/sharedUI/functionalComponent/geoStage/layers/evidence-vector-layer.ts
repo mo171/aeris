@@ -35,7 +35,7 @@ import {
   type Viewer,
 } from "cesium";
 
-import { LAYER_RENDERING, VECTOR_PALETTE } from "@/lib/constants/layers";
+import { MAGNITUDE_SHADING, LAYER_RENDERING, VECTOR_PALETTE } from "@/lib/constants/layers";
 
 import type { StageFeature, StageLayer, StageLayerRenderMode } from "../geo-stage.types";
 
@@ -67,6 +67,21 @@ export interface EvidenceVectorLayerSet {
   setVisibility: (layerId: string, isVisible: boolean) => void;
   setOpacity: (layerId: string, opacity: number) => void;
   setRenderMode: (renderMode: StageLayerRenderMode) => void;
+  /**
+   * What draped evidence classifies onto.
+   *
+   * Terrain alone is right while the ground IS the terrain. Photorealistic 3D Tiles replace the ground
+   * with a textured mesh and the globe is hidden underneath, so terrain-only classification would leave
+   * every change mask with nothing to paint on — the evidence would simply vanish in that mode.
+   */
+  setClassificationTarget: (target: "terrain" | "both") => void;
+  /**
+   * Graduates fill colour by feature magnitude.
+   *
+   * Turned on whenever the scene cannot express magnitude as height — a flat projection, or draped mode —
+   * so the attribute moves channel rather than disappearing.
+   */
+  setMagnitudeShading: (isEnabled: boolean) => void;
   setSpotlight: (featureIds: readonly string[] | null) => void;
   resolvePick: (picked: unknown) => { featureId: string; layerId: string } | null;
   findFeature: (featureId: string) => { feature: StageFeature; layerId: string } | null;
@@ -78,6 +93,8 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
   const layers = new Map<string, TrackedLayer>();
   const entityToFeature = new WeakMap<object, { featureId: string; layerId: string }>();
   let activeRenderMode: StageLayerRenderMode = "draped";
+  let activeClassification: ClassificationType = ClassificationType.TERRAIN;
+  let shadeByMagnitude = false;
 
   function layerOpacity(layerId: string): number {
     return layers.get(layerId)?.descriptor.opacity ?? 1;
@@ -115,9 +132,23 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     const fillMaterial = new ColorMaterialProperty(
       new CallbackProperty(() => {
         const base = tracked.state.isSpotlit ? highlightColor : fillColor;
-        return base.withAlpha(
-          resolveAlpha(tracked, layerId, LAYER_RENDERING.polygonFillAlphaRatio),
-        );
+        const alpha = resolveAlpha(tracked, layerId, LAYER_RENDERING.polygonFillAlphaRatio);
+
+        if (!shadeByMagnitude || tracked.state.isSpotlit) {
+          return base.withAlpha(alpha);
+        }
+
+        // Read straight from the feature, so the colour and the number in the inspector cannot disagree.
+        const magnitude = tracked.feature.magnitude;
+        const weight =
+          MAGNITUDE_SHADING.minimumWeight +
+          (MAGNITUDE_SHADING.maximumWeight - MAGNITUDE_SHADING.minimumWeight) * magnitude;
+        const shaded =
+          magnitude > MAGNITUDE_SHADING.brightenAboveMagnitude
+            ? base.brighten(MAGNITUDE_SHADING.brightenAmount, new Color())
+            : base;
+
+        return shaded.withAlpha(alpha * weight);
       }, false),
     );
 
@@ -156,7 +187,7 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
         polygon: {
           hierarchy,
           material: fillMaterial,
-          classificationType: ClassificationType.TERRAIN,
+          classificationType: activeClassification,
         },
       }),
       new Entity({
@@ -388,6 +419,23 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     }
   }
 
+  function setMagnitudeShading(isEnabled: boolean): void {
+    // No rebuild: the fill is a CallbackProperty, so it picks this up on the next frame.
+    shadeByMagnitude = isEnabled;
+  }
+
+  function setClassificationTarget(target: "terrain" | "both"): void {
+    const next = target === "both" ? ClassificationType.BOTH : ClassificationType.TERRAIN;
+    if (next === activeClassification) {
+      return;
+    }
+    activeClassification = next;
+
+    for (const trackedLayer of layers.values()) {
+      populateLayer(trackedLayer, trackedLayer.descriptor);
+    }
+  }
+
   function setSpotlight(featureIds: readonly string[] | null): void {
     const spotlit = featureIds === null ? null : new Set(featureIds);
 
@@ -459,6 +507,8 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     setVisibility,
     setOpacity,
     setRenderMode,
+    setClassificationTarget,
+    setMagnitudeShading,
     setSpotlight,
     resolvePick,
     findFeature,

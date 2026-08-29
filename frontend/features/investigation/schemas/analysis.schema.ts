@@ -79,6 +79,14 @@ export const analysisRunRequestSchema = z.object({
     .nullable(),
   /** Set when the run was launched by the autonomous macro rather than typed. */
   planId: z.string().nullable(),
+  /**
+   * The named operation the operator chose, when they chose one rather than typing.
+   *
+   * Sending the operation instead of only a sentence lets the backend dispatch directly rather than
+   * classifying intent from language it may read wrong. Null means the request really is a free-text
+   * question and intent classification is the right first stage.
+   */
+  operationId: z.string().nullable(),
 });
 
 export const analysisPlanStepSchema = z.object({

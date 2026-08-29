@@ -20,7 +20,13 @@
 
 "use client";
 
-import { Building2, RotateCcwSquare, RotateCwSquare } from "lucide-react";
+import {
+  Building2,
+  Images,
+  RotateCcwSquare,
+  RotateCwSquare,
+  Slash,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -31,7 +37,54 @@ import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
 import { cn } from "@/lib/utils";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
+import type {
+  StageBuildingCoverage,
+  StageBuildingMode,
+} from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
+
 import { useInvestigationStore } from "../../store/investigation-store";
+
+/**
+ * What the massing toggle can honestly claim, per coverage state.
+ *
+ * OpenStreetMap building footprints are dense in cities and effectively absent over farmland and desert.
+ * Saying so is the difference between the operator learning something true about the data and concluding
+ * the button is broken.
+ */
+const COVERAGE_COPY: Record<StageBuildingCoverage, string> = {
+  unavailable: "Building massing needs a Cesium Ion token",
+  loading: "Loading building footprints…",
+  present: "3D building footprints, extruded to real heights",
+  none: "OpenStreetMap has no building footprints over this area",
+};
+
+/**
+ * The three ways the built environment can render, and the honest trade for each.
+ *
+ * Photorealistic is not simply "better massing". It replaces the ground rather than sitting on it, which
+ * suspends the operator's own imagery and the before/after split — so the control says that outright
+ * instead of letting an analyst discover their scene has gone.
+ */
+const BUILDING_MODES: readonly {
+  id: StageBuildingMode;
+  label: string;
+  icon: typeof Building2;
+  hint: string;
+}[] = [
+  { id: "none", label: "Flat", icon: Slash, hint: "No buildings — imagery draped on terrain only" },
+  {
+    id: "massing",
+    label: "Massing",
+    icon: Building2,
+    hint: "OpenStreetMap footprints extruded to real heights. Free, and your imagery stays visible underneath.",
+  },
+  {
+    id: "photorealistic",
+    label: "Photoreal",
+    icon: Images,
+    hint: "Google photogrammetry — textured 3D. Metered per tile, and it replaces the ground: scene imagery and the before/after split are suspended while it is on.",
+  },
+];
 
 /** What each preset is actually for, so the tooltip explains the angle rather than naming it. */
 const PITCH_COPY: Record<number, { label: string; hint: string }> = {
@@ -42,7 +95,7 @@ const PITCH_COPY: Record<number, { label: string; hint: string }> = {
 
 export function CameraControls() {
   const stage = useGeoStageStore((state) => state.handle);
-  const hasBuildings = useInvestigationStore((state) => state.hasBuildingMassing);
+  const buildingMode = useInvestigationStore((state) => state.buildingMode);
 
   // Pitch is the one value here that is NOT stored: it changes continuously as the operator drags, so it
   // is read from the stage rather than mirrored. Buildings are a discrete choice and live in the store,
@@ -50,12 +103,20 @@ export function CameraControls() {
   const [pitchDegrees, setPitchDegrees] = useState<number>(
     INVESTIGATION_CAMERA.pitchPresetsDegrees[1],
   );
+  const [coverage, setCoverage] = useState<StageBuildingCoverage>("loading");
 
   useEffect(() => {
     if (!stage) {
       return;
     }
     return stage.camera.subscribeState((state) => setPitchDegrees(state.pitchDegrees));
+  }, [stage]);
+
+  useEffect(() => {
+    if (!stage) {
+      return;
+    }
+    return stage.appearance.subscribeBuildingCoverage(setCoverage);
   }, [stage]);
 
   if (!stage) {
@@ -79,8 +140,8 @@ export function CameraControls() {
     void dispatchCommand(COMMAND_IDS.investigation.setTilt, { pitchDegrees: next });
   };
 
-  const toggleBuildings = () =>
-    void dispatchCommand(COMMAND_IDS.investigation.toggleBuildings, { isVisible: !hasBuildings });
+  const selectBuildingMode = (mode: StageBuildingMode) =>
+    void dispatchCommand(COMMAND_IDS.investigation.setBuildingMode, { mode });
 
   return (
     <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-border bg-surface-2/80 p-1 backdrop-blur-md">
@@ -124,13 +185,51 @@ export function CameraControls() {
 
       <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
 
-      <IconControl
-        label={hasBuildings ? "Hide building massing" : "Show building massing"}
-        isActive={hasBuildings}
-        onClick={toggleBuildings}
-      >
-        <Building2 />
-      </IconControl>
+      {/*
+        Massing reports coverage rather than pretending every place has buildings. Over farmland or desert
+        it dims and says why — a control that silently does nothing teaches the operator that the feature
+        is broken instead of that the data is absent.
+      */}
+      {BUILDING_MODES.map(({ id, label, icon: Icon, hint }) => {
+        const isMassingUnavailable =
+          id === "massing" && (coverage === "none" || coverage === "unavailable");
+        const isPhotorealUnavailable =
+          id === "photorealistic" && !stage.appearance.isPhotorealisticAvailable();
+        const unavailableReason = isMassingUnavailable
+          ? COVERAGE_COPY[coverage]
+          : isPhotorealUnavailable
+            ? "Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to enable photorealistic tiles"
+            : null;
+
+        return (
+          <Tooltip key={id}>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={`${label} buildings`}
+                aria-pressed={buildingMode === id}
+                disabled={isPhotorealUnavailable}
+                onClick={() => selectBuildingMode(id)}
+                className={cn(
+                  "h-7 gap-1 px-1.5 font-mono text-[10px] tracking-wide",
+                  buildingMode === id ? "text-aeris-teal" : "text-muted-foreground",
+                  ((isMassingUnavailable && buildingMode !== id) || isPhotorealUnavailable) &&
+                    "text-muted-foreground/35",
+                )}
+              >
+                <Icon className="size-3" />
+                {label}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-64">
+              {unavailableReason ?? hint}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+
     </div>
   );
 }
@@ -157,13 +256,18 @@ function TiltGlyph({ pitchDegrees }: { pitchDegrees: number }) {
 
 function IconControl({
   label,
+  hint,
   onClick,
   isActive,
+  isMuted,
   children,
 }: {
   label: string;
+  /** Shown in the tooltip when it differs from the accessible label. */
+  hint?: string;
   onClick: () => void;
   isActive?: boolean;
+  isMuted?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -176,12 +280,12 @@ function IconControl({
           aria-label={label}
           aria-pressed={isActive}
           onClick={onClick}
-          className={cn(isActive && "text-aeris-teal")}
+          className={cn(isActive && "text-aeris-teal", isMuted && "text-muted-foreground/35")}
         >
           {children}
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="top">{label}</TooltipContent>
+      <TooltipContent side="top">{hint ?? label}</TooltipContent>
     </Tooltip>
   );
 }

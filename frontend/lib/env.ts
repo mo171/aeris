@@ -42,6 +42,18 @@ const environmentSchema = z.object({
    * Free tokens come from ion.cesium.com.
    */
   NEXT_PUBLIC_CESIUM_ION_TOKEN: z.string().default(""),
+
+  /**
+   * Google Maps API key, used only for Photorealistic 3D Tiles.
+   *
+   * Optional and OFF by default. Photorealistic tiles are a presentation mode: they are metered per tile
+   * and they replace the ground, which suspends the operator's own imagery and the before/after split.
+   * Without a key the mode is offered but disabled, with the reason stated — never a dead button.
+   *
+   * A key comes from a Google Cloud project with the Map Tiles API enabled. The alternative route is
+   * Cesium Ion asset 2275207, noted in cesium-runtime.ts.
+   */
+  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: z.string().default(""),
 });
 
 const parsedEnvironment = environmentSchema.safeParse({
@@ -53,6 +65,7 @@ const parsedEnvironment = environmentSchema.safeParse({
   NEXT_PUBLIC_MOCK_SCENE_COUNT: process.env.NEXT_PUBLIC_MOCK_SCENE_COUNT,
   NEXT_PUBLIC_MOCK_MARKER_COUNT: process.env.NEXT_PUBLIC_MOCK_MARKER_COUNT,
   NEXT_PUBLIC_CESIUM_ION_TOKEN: process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN,
+  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
 });
 
 if (!parsedEnvironment.success) {

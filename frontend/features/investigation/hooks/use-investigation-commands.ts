@@ -42,9 +42,11 @@ import {
 import { useMemo } from "react";
 import { z } from "zod";
 
+import { ANALYSIS_OPERATIONS } from "@/lib/constants/analysis-operations";
 import { defineCommand, useRegisterCommands } from "@/lib/command-bus";
 import { COMMAND_IDS } from "@/lib/constants/commands";
 import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
+import type { StageCameraBookmark } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
 import {
@@ -58,7 +60,9 @@ import type { EvidenceItem } from "../types/evidence.types";
 import type { Acquisition } from "../types/investigation.types";
 
 interface InvestigationCommandOptions {
-  ask: (query: string) => void;
+  ask: (query: string, options?: { operationId?: string }) => void;
+  /** Persists the current camera pose, so a shared link reopens the exact view. */
+  saveCameraView: (bookmark: StageCameraBookmark) => void;
   /** The archive over this area, so temporal commands resolve a date to an observation that exists. */
   acquisitions: Acquisition[];
   /** Opens the autonomous plan for review. Nothing executes until the operator approves it. */
@@ -72,6 +76,7 @@ interface InvestigationCommandOptions {
 export function useInvestigationCommands({
   ask,
   acquisitions,
+  saveCameraView,
   prepareAutonomous,
   evidenceById,
   areaOfInterest,
@@ -111,6 +116,38 @@ export function useInvestigationCommands({
         icon: Search,
         paramsSchema: z.object({ query: z.string().min(1) }),
         handler: ({ query }) => ask(query),
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.runOperation,
+        title: "Run a named analysis",
+        description:
+          "Run one of the system's analyses directly — change detection, object detection, land-cover segmentation, NDVI, NDWI, NDBI, SAR backscatter or area statistics — rather than phrasing it as a question. Scoped to the drawn region if there is one.",
+        group: "investigation",
+        keywords: [
+          "change detection",
+          "object detection",
+          "segmentation",
+          "ndvi",
+          "ndwi",
+          "ndbi",
+          "spectral index",
+          "sar",
+          "statistics",
+        ],
+        icon: Search,
+        paramsSchema: z.object({
+          operationId: z.enum(
+            ANALYSIS_OPERATIONS.map((operation) => operation.id) as [string, ...string[]],
+          ),
+        }),
+        handler: ({ operationId }) => {
+          const operation = ANALYSIS_OPERATIONS.find((candidate) => candidate.id === operationId);
+          if (operation) {
+            ask(operation.prompt, { operationId });
+          }
+        },
         isPaletteVisible: false,
       }),
 
@@ -397,16 +434,15 @@ export function useInvestigationCommands({
       }),
 
       defineCommand({
-        id: COMMAND_IDS.investigation.toggleBuildings,
-        title: "Show or hide building massing",
+        id: COMMAND_IDS.investigation.setBuildingMode,
+        title: "Choose how buildings are drawn",
         description:
-          "Put three-dimensional buildings on the scene. In a city almost none of the vertical information is in the terrain, so this is what makes the scene read as a place rather than a photograph.",
+          "none draws no buildings. massing extrudes OpenStreetMap footprints to real heights — free, and it sits on top of the operator's imagery so the comparator stays visible. photorealistic loads Google's textured photogrammetry, which is metered per tile and REPLACES the ground, suspending the scene rasters and the before/after split while it is on.",
         group: "investigation",
-        keywords: ["buildings", "3d", "massing", "height", "depth", "osm"],
+        keywords: ["buildings", "3d", "massing", "photorealistic", "google", "depth", "osm"],
         icon: Building2,
-        paramsSchema: z.object({ isVisible: z.boolean().optional() }),
-        handler: ({ isVisible }) =>
-          store().setBuildingMassing(isVisible ?? !store().hasBuildingMassing),
+        paramsSchema: z.object({ mode: z.enum(["none", "massing", "photorealistic"]) }),
+        handler: ({ mode }) => store().setBuildingMode(mode),
         isPaletteVisible: false,
       }),
 
@@ -414,7 +450,7 @@ export function useInvestigationCommands({
         id: COMMAND_IDS.investigation.setTerrainExaggeration,
         title: "Exaggerate terrain relief",
         description:
-          "Multiply terrain height so relief is legible over nearly flat ground. Scales height only — every horizontal position and measured area is unchanged.",
+          "Multiply terrain height so relief is legible over nearly flat ground. Scales height only — every horizontal position and measured area is unchanged. Has no effect while buildings are drawn: in a city the vertical information is in the buildings, and exaggerating the ground under them only breaks the relationship.",
         group: "investigation",
         keywords: ["exaggeration", "relief", "terrain", "height", "vertical"],
         icon: Mountain,
@@ -582,6 +618,23 @@ export function useInvestigationCommands({
       }),
 
       defineCommand({
+        id: COMMAND_IDS.investigation.saveCameraView,
+        title: "Save this view",
+        description:
+          "Store the current camera position, heading and pitch on the investigation, so its link reopens exactly this framing rather than a default one.",
+        group: "investigation",
+        keywords: ["bookmark", "save view", "camera", "share", "framing"],
+        icon: Target,
+        paramsSchema: z.void(),
+        handler: () => {
+          const bookmark = stage()?.camera.getBookmark();
+          if (bookmark) {
+            saveCameraView(bookmark);
+          }
+        },
+      }),
+
+      defineCommand({
         id: COMMAND_IDS.investigation.resetView,
         title: "Reset the scene view",
         description: "Return the camera to the framing of the whole area of interest.",
@@ -597,7 +650,7 @@ export function useInvestigationCommands({
         },
       }),
     ];
-  }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous]);
+  }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous, saveCameraView]);
 
   useRegisterCommands(commands);
 }

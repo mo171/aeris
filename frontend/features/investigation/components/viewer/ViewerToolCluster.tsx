@@ -12,7 +12,7 @@
 
 "use client";
 
-import { Box, Crosshair, Pause, Play, RotateCcw, SplitSquareHorizontal } from "lucide-react";
+import { Bookmark, Box, Crosshair, Pause, Play, RotateCcw, SplitSquareHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,13 @@ export function ViewerToolCluster() {
           <Crosshair />
         </ToolButton>
       ) : null}
+
+      <ToolButton
+        label="Save this view"
+        onClick={() => void dispatchCommand(COMMAND_IDS.investigation.saveCameraView)}
+      >
+        <Bookmark />
+      </ToolButton>
 
       <ToolButton
         label="Reset the view"
