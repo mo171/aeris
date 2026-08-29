@@ -32,9 +32,15 @@ const TABS: readonly { id: LeftPanelTab; label: string; icon: typeof Layers }[] 
 interface LeftPanelTabsProps extends React.ComponentProps<typeof InputsPanel> {
   readiness: AnalysisReadiness;
   onRunOperation: (operationId: string) => void;
+  activeOverlayIds: readonly string[];
 }
 
-export function LeftPanelTabs({ readiness, onRunOperation, ...inputsProps }: LeftPanelTabsProps) {
+export function LeftPanelTabs({
+  readiness,
+  onRunOperation,
+  activeOverlayIds,
+  ...inputsProps
+}: LeftPanelTabsProps) {
   const [tab, setTab] = useState<LeftPanelTab>("inputs");
 
   return (
@@ -73,7 +79,11 @@ export function LeftPanelTabs({ readiness, onRunOperation, ...inputsProps }: Lef
         <InputsPanel {...inputsProps} />
       </div>
       <div className={cn("min-h-0 flex-1", tab === "toolbox" ? "flex" : "hidden")} role="tabpanel">
-        <ToolboxPanel readiness={readiness} onRunOperation={onRunOperation} />
+        <ToolboxPanel
+          readiness={readiness}
+          onRunOperation={onRunOperation}
+          activeOverlayIds={activeOverlayIds}
+        />
       </div>
     </div>
   );

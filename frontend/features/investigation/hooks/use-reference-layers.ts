@@ -53,6 +53,8 @@ export function useReferenceLayers(): ReferenceLayerSet {
         kind: "raster-tiles",
         renderMode: "draped",
         title: definition.title,
+        overlayId: definition.overlayId,
+        valueDomain: null,
         colorRampId: definition.colorRampId,
         opacity: operatorState?.opacity ?? definition.defaultOpacity,
         isVisible: true,

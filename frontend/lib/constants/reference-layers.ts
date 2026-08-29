@@ -33,6 +33,13 @@ export interface ReferenceLayerDefinition {
   attribution: string;
   maximumZoom: number;
   stackPosition: ReferenceStackPosition;
+  /**
+   * Catalogue key, where the layer is a product the catalogue can describe.
+   *
+   * Null for pure annotation. A road network is not a measured quantity — it has no domain, no units and
+   * nothing to read off a ramp — so pointing it at a catalogue entry would invent semantics it lacks.
+   */
+  overlayId: string | null;
   colorRampId: StageColorRampId;
   /** Opacity it starts at. Annotation layers start below full so they never bury the imagery. */
   defaultOpacity: number;
@@ -53,6 +60,7 @@ export const REFERENCE_LAYERS: readonly ReferenceLayerDefinition[] = [
     attribution: ESRI_ATTRIBUTION,
     maximumZoom: 16,
     stackPosition: "under-imagery",
+    overlayId: "terrain-relief",
     colorRampId: "sar-grayscale",
     defaultOpacity: 1,
     isVisibleByDefault: false,
@@ -67,6 +75,7 @@ export const REFERENCE_LAYERS: readonly ReferenceLayerDefinition[] = [
     attribution: ESRI_ATTRIBUTION,
     maximumZoom: 18,
     stackPosition: "over-imagery",
+    overlayId: null,
     colorRampId: "artefact-neutral",
     defaultOpacity: 0.85,
     isVisibleByDefault: false,
@@ -81,6 +90,7 @@ export const REFERENCE_LAYERS: readonly ReferenceLayerDefinition[] = [
     attribution: ESRI_ATTRIBUTION,
     maximumZoom: 18,
     stackPosition: "over-imagery",
+    overlayId: null,
     colorRampId: "artefact-neutral",
     defaultOpacity: 0.75,
     isVisibleByDefault: false,

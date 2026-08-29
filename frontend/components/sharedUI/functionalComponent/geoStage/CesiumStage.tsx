@@ -63,11 +63,13 @@ import {
 } from "@/lib/constants/globe";
 import { INVESTIGATION_CAMERA, SCENE_RELIEF } from "@/lib/constants/investigation";
 import { LAYER_RENDERING } from "@/lib/constants/layers";
+import type { BuildingStyleId } from "@/lib/constants/overlays";
 import { AERIS_COLOR_HEX } from "@/lib/constants/theme";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
 import {
   createBuildingMassing,
+  buildBuildingTileStyle,
   createPhotorealisticTileset,
   hasPhotorealisticAccess,
   createEllipsoidTerrain,
@@ -182,6 +184,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     let buildings: Cesium3DTileset | null = null;
     let photorealistic: Cesium3DTileset | null = null;
     let buildingMode: StageBuildingMode = "none";
+    let buildingStyleId: BuildingStyleId = "uniform";
     let isLoadingBuildings = false;
     let isLoadingPhotorealistic = false;
     let buildingCoverage: StageBuildingCoverage = hasIonAccess() ? "loading" : "unavailable";
@@ -912,7 +915,11 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           // globe under them. That is also exactly why this mode suspends analysis: hiding the globe takes
           // the operator's rasters and the comparator split with it.
           scene.globe.show = mode !== "photorealistic";
-          evidenceVectors.setClassificationTarget(mode === "photorealistic" ? "both" : "terrain");
+          const classificationTarget = mode === "photorealistic" ? "both" : "terrain";
+          evidenceVectors.setClassificationTarget(classificationTarget);
+          // Drawn regions drape onto whatever is currently the ground. Left on terrain, an area of
+          // interest drawn over photorealistic tiles is classified against a hidden globe and vanishes.
+          draw.setClassificationTarget(classificationTarget);
 
           if (buildings) {
             buildings.show = mode === "massing";
@@ -939,6 +946,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
 
               buildings = tileset;
               buildings.show = buildingMode === "massing";
+              buildings.style = buildBuildingTileStyle(buildingStyleId);
               scene.primitives.add(buildings);
 
               // Coverage is answered by what actually renders, not by whether the tileset exists. The
@@ -974,6 +982,18 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
               photorealistic.show = buildingMode === "photorealistic";
               scene.primitives.add(photorealistic);
             });
+          }
+        },
+        setBuildingStyle: (styleId) => {
+          if (viewer.isDestroyed() || styleId === buildingStyleId) {
+            return;
+          }
+          buildingStyleId = styleId;
+          // Restyling an already-loaded tileset is a style-expression swap — no refetch, no rebuild.
+          // That is what makes colouring by attribute cheap enough to be a live control rather than a
+          // mode the operator has to commit to.
+          if (buildings && !buildings.isDestroyed()) {
+            buildings.style = buildBuildingTileStyle(styleId);
           }
         },
         getBuildingMode: () => buildingMode,

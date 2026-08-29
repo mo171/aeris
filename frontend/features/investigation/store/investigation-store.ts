@@ -32,6 +32,7 @@ import type {
   StageProjection,
 } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 import { INVESTIGATION_LIMITS, SCENE_RELIEF } from "@/lib/constants/investigation";
+import type { BuildingStyleId } from "@/lib/constants/overlays";
 import { TIMELINE_PLAYBACK, TIMELINE_QUERY } from "@/lib/constants/timeline";
 
 import type {
@@ -59,6 +60,8 @@ interface InvestigationState {
    * out of the "mirror external state into React on mount" pattern, which is a stale-UI bug waiting.
    */
   buildingMode: StageBuildingMode;
+  /** What the massing's colour encodes: nothing, building type, or height band. */
+  buildingStyleId: BuildingStyleId;
   terrainExaggeration: number;
   isPlaybackRunning: boolean;
   isPresentMode: boolean;
@@ -152,6 +155,7 @@ interface InvestigationState {
   toggleRenderMode: () => void;
   setProjection: (projection: StageProjection) => void;
   setBuildingMode: (mode: StageBuildingMode) => void;
+  setBuildingStyle: (styleId: BuildingStyleId) => void;
   setTerrainExaggeration: (factor: number) => void;
   setPlaybackRunning: (isRunning: boolean) => void;
   togglePresentMode: () => void;
@@ -223,6 +227,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   renderMode: "draped",
   projection: "3D",
   buildingMode: SCENE_RELIEF.defaultBuildingMode,
+  buildingStyleId: "uniform" as BuildingStyleId,
   terrainExaggeration: SCENE_RELIEF.defaultTerrainExaggeration,
   isPlaybackRunning: false,
   isPresentMode: false,
@@ -264,6 +269,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       renderMode: "draped",
       projection: "3D",
       buildingMode: SCENE_RELIEF.defaultBuildingMode,
+      buildingStyleId: "uniform",
       terrainExaggeration: SCENE_RELIEF.defaultTerrainExaggeration,
       isPlaybackRunning: false,
       isPresentMode: false,
@@ -316,6 +322,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
     set((state) => ({ renderMode: state.renderMode === "draped" ? "extruded" : "draped" })),
   setProjection: (projection) => set({ projection }),
   setBuildingMode: (buildingMode) => set({ buildingMode }),
+  // Style is remembered across a mode change: an operator who chose height bands, switched to flat to
+  // read the imagery, then switched massing back on expects their banding still there.
+  setBuildingStyle: (buildingStyleId) => set({ buildingStyleId }),
   setTerrainExaggeration: (terrainExaggeration) => set({ terrainExaggeration }),
   setPlaybackRunning: (isPlaybackRunning) => set({ isPlaybackRunning }),
   togglePresentMode: () => set((state) => ({ isPresentMode: !state.isPresentMode })),

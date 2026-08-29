@@ -32,10 +32,19 @@ import {
   Entity,
   HeightReference,
   PolygonHierarchy,
+  StripeMaterialProperty,
+  StripeOrientation,
   type Viewer,
 } from "cesium";
 
-import { MAGNITUDE_SHADING, LAYER_RENDERING, VECTOR_PALETTE } from "@/lib/constants/layers";
+import {
+  MAGNITUDE_SHADING,
+  LAYER_RENDERING,
+  MASK_HATCH_REPEAT,
+  VECTOR_PALETTE,
+} from "@/lib/constants/layers";
+import { findOverlay } from "@/lib/constants/overlays";
+import { resolveOverlayStyle } from "@/lib/overlay-style";
 
 import type { StageFeature, StageLayer, StageLayerRenderMode } from "../geo-stage.types";
 
@@ -111,51 +120,116 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     return state.reveal * layerOpacity(layerId) * baseRatio * spotlightFactor;
   }
 
+  /**
+   * The colours one feature draws in.
+   *
+   * The overlay catalogue answers first, so a value or a class decides the colour; the layer's own ramp is
+   * the fallback for anything not catalogued — scene imagery, a product this build has not learned about.
+   * Resolved once per feature at build time rather than per frame: values do not change while a layer is
+   * on screen, and sampling a ramp inside a render callback would cost the frame budget for nothing.
+   */
+  function resolveFeaturePalette(descriptor: StageLayer, feature: StageFeature) {
+    const fallback = VECTOR_PALETTE[descriptor.colorRampId];
+    const style = resolveOverlayStyle({
+      overlayId: descriptor.overlayId,
+      valueDomain: descriptor.valueDomain,
+      value: feature.value,
+      classId: feature.classId,
+    });
+
+    return {
+      fill: Color.fromCssColorString(style?.fill ?? fallback.fill),
+      outline: Color.fromCssColorString(style?.outline ?? fallback.outline),
+      highlight: Color.fromCssColorString(fallback.highlight),
+      // Masks hatch rather than fill so they can never be mistaken at a glance for a coloured finding.
+      // Stripes are Cesium's own material, so this costs no texture generation and survives every mode.
+      isHatched: findOverlay(descriptor.overlayId)?.rendersAsHatch ?? false,
+    };
+  }
+
+  /** Where a feature's value sits inside its layer's domain, 0–1. Used for extrusion height. */
+  function normalisedFeatureValue(descriptor: StageLayer, feature: StageFeature): number {
+    const overlay = findOverlay(descriptor.overlayId);
+    const domain =
+      descriptor.valueDomain ??
+      (overlay?.encoding.kind === "continuous" ? overlay.encoding.domain : null);
+
+    if (!domain || feature.value === null) {
+      return feature.magnitude;
+    }
+
+    const span = domain.maximum - domain.minimum;
+    if (span === 0) {
+      return 0;
+    }
+    return Math.min(1, Math.max(0, (feature.value - domain.minimum) / span));
+  }
+
   function buildPolygonEntities(
     tracked: TrackedFeature,
     layerId: string,
     descriptor: StageLayer,
     ring: readonly { latitude: number; longitude: number }[],
   ): Entity[] {
-    const palette = VECTOR_PALETTE[descriptor.colorRampId];
-    const fillColor = Color.fromCssColorString(palette.fill);
-    const outlineColor = Color.fromCssColorString(palette.outline);
-    const highlightColor = Color.fromCssColorString(palette.highlight);
+    const palette = resolveFeaturePalette(descriptor, tracked.feature);
+    const fillColor = palette.fill;
+    const outlineColor = palette.outline;
+    const highlightColor = palette.highlight;
 
     const positions = ring.map((point) =>
       Cartesian3.fromDegrees(point.longitude, point.latitude),
     );
     const hierarchy = new PolygonHierarchy(positions);
 
+    const resolveFillColor = () => {
+      const base = tracked.state.isSpotlit ? highlightColor : fillColor;
+      const alpha = resolveAlpha(tracked, layerId, LAYER_RENDERING.polygonFillAlphaRatio);
+
+      if (!shadeByMagnitude || tracked.state.isSpotlit) {
+        return base.withAlpha(alpha);
+      }
+
+      // Read straight from the feature, so the colour and the number in the inspector cannot disagree.
+      const magnitude = tracked.feature.magnitude;
+      const weight =
+        MAGNITUDE_SHADING.minimumWeight +
+        (MAGNITUDE_SHADING.maximumWeight - MAGNITUDE_SHADING.minimumWeight) * magnitude;
+      const shaded =
+        magnitude > MAGNITUDE_SHADING.brightenAboveMagnitude
+          ? base.brighten(MAGNITUDE_SHADING.brightenAmount, new Color())
+          : base;
+
+      return shaded.withAlpha(alpha * weight);
+    };
+
     // Cesium requires a MaterialProperty here, not a bare Property. Wrapping the callback in
     // ColorMaterialProperty is what lets the colour animate without rebuilding the entity every frame.
-    const fillMaterial = new ColorMaterialProperty(
-      new CallbackProperty(() => {
-        const base = tracked.state.isSpotlit ? highlightColor : fillColor;
-        const alpha = resolveAlpha(tracked, layerId, LAYER_RENDERING.polygonFillAlphaRatio);
-
-        if (!shadeByMagnitude || tracked.state.isSpotlit) {
-          return base.withAlpha(alpha);
-        }
-
-        // Read straight from the feature, so the colour and the number in the inspector cannot disagree.
-        const magnitude = tracked.feature.magnitude;
-        const weight =
-          MAGNITUDE_SHADING.minimumWeight +
-          (MAGNITUDE_SHADING.maximumWeight - MAGNITUDE_SHADING.minimumWeight) * magnitude;
-        const shaded =
-          magnitude > MAGNITUDE_SHADING.brightenAboveMagnitude
-            ? base.brighten(MAGNITUDE_SHADING.brightenAmount, new Color())
-            : base;
-
-        return shaded.withAlpha(alpha * weight);
-      }, false),
-    );
+    // A hatched mask swaps that for stripes over transparency: the imagery stays readable underneath,
+    // which is the whole point of saying "you cannot trust this" rather than painting over it.
+    const fillMaterial = palette.isHatched
+      ? new StripeMaterialProperty({
+          evenColor: new CallbackProperty(() => resolveFillColor(), false),
+          oddColor: new CallbackProperty(() => Color.TRANSPARENT, false),
+          repeat: MASK_HATCH_REPEAT,
+          orientation: StripeOrientation.VERTICAL,
+        })
+      : new ColorMaterialProperty(
+          new CallbackProperty(() => resolveFillColor(), false),
+        );
 
     if (activeRenderMode === "extruded") {
+      // A heat-map surface is extruded by its MEASURED value, not by significance. That is what builds
+      // the relief the reference imagery shows — peaks over the concentrations — and it means the height
+      // an operator reads is the same number the inspector quotes. Everything else extrudes by magnitude,
+      // which ranks findings rather than measuring them.
+      const heightWeight =
+        descriptor.kind === "heatmap-surface" && tracked.feature.value !== null
+          ? normalisedFeatureValue(descriptor, tracked.feature)
+          : tracked.feature.magnitude;
+
       const fullHeight = Math.max(
         LAYER_RENDERING.extrusionMinimumMeters,
-        tracked.feature.magnitude * LAYER_RENDERING.extrusionMetersAtFullMagnitude,
+        heightWeight * LAYER_RENDERING.extrusionMetersAtFullMagnitude,
       );
 
       return [
@@ -215,9 +289,9 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     descriptor: StageLayer,
     bounds: { west: number; south: number; east: number; north: number },
   ): Entity[] {
-    const palette = VECTOR_PALETTE[descriptor.colorRampId];
-    const outlineColor = Color.fromCssColorString(palette.outline);
-    const highlightColor = Color.fromCssColorString(palette.highlight);
+    const palette = resolveFeaturePalette(descriptor, tracked.feature);
+    const outlineColor = palette.outline;
+    const highlightColor = palette.highlight;
 
     const corners = [
       { longitude: bounds.west, latitude: bounds.south },
@@ -255,9 +329,9 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     descriptor: StageLayer,
     position: { latitude: number; longitude: number },
   ): Entity[] {
-    const palette = VECTOR_PALETTE[descriptor.colorRampId];
-    const fillColor = Color.fromCssColorString(palette.fill);
-    const highlightColor = Color.fromCssColorString(palette.highlight);
+    const palette = resolveFeaturePalette(descriptor, tracked.feature);
+    const fillColor = palette.fill;
+    const highlightColor = palette.highlight;
 
     return [
       new Entity({

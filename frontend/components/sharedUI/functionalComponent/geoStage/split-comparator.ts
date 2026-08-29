@@ -14,6 +14,26 @@
 //
 //         `sweep` is what makes this agentic: it is registered as a command, so AERIS can perform the
 //         reveal itself while narrating the answer.
+//
+//         KNOWN LIMITS — reported 2026-08-30, not yet addressed. Both are about WHERE the reveal has
+//         something to reveal, not about this file's mechanics:
+//
+//         1. It goes blank outside the investigation's own footprint. Scene layers are built with the
+//            AOI rectangle (scene-imagery-layer.ts passes `descriptor.bounds` straight to the provider),
+//            so beyond that box neither side has tiles and the handle sweeps over empty ground. The
+//            archive side additionally stops at zoom 14 in Phase 1 because the stand-in Sentinel-2
+//            mosaic ends there, so a deep zoom degrades one half before the other. Real per-scene
+//            footprints from the backend change the shape of this, not the fact of it: the honest fix
+//            is to SAY there is no coverage here rather than render nothing.
+//
+//         2. It cannot work over photorealistic tiles, and this one is structural. Cesium splits
+//            IMAGERY LAYERS — `splitDirection` is a property of ImageryLayer, draped on the globe.
+//            Photorealistic mode hides the globe, because the tileset carries its own ground. A 3D
+//            tileset has no split channel, so there is nothing to sweep. Comparing two dates inside
+//            photoreal would mean clipping the tileset itself with a clipping plane driven by the same
+//            position — a different mechanism that would have to be written, and it would only compare
+//            geometry Google captured, never the operator's own imagery. Photoreal is a context view;
+//            analysis lives on the globe. Documented in CesiumStage.setBuildingMode too.
 
 import type { Scene } from "cesium";
 

@@ -1,8 +1,8 @@
 // features/investigation/components/inputsPanel/InputsPanel.tsx — the left zone: inputs and evidence layers.
 //
-// what  : Five collapsible sections — the scenes bound to comparison roles, the acquisition history over
-//         the area, the regions the operator has drawn, the evidence layers produced, and the reference
-//         context those are read against.
+// what  : Six collapsible sections — the scenes bound to comparison roles, the acquisition history over
+//         the area, the regions the operator has drawn, the FINDINGS a run asserted, the MASKS saying
+//         where it cannot be trusted, and the reference context all of it is read against.
 // where : The left zone of InvestigationScreen.
 // how   : The sections compete for the same vertical space, and which one matters depends entirely on
 //         what the operator is doing — checking what went in, or controlling what came out. Each claims
@@ -11,6 +11,12 @@
 //
 //         Layers are presented as evidence rather than as a generic layer tree: every row states the model
 //         and version behind it. See EvidenceLayerRow for why that framing is load-bearing.
+//
+//         FINDINGS AND MASKS ARE SEPARATE SECTIONS, and the split is epistemic rather than cosmetic. A
+//         change mask asserts that something happened; a cloud mask asserts that nothing can be asserted.
+//         They were sharing one list, which put an obscuration and a conclusion on the same footing — the
+//         same mistake the reference section was already split out to avoid. The catalogue decides which
+//         section a layer lands in, so a new product is filed correctly without touching this file.
 
 "use client";
 
@@ -30,6 +36,7 @@ import type {
 import type { EvidenceLayer } from "../../types/layer.types";
 import type { StageDrawnRegion } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 
+import { OVERLAY_SECTIONS, sectionForOverlay } from "@/lib/constants/overlays";
 import { REFERENCE_LAYERS } from "@/lib/constants/reference-layers";
 
 import { AcquisitionList } from "./AcquisitionList";
@@ -70,6 +77,8 @@ export function InputsPanel({
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
   const [isRegionsExpanded, setIsRegionsExpanded] = useState(true);
   const [isLayersExpanded, setIsLayersExpanded] = useState(true);
+  // Collapsed by default: masks matter when a claim looks wrong, not while reading one that looks right.
+  const [isMasksExpanded, setIsMasksExpanded] = useState(false);
   // Collapsed by default: context is what an operator reaches for when a specific question needs it.
   const [isReferenceExpanded, setIsReferenceExpanded] = useState(false);
 
@@ -84,8 +93,16 @@ export function InputsPanel({
   const isSceneVisible = (slot: InvestigationSceneSlot) =>
     soloLayerId === null ? (visibilityOverrides[slot.layerId] ?? true) : soloLayerId === slot.layerId;
 
-  const evidenceLayers = layers.filter(
+  const producedLayers = layers.filter(
     (layer) => !sceneSlots.some((slot) => slot.layerId === layer.id),
+  );
+
+  // Filed by the catalogue, not by a rule written here, so adding a product never edits this component.
+  const evidenceLayers = producedLayers.filter(
+    (layer) => sectionForOverlay(layer.overlayId) !== "masks",
+  );
+  const maskLayers = producedLayers.filter(
+    (layer) => sectionForOverlay(layer.overlayId) === "masks",
   );
 
   return (
@@ -196,7 +213,7 @@ export function InputsPanel({
         )}
       >
         <SectionHeader
-          title="Evidence Layers"
+          title="Findings"
           isExpanded={isLayersExpanded}
           onToggle={() => setIsLayersExpanded((current) => !current)}
           trailing={
@@ -231,6 +248,51 @@ export function InputsPanel({
           </div>
         ) : null}
       </section>
+
+      {/*
+        Where the answer cannot be trusted. Separate from the findings above because it is the opposite
+        kind of statement — and shown even when empty is wrong, so it hides entirely when a run produced
+        no masks at all.
+      */}
+      {maskLayers.length > 0 ? (
+        <section
+          className={cn(
+            "flex flex-col border-t border-border-soft pt-2",
+            isMasksExpanded ? "min-h-0 flex-1" : "shrink-0",
+          )}
+        >
+          <SectionHeader
+            title="Masks"
+            isExpanded={isMasksExpanded}
+            onToggle={() => setIsMasksExpanded((current) => !current)}
+            trailing={
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {maskLayers.length}
+              </span>
+            }
+          />
+
+          {isMasksExpanded ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+              <p className="mb-1.5 px-0.5 text-[10px] leading-relaxed text-muted-foreground/70">
+                {OVERLAY_SECTIONS.masks.caption}
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {maskLayers.map((layer) => (
+                  <EvidenceLayerRow
+                    key={layer.id}
+                    layer={layer}
+                    isSoloed={soloLayerId === layer.id}
+                    onToggleVisibility={() => setLayerVisibility(layer.id, !layer.isVisible)}
+                    onToggleSolo={() => toggleSoloLayer(layer.id)}
+                    onOpacityChange={(opacity) => setLayerOpacity(layer.id, opacity)}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {/*
         Context, kept visually distinct from the evidence above it. An evidence row names the model that

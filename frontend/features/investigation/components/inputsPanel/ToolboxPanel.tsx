@@ -23,6 +23,10 @@
 //         teaches the operator something about the analysis; a missing row teaches them nothing and a
 //         greyed one with no explanation reads as a broken button.
 //
+//         The OVERLAY BROWSER at the bottom completes the same argument for products. Operations say what
+//         the workspace can DO; overlays say what it can SHOW, which is a different question an operator
+//         cannot otherwise answer — the layer stack only ever lists what a run happened to produce.
+//
 //         Operations that need arguments are shown but not run from here. A list cannot collect a layer id
 //         or a date, and a button that silently guesses one is worse than a button that explains it needs
 //         the scene. Those rows say where the argument comes from instead — which is also the honest
@@ -46,6 +50,8 @@ import { COMMAND_GROUP_LABEL, type CommandGroup } from "@/lib/constants/commands
 import { getPipelineStage } from "@/lib/constants/pipeline-stages";
 import { cn } from "@/lib/utils";
 
+import { OverlayBrowser } from "./OverlayBrowser";
+
 /** What the open investigation can currently satisfy, so each operation can say what it is waiting for. */
 export interface AnalysisReadiness {
   pair: boolean;
@@ -67,9 +73,11 @@ const TOOLBOX_GROUPS: readonly CommandGroup[] = ["investigation", "assistant", "
 interface ToolboxPanelProps {
   readiness: AnalysisReadiness;
   onRunOperation: (operationId: string) => void;
+  /** Catalogue keys of the overlays currently drawn, so the browser can mark them. */
+  activeOverlayIds: readonly string[];
 }
 
-export function ToolboxPanel({ readiness, onRunOperation }: ToolboxPanelProps) {
+export function ToolboxPanel({ readiness, onRunOperation, activeOverlayIds }: ToolboxPanelProps) {
   const commands = useRegisteredCommands();
   const [query, setQuery] = useState("");
 
@@ -267,6 +275,7 @@ export function ToolboxPanel({ readiness, onRunOperation }: ToolboxPanelProps) {
             })}
           </section>
         ))}
+        <OverlayBrowser activeOverlayIds={activeOverlayIds} query={query} />
       </div>
     </div>
   );

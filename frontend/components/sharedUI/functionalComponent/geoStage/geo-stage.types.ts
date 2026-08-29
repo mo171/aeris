@@ -18,6 +18,8 @@
 //         no frontend file changes. That is the single decision that keeps this surface from growing
 //         linearly with the science behind it.
 
+import type { BuildingStyleId } from "@/lib/constants/overlays";
+
 /** Which instrument the stage is currently acting as. Governs zoom limits, idle behaviour and layers. */
 export type StageMode = "globe" | "scene";
 
@@ -182,10 +184,16 @@ export type StageLayerKind =
   | "raster-mask"
   | "polygon-vector"
   | "point-vector"
-  | "bbox-vector";
+  | "bbox-vector"
+  | "heatmap-surface";
 
-/** Draped classification and extrusion are different Cesium primitives, so this is not a boolean. */
-export type StageLayerRenderMode = "draped" | "extruded";
+/**
+ * Draped classification and extrusion are different Cesium primitives, so this is not a boolean.
+ *
+ * `classified` colours per feature by its class; `heatmap` colours per feature by its measured value.
+ * Separate modes rather than flags because each changes what the colour MEANS.
+ */
+export type StageLayerRenderMode = "draped" | "extruded" | "classified" | "heatmap";
 
 /** Which half of the comparator a layer belongs to. Only raster layers can be split. */
 export type StageComparatorSide = "left" | "right" | "both";
@@ -220,6 +228,10 @@ export interface StageFeature {
   magnitude: number;
   confidence: number | null;
   areaHectares: number | null;
+  /** The measured reading in the layer's units. Distinct from magnitude, which is significance. */
+  value: number | null;
+  /** Class membership for categorical products. An id the frontend maps to a colour, never a colour. */
+  classId: string | null;
 }
 
 export interface StageLayer {
@@ -227,6 +239,10 @@ export interface StageLayer {
   kind: StageLayerKind;
   renderMode: StageLayerRenderMode;
   title: string;
+  /** Key into the overlay catalogue, which supplies the encoding, units and legend. */
+  overlayId: string | null;
+  /** Range actually observed in this scene, narrowing the catalogue's theoretical domain. */
+  valueDomain: { minimum: number; maximum: number } | null;
   colorRampId: StageColorRampId;
   opacity: number;
   isVisible: boolean;
@@ -388,6 +404,14 @@ export interface StageAppearanceApi {
   /** Lazily loads whichever tileset the mode names. Nothing is fetched until a mode actually selects it. */
   setBuildingMode: (mode: StageBuildingMode) => void;
   getBuildingMode: () => StageBuildingMode;
+  /**
+   * Which of its own attributes the massing is coloured by — nothing, building type, or height band.
+   *
+   * Separate from the building MODE because they answer different questions: mode is whether buildings
+   * are drawn at all, style is what their colour encodes once they are. Applies only to massing;
+   * photorealistic tiles carry their own texture and cannot be restyled.
+   */
+  setBuildingStyle: (styleId: BuildingStyleId) => void;
   /** False when no Google Maps key is configured, so the control can state the reason. */
   isPhotorealisticAvailable: () => boolean;
   /**

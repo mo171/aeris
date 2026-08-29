@@ -29,6 +29,15 @@ import {
 
 import { CESIUM_BASE_URL, GLOBE_APPEARANCE, GLOBE_BASEMAP } from "@/lib/constants/globe";
 import { SCENE_RELIEF } from "@/lib/constants/investigation";
+import {
+  BUILDING_HEIGHT_SCHEME,
+  OSM_BUILDING_PROPERTIES,
+  OSM_BUILDING_TAG_CLASSES,
+  binRampPosition,
+  classForBuildingTag,
+  sampleRamp,
+  type BuildingStyleId,
+} from "@/lib/constants/overlays";
 import { env } from "@/lib/env";
 
 declare global {
@@ -146,15 +155,73 @@ export async function createBuildingMassing(): Promise<Cesium3DTileset | null> {
 
   try {
     const tileset = await createOsmBuildingsAsync();
-    tileset.style = new Cesium3DTileStyle({
-      color: `color("${SCENE_RELIEF.buildingColorCss}", ${SCENE_RELIEF.buildingAlpha})`,
-    });
+    tileset.style = buildBuildingTileStyle("uniform");
     return tileset;
   } catch (error) {
     console.warn("[AERIS] Building massing unavailable, the scene stays flat.", error);
     return null;
   }
 }
+
+/**
+ * The style expression that colours the massing by one of its own attributes.
+ *
+ * Built from the overlay catalogue rather than written out here, so the buildings on the scene and the
+ * swatches in the legend are the same palette by construction — a hand-written expression would be a
+ * second copy of the colours, free to drift from the first.
+ *
+ * Conditions evaluate top to bottom and the last entry is an unconditional fallback, which is what keeps
+ * an unmapped OSM tag or a missing height visible rather than transparent. A building that vanishes
+ * because nobody typed its tag into a list is worse than one drawn in the unspecified tone.
+ */
+export function buildBuildingTileStyle(styleId: BuildingStyleId): Cesium3DTileStyle {
+  const alpha = SCENE_RELIEF.buildingAlpha;
+  // Bracket form, not `${name}`. Cesium's estimated-height property contains a '#', which the shorthand
+  // cannot parse — it fails silently and every building falls through to the last condition.
+  const typeProperty = `\${feature['${OSM_BUILDING_PROPERTIES.type}']}`;
+  const heightProperty = `\${feature['${OSM_BUILDING_PROPERTIES.estimatedHeight}']}`;
+
+  if (styleId === "type") {
+    const conditions: [string, string][] = Object.entries(OSM_BUILDING_TAG_CLASSES).map(
+      ([, tags]) => {
+        const { color } = classForBuildingTag(tags[0]);
+        const membership = tags.map((tag) => `${typeProperty} === '${tag}'`).join(" || ");
+        return [membership, `color("${color}", ${alpha})`];
+      },
+    );
+
+    const unspecified = classForBuildingTag(null);
+    conditions.push(["true", `color("${unspecified.color}", ${alpha})`]);
+    return new Cesium3DTileStyle({ color: { conditions } });
+  }
+
+  if (styleId === "height") {
+    const bandColor = (index: number) =>
+      sampleRamp(
+        BUILDING_HEIGHT_SCHEME.rampId,
+        binRampPosition(BUILDING_HEIGHT_SCHEME.id, index),
+      );
+
+    const conditions: [string, string][] = BUILDING_HEIGHT_SCHEME.bins
+      .filter((bin) => Number.isFinite(bin.upperBound))
+      .map((bin, index) => [
+        `${heightProperty} <= ${bin.upperBound}`,
+        `color("${bandColor(index)}", ${alpha})`,
+      ]);
+
+    // The open top band, and with it any footprint whose height is missing — which still has to draw.
+    conditions.push([
+      "true",
+      `color("${bandColor(BUILDING_HEIGHT_SCHEME.bins.length - 1)}", ${alpha})`,
+    ]);
+    return new Cesium3DTileStyle({ color: { conditions } });
+  }
+
+  return new Cesium3DTileStyle({
+    color: `color("${SCENE_RELIEF.buildingColorCss}", ${alpha})`,
+  });
+}
+
 
 /**
  * Google Photorealistic 3D Tiles — textured photogrammetry of the real city.

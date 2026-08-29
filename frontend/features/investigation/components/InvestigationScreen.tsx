@@ -71,6 +71,16 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const { investigation, isLoading, error, assignSceneRole, saveCameraView } =
     useInvestigation(investigationId);
   const { graph, layers, featureIdsForClaim } = useEvidenceGraph(investigationId);
+
+  // Which catalogue products are actually on the scene, so the overlay browser can mark them rather than
+  // listing every capability with no indication of which ones the operator is already looking at.
+  const activeOverlayIds = useMemo(
+    () =>
+      layers
+        .filter((layer) => layer.isVisible && layer.overlayId !== null)
+        .map((layer) => layer.overlayId as string),
+    [layers],
+  );
   const { ask, stop } = useAnalysisRun(investigationId);
   const autonomous = useAutonomousInvestigation({ investigationId, ask });
   const regionSelection = useRegionSelection(investigationId);
@@ -318,6 +328,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                 <LeftPanelTabs
                   readiness={analysisReadiness}
                   onRunOperation={handleRunOperation}
+                  activeOverlayIds={activeOverlayIds}
                   sceneSlots={sceneSlots}
                   acquisitions={acquisitions}
                   roleBySceneId={roleBySceneId}
@@ -344,6 +355,14 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                 onSelectTool={regionSelection.selectTool}
               />
 
+              {/*
+                The key takes the corner opposite the inspector. Both are anchored to the free column
+                rather than the viewport, so neither can slide under a panel at any panel width.
+              */}
+              <div className="absolute top-0 left-0 z-10">
+                <EvidenceLegend layers={layers} />
+              </div>
+
               {inspection ? (
                 <div className="pointer-events-none absolute top-0 right-0 z-10">
                   <FeatureInspector
@@ -358,7 +377,6 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
 
               <div className="flex-1" aria-hidden="true" />
 
-              <EvidenceLegend layers={layers} />
               <SceneReadout />
               <div className="flex flex-wrap items-end justify-center gap-2">
                 <ProjectionToggle projection={projection} onChange={setProjection} />

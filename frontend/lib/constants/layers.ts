@@ -89,6 +89,15 @@ export const MAGNITUDE_SHADING = {
   brightenAmount: 0.32,
 } as const;
 
+/**
+ * Stripe repetitions across a masked region, which is what turns a fill into hatching.
+ *
+ * Hatching rather than a solid fill is the cartographic convention for "no data here", and it is what
+ * stops a cloud mask reading as a coloured finding. The count is a compromise: too few and it looks like
+ * a striped decoration, too many and it moirés against the imagery underneath at oblique camera angles.
+ */
+export const MASK_HATCH_REPEAT = 26;
+
 export const LAYER_RENDERING = {
   /** Starting opacity per layer kind. The operator can override any of them from the layer stack. */
   defaultOpacity: {

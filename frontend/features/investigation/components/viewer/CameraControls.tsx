@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { dispatchCommand } from "@/lib/command-bus";
 import { COMMAND_IDS } from "@/lib/constants/commands";
 import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
+import { BUILDING_STYLE_OPTIONS } from "@/lib/constants/overlays";
 import { cn } from "@/lib/utils";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
@@ -96,6 +97,8 @@ const PITCH_COPY: Record<number, { label: string; hint: string }> = {
 export function CameraControls() {
   const stage = useGeoStageStore((state) => state.handle);
   const buildingMode = useInvestigationStore((state) => state.buildingMode);
+  const buildingStyleId = useInvestigationStore((state) => state.buildingStyleId);
+  const setBuildingStyle = useInvestigationStore((state) => state.setBuildingStyle);
 
   // Pitch is the one value here that is NOT stored: it changes continuously as the operator drags, so it
   // is read from the stage rather than mirrored. Buildings are a discrete choice and live in the store,
@@ -230,6 +233,39 @@ export function CameraControls() {
         );
       })}
 
+      {/*
+        What the massing's colour ENCODES, which is a different question from whether buildings are drawn.
+        Only offered while massing is on: photorealistic tiles carry their own texture and cannot be
+        restyled, and there is nothing to colour when buildings are off.
+      */}
+      {buildingMode === "massing" ? (
+        <>
+          <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+          {BUILDING_STYLE_OPTIONS.map((option) => (
+            <Tooltip key={option.id}>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Colour buildings ${option.label.toLowerCase()}`}
+                  aria-pressed={buildingStyleId === option.id}
+                  onClick={() => setBuildingStyle(option.id)}
+                  className={cn(
+                    "h-7 px-1.5 font-mono text-[10px] tracking-wide",
+                    buildingStyleId === option.id ? "text-aeris-teal" : "text-muted-foreground",
+                  )}
+                >
+                  {option.label}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-64">
+                {option.hint}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </>
+      ) : null}
     </div>
   );
 }

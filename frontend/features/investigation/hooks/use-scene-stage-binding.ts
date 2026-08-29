@@ -82,6 +82,7 @@ export function useSceneStageBinding({
   const renderMode = useInvestigationStore((state) => state.renderMode);
   const projection = useInvestigationStore((state) => state.projection);
   const buildingMode = useInvestigationStore((state) => state.buildingMode);
+  const buildingStyleId = useInvestigationStore((state) => state.buildingStyleId);
   const terrainExaggeration = useInvestigationStore((state) => state.terrainExaggeration);
   const spotlightClaimId = useInvestigationStore((state) => state.spotlightClaimId);
   const artefactLayerId = useInvestigationStore((state) => state.artefactLayerId);
@@ -184,6 +185,12 @@ export function useSceneStageBinding({
   useEffect(() => {
     stage?.appearance.setBuildingMode(buildingMode);
   }, [buildingMode, stage]);
+
+  useEffect(() => {
+    // Applied after the mode, and independently of it: the tileset may not exist yet when the style is
+    // chosen, and setBuildingMode re-applies the current style whenever it creates one.
+    stage?.appearance.setBuildingStyle(buildingStyleId);
+  }, [buildingStyleId, stage]);
 
   // Building massing and terrain exaggeration are alternative ways to convey height, and they fight each
   // other. In a city the vertical information is in the BUILDINGS — a 30 m-posting elevation model holds

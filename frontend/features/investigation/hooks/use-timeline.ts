@@ -184,6 +184,10 @@ export function useTimeline({ investigation, citedSceneIds }: TimelineOptions): 
         kind: "raster-tiles",
         renderMode: "draped",
         title: `${acquisition.sensorPlatform} · ${acquisition.capturedAt.slice(0, 10)}`,
+        // No overlay id: scrubbed imagery is what the sensor saw, not a product anything asserted.
+        // Same reason it carries no provenance block.
+        overlayId: null,
+        valueDomain: null,
         colorRampId: acquisition.modality === "sar" ? "sar-grayscale" : "true-color",
         opacity: 1,
         isVisible: true,

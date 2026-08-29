@@ -80,9 +80,13 @@ export async function mockAnalysisStream({
       },
     });
 
-    // A layer becomes available the moment its stage finishes, not when the run does.
-    const readyLayer = script.layers.find((layer) => layer.provenance.traceStepId === step.id);
-    if (readyLayer) {
+    // Layers become available the moment their stage finishes, not when the run does.
+    //
+    // ALL of them, not the first match. One stage routinely produces several products — specialist
+    // analysis emits a change mask, a land-cover classification and a water extent — and taking only the
+    // first silently discarded the rest, leaving them in the catalogue but never on the scene.
+    const readyLayers = script.layers.filter((layer) => layer.provenance.traceStepId === step.id);
+    for (const readyLayer of readyLayers) {
       emit({
         type: "layer-ready",
         runId,

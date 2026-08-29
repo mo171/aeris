@@ -41,6 +41,7 @@ import type {
 } from "@/features/investigation/types/investigation.types";
 import type { EvidenceFeature, EvidenceLayer } from "@/features/investigation/types/layer.types";
 import type { ReportSection } from "@/features/investigation/types/report.types";
+import { ANALYSIS_OPERATIONS } from "@/lib/constants/analysis-operations";
 import { LAYER_RENDERING } from "@/lib/constants/layers";
 
 import { createSeededRandom, pickOne, randomFloat } from "../transport/deterministic-random";
@@ -94,6 +95,33 @@ const DETECTION_BOX_COUNT = 18;
 const CLOUD_BLOB_COUNT = 3;
 const RESIDUAL_POINT_COUNT = 9;
 
+/**
+ * Products generated alongside the primary change run, so every encoding in the overlay catalogue has
+ * something on screen to exercise it.
+ *
+ * A catalogue nothing produces is a catalogue nobody can check. These exist so the continuous ramp, the
+ * class palette, the graduated bins, the hatched mask and the extruded heat surface are all reachable in
+ * Phase 1 — and so the legend, the inspector readout and the browser can be verified against real
+ * geometry rather than asserted to work. They are deleted with the rest of /mock in Phase 2.
+ */
+const NDVI_CELL_COUNT = 14;
+const LAND_COVER_PATCH_COUNT = 12;
+const WATER_PATCH_COUNT = 6;
+const DENSITY_BAND_COUNT = 5;
+
+/** Land-cover classes the generator draws from, weighted toward what an urban-fringe scene contains. */
+const MOCK_LAND_COVER_CLASSES = [
+  "built-up",
+  "vegetation",
+  "cropland",
+  "bare-soil",
+  "water",
+  "wetland",
+] as const;
+
+/** Water states, ordered so the generator produces mostly permanent water with real gain and loss. */
+const MOCK_WATER_STATES = ["permanent", "permanent", "gained", "lost", "seasonal"] as const;
+
 interface GeneratedInvestigation {
   investigation: Investigation;
   layers: EvidenceLayer[];
@@ -113,6 +141,16 @@ interface GeneratedInvestigation {
  */
 const SESSION_STORAGE_KEY = "aeris.mock.investigations";
 
+/**
+ * Bumped whenever the generated shape changes.
+ *
+ * Without it, a persisted investigation from an earlier build rehydrates into a session running newer
+ * code and fails validation at the stream boundary — layers are silently dropped and the workspace
+ * reports "no evidence yet" with nothing anywhere saying why. It costs a session's history to discard
+ * the cache; it costs an afternoon to debug a schema change against data that predates it.
+ */
+const SESSION_STORAGE_VERSION = 2;
+
 const investigationsById = new Map<string, GeneratedInvestigation>(loadPersisted());
 
 function loadPersisted(): [string, GeneratedInvestigation][] {
@@ -122,9 +160,20 @@ function loadPersisted(): [string, GeneratedInvestigation][] {
 
   try {
     const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as [string, GeneratedInvestigation][]) : [];
+    if (!raw) {
+      return [];
+    }
+
+    const payload = JSON.parse(raw) as {
+      version?: number;
+      entries?: [string, GeneratedInvestigation][];
+    };
+
+    // Anything from an older shape is dropped rather than trusted. Regenerating is instant; rendering
+    // data the current contract rejects is not recoverable from inside the app.
+    return payload.version === SESSION_STORAGE_VERSION ? (payload.entries ?? []) : [];
   } catch {
-    // A quota error or a shape change from an older build must never stop the app booting.
+    // A quota error must never stop the app booting.
     return [];
   }
 }
@@ -137,7 +186,10 @@ function persist(): void {
   try {
     window.sessionStorage.setItem(
       SESSION_STORAGE_KEY,
-      JSON.stringify([...investigationsById.entries()]),
+      JSON.stringify({
+        version: SESSION_STORAGE_VERSION,
+        entries: [...investigationsById.entries()],
+      }),
     );
   } catch {
     // Storage being full only costs reload survival, which is a convenience rather than a requirement.
@@ -427,6 +479,10 @@ function buildSceneLayers(
       ...base,
       id: slot.layerId,
       title: `${slot.role.toUpperCase()} · ${slot.sensorPlatform} ${slot.capturedAt.slice(0, 10)}`,
+      // No overlay id: a scene is what the sensor saw, not a product. It has no domain to ramp and
+      // nothing to read off a legend.
+      overlayId: null,
+      valueDomain: null,
       colorRampId: slot.modality === "sar" ? ("sar-grayscale" as const) : ("true-color" as const),
       comparatorSide:
         slot.role === "t0" ? ("left" as const) : slot.role === "t1" ? ("right" as const) : ("both" as const),
@@ -486,6 +542,10 @@ function buildAnalysisProducts(
       magnitude: Math.min(1, radius / 0.0018),
       confidence: randomFloat(random, 0.72, 0.97),
       areaHectares,
+      // The share of the region that actually changed. Correlated with magnitude but NOT equal to it:
+      // magnitude ranks the finding, this is the measurement the answer quotes and the bin scheme reads.
+      value: Math.min(1, (radius / 0.0018) * randomFloat(random, 0.55, 0.95)),
+      classId: null,
     });
   }
 
@@ -511,6 +571,8 @@ function buildAnalysisProducts(
         magnitude: randomFloat(random, 0.3, 0.9),
         confidence: randomFloat(random, 0.68, 0.95),
         areaHectares: null,
+        value: null,
+        classId: "building",
       };
     },
   );
@@ -532,14 +594,21 @@ function buildAnalysisProducts(
       magnitude: 0.3,
       confidence: null,
       areaHectares: hectaresForRing(ring),
+      value: randomFloat(random, 0.55, 0.95),
+      // Opaque cloud blocks a claim outright; the thin ones only degrade it. The severity is what the
+      // hatch colour carries, so it has to be per feature rather than per layer.
+      classId: index % 3 === 0 ? "degrading" : "blocking",
     };
   });
 
   const residualFeatures: EvidenceFeature[] = Array.from(
     { length: RESIDUAL_POINT_COUNT },
-    (_, index) => ({
+    (_, index) => {
+      const residualPixels = randomFloat(random, 0.2, 1.1);
+
+      return {
       id: `${residualLayerId}-f${index}`,
-      label: `Tie point ${index + 1} · ${randomFloat(random, 0.2, 1.1).toFixed(2)} px residual`,
+      label: `Tie point ${index + 1} · ${residualPixels.toFixed(2)} px residual`,
       geometry: {
         type: "point" as const,
         position: {
@@ -550,8 +619,117 @@ function buildAnalysisProducts(
       magnitude: randomFloat(random, 0.1, 0.5),
       confidence: null,
       areaHectares: null,
-    }),
+      value: residualPixels,
+      classId: "degrading",
+      };
+    },
   );
+
+
+  // ── Catalogue products ─────────────────────────────────────────────────────────────────────────
+  // One layer per encoding, so nothing in the overlay catalogue is unexercisable in Phase 1.
+
+  const ndviLayerId = `${investigationId}-layer-ndvi`;
+  const landCoverLayerId = `${investigationId}-layer-landcover`;
+  const waterLayerId = `${investigationId}-layer-water`;
+  const densityLayerId = `${investigationId}-layer-density`;
+
+  // NDVI: a continuous field, laid out as a grid of cells so the ramp reads as a surface rather than as
+  // scattered blobs. Values run the full interpretable range — negative over water, high over canopy —
+  // because a demo field that never crosses a threshold never proves the thresholds work.
+  const ndviFeatures: EvidenceFeature[] = Array.from({ length: NDVI_CELL_COUNT }, (_, index) => {
+    const columns = 4;
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const cellWidth = (bounds.east - bounds.west) / columns;
+    const cellHeight = (bounds.north - bounds.south) / Math.ceil(NDVI_CELL_COUNT / columns);
+    const centreLongitude = bounds.west + cellWidth * (column + 0.5);
+    const centreLatitude = bounds.south + cellHeight * (row + 0.5);
+    // Vegetation thins toward the north-east, which is where the change run says building happened.
+    const vigour = 0.72 - (column / columns) * 0.55 - randomFloat(random, 0, 0.35);
+
+    return {
+      id: `${ndviLayerId}-f${index}`,
+      label: `NDVI cell ${index + 1}`,
+      geometry: {
+        type: "polygon" as const,
+        ring: buildPolygonRing(random, centreLatitude, centreLongitude, cellWidth * 0.42),
+      },
+      magnitude: Math.min(1, Math.abs(vigour)),
+      confidence: null,
+      areaHectares: null,
+      value: Number(vigour.toFixed(3)),
+      classId: null,
+    };
+  });
+
+  const landCoverFeatures: EvidenceFeature[] = Array.from(
+    { length: LAND_COVER_PATCH_COUNT },
+    (_, index) => {
+      const centreLatitude = randomFloat(random, bounds.south + 0.003, bounds.north - 0.003);
+      const centreLongitude = randomFloat(random, bounds.west + 0.003, bounds.east - 0.003);
+      const ring = buildPolygonRing(random, centreLatitude, centreLongitude, randomFloat(random, 0.002, 0.005));
+
+      return {
+        id: `${landCoverLayerId}-f${index}`,
+        label: `Segment ${index + 1}`,
+        geometry: { type: "polygon" as const, ring },
+        magnitude: randomFloat(random, 0.2, 0.8),
+        confidence: randomFloat(random, 0.61, 0.94),
+        areaHectares: hectaresForRing(ring),
+        // Categorical products have no scalar. Emitting one anyway would invent an ordering across
+        // classes that have none — water is not more than cropland.
+        value: null,
+        classId: pickOne(random, MOCK_LAND_COVER_CLASSES),
+      };
+    },
+  );
+
+  const waterFeatures: EvidenceFeature[] = Array.from({ length: WATER_PATCH_COUNT }, (_, index) => {
+    const centreLatitude = randomFloat(random, bounds.south + 0.004, area.latitude);
+    const centreLongitude = randomFloat(random, bounds.west + 0.004, bounds.east - 0.004);
+    const ring = buildPolygonRing(random, centreLatitude, centreLongitude, randomFloat(random, 0.0015, 0.004));
+
+    return {
+      id: `${waterLayerId}-f${index}`,
+      label: `Water body ${index + 1}`,
+      geometry: { type: "polygon" as const, ring },
+      magnitude: randomFloat(random, 0.3, 0.9),
+      confidence: randomFloat(random, 0.7, 0.96),
+      areaHectares: hectaresForRing(ring),
+      value: null,
+      classId: MOCK_WATER_STATES[index % MOCK_WATER_STATES.length],
+    };
+  });
+
+  // Concentric contour bands around the change centroid — the shape a density surface actually takes.
+  // Generated inner-first with descending values so the extruded relief peaks at the centre, which is
+  // what makes the heat map read as a hill rather than as a stack of discs.
+  const densityCentreLatitude = area.latitude + 0.008;
+  const densityCentreLongitude = area.longitude + 0.01;
+  const densityFeatures: EvidenceFeature[] = Array.from(
+    { length: DENSITY_BAND_COUNT },
+    (_, index) => {
+      const step = (DENSITY_BAND_COUNT - index) / DENSITY_BAND_COUNT;
+      const ring = buildPolygonRing(
+        random,
+        densityCentreLatitude,
+        densityCentreLongitude,
+        0.0035 + index * 0.0022,
+      );
+
+      return {
+        id: `${densityLayerId}-f${index}`,
+        label: `Density band ${index + 1}`,
+        geometry: { type: "polygon" as const, ring },
+        magnitude: step,
+        confidence: null,
+        areaHectares: hectaresForRing(ring),
+        value: Number((step * randomFloat(random, 0.75, 1) * 0.95).toFixed(3)),
+        classId: null,
+      };
+    },
+  ).reverse();
 
   const layers: EvidenceLayer[] = [
     {
@@ -559,6 +737,8 @@ function buildAnalysisProducts(
       kind: "polygon-vector",
       renderMode: "draped",
       title: "Change mask · built-up gain",
+      overlayId: "change-mask",
+      valueDomain: { minimum: 0, maximum: 1 },
       colorRampId: "change-diverging",
       opacity: LAYER_RENDERING.defaultOpacity["polygon-vector"],
       isVisible: true,
@@ -579,8 +759,10 @@ function buildAnalysisProducts(
     {
       id: detectionLayerId,
       kind: "bbox-vector",
-      renderMode: "draped",
+      renderMode: "classified",
       title: "New structures",
+      overlayId: "detected-objects",
+      valueDomain: null,
       colorRampId: "detection-teal",
       opacity: LAYER_RENDERING.defaultOpacity["bbox-vector"],
       isVisible: true,
@@ -601,8 +783,10 @@ function buildAnalysisProducts(
     {
       id: cloudLayerId,
       kind: "polygon-vector",
-      renderMode: "draped",
+      renderMode: "classified",
       title: "Cloud mask (T1)",
+      overlayId: "mask-cloud",
+      valueDomain: { minimum: 0, maximum: 1 },
       colorRampId: "artefact-neutral",
       opacity: 0.45,
       // Artefacts stay hidden until the operator opens the trace step that produced them.
@@ -624,8 +808,10 @@ function buildAnalysisProducts(
     {
       id: residualLayerId,
       kind: "point-vector",
-      renderMode: "draped",
+      renderMode: "classified",
       title: "Co-registration residual",
+      overlayId: "mask-co-registration",
+      valueDomain: { minimum: 0, maximum: 2 },
       colorRampId: "artefact-neutral",
       opacity: 0.9,
       isVisible: false,
@@ -640,6 +826,106 @@ function buildAnalysisProducts(
         modelId: "registration",
         modelVersion: "0.7.1",
         traceStepId: `${investigationId}-step-S9`,
+        confidence: null,
+      },
+    },
+    {
+      id: ndviLayerId,
+      kind: "polygon-vector",
+      renderMode: "heatmap",
+      title: "NDVI · vegetation",
+      overlayId: "ndvi",
+      // The observed range, narrower than NDVI's theoretical −1..+1. The legend ramps across THIS, so the
+      // whole bar is spent on values the scene actually contains.
+      valueDomain: { minimum: -0.2, maximum: 0.75 },
+      colorRampId: "index-vegetation",
+      opacity: 0.78,
+      isVisible: false,
+      comparatorSide: "both",
+      tileUrlTemplate: null,
+      attribution: null,
+      bounds,
+      minimumZoom: null,
+      maximumZoom: null,
+      features: ndviFeatures,
+      provenance: {
+        modelId: "index-engine",
+        modelVersion: "1.1.0",
+        traceStepId: `${investigationId}-step-S12`,
+        confidence: null,
+      },
+    },
+    {
+      id: landCoverLayerId,
+      kind: "polygon-vector",
+      renderMode: "classified",
+      title: "Land cover",
+      overlayId: "land-cover",
+      valueDomain: null,
+      colorRampId: "artefact-neutral",
+      opacity: 0.62,
+      isVisible: false,
+      comparatorSide: "both",
+      tileUrlTemplate: null,
+      attribution: null,
+      bounds,
+      minimumZoom: null,
+      maximumZoom: null,
+      features: landCoverFeatures,
+      provenance: {
+        modelId: "segformer-lulc",
+        modelVersion: "3.0.1",
+        traceStepId: `${investigationId}-step-S13`,
+        confidence: 0.84,
+      },
+    },
+    {
+      id: waterLayerId,
+      kind: "polygon-vector",
+      renderMode: "classified",
+      title: "Water extent",
+      overlayId: "water-extent",
+      valueDomain: null,
+      colorRampId: "artefact-neutral",
+      opacity: 0.65,
+      isVisible: false,
+      comparatorSide: "both",
+      tileUrlTemplate: null,
+      attribution: null,
+      bounds,
+      minimumZoom: null,
+      maximumZoom: null,
+      features: waterFeatures,
+      provenance: {
+        modelId: "mndwi-threshold",
+        modelVersion: "1.0.4",
+        traceStepId: `${investigationId}-step-S13`,
+        confidence: 0.79,
+      },
+    },
+    {
+      id: densityLayerId,
+      // The one heatmap-surface in the set: contour bands the renderer extrudes by VALUE rather than by
+      // significance, which is what builds relief over the concentration instead of a flat wash.
+      kind: "heatmap-surface",
+      renderMode: "heatmap",
+      title: "Detection density",
+      overlayId: "detection-density",
+      valueDomain: { minimum: 0, maximum: 1 },
+      colorRampId: "confidence-magma",
+      opacity: 0.72,
+      isVisible: false,
+      comparatorSide: "both",
+      tileUrlTemplate: null,
+      attribution: null,
+      bounds,
+      minimumZoom: null,
+      maximumZoom: null,
+      features: densityFeatures,
+      provenance: {
+        modelId: "density-kernel",
+        modelVersion: "0.4.0",
+        traceStepId: `${investigationId}-step-S15`,
         confidence: null,
       },
     },
@@ -979,9 +1265,22 @@ export function selectMockAnalysisScript(
     };
   }
 
+  // A named operation reveals the product it declares it produces, and leaves everything else where it
+  // was. Running NDVI and being shown a change mask instead — with NDVI sitting switched off in the
+  // stack — would read as the operation having silently failed.
+  const requestedOverlayId = operationId
+    ? (ANALYSIS_OPERATIONS.find((operation) => operation.id === operationId)?.producesOverlayId ?? null)
+    : null;
+
   return {
     traceSteps: generated.traceSteps,
-    layers: generated.layers.filter((layer) => layer.kind !== "raster-tiles"),
+    layers: generated.layers
+      .filter((layer) => layer.kind !== "raster-tiles")
+      .map((layer) =>
+        requestedOverlayId && layer.overlayId === requestedOverlayId
+          ? { ...layer, isVisible: true }
+          : layer,
+      ),
     evidence: generated.evidence,
     claims: generated.claims,
     answer: generated.answer,

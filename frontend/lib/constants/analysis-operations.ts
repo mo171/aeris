@@ -19,6 +19,7 @@
 //         Every operation maps to a pipeline stage from the design document, so the trace an operation
 //         produces is the same trace a typed question produces. Two ways in, one pipeline.
 
+import { SPECTRAL_INDICES, type SpectralIndexId } from "./overlays/spectral-indices";
 import type { PipelineStageCode } from "./pipeline-stages";
 
 /**
@@ -43,6 +44,35 @@ export interface AnalysisOperation {
    * that can drift. Phase 2 sends `operationId` and the backend need not read this at all.
    */
   prompt: string;
+  /**
+   * Which overlay this operation puts on the scene, as a catalogue key.
+   *
+   * The link that makes the Toolbox and the layer stack two views of one thing: run an operation here,
+   * and the overlay it produces is already described — encoding, units, thresholds, caveats — before a
+   * single pixel arrives. Null for operations that measure existing evidence rather than draw anything.
+   */
+  producesOverlayId: string | null;
+}
+
+/**
+ * Builds the entry for a spectral-index operation from the index definition itself.
+ *
+ * The descriptions, the queries and the caveats used to be written out twice — once in
+ * overlays/spectral-indices.ts and once here — which is two files that can disagree about what NDVI is.
+ * Now there is one definition and this reads it.
+ */
+function indexOperation(indexId: SpectralIndexId, requires: readonly AnalysisRequirement[]): AnalysisOperation {
+  const index = SPECTRAL_INDICES[indexId];
+
+  return {
+    id: `index-${indexId}`,
+    label: `${index.label} · ${index.fullName.split(" ").slice(-1)[0].toLowerCase()}`,
+    description: index.meaning,
+    requires,
+    stageCode: "S12",
+    prompt: index.typicalQuery,
+    producesOverlayId: indexId,
+  };
 }
 
 export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
@@ -54,6 +84,7 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     requires: ["pair"],
     stageCode: "S13",
     prompt: "What changed between these two observations?",
+    producesOverlayId: "change-mask",
   },
   {
     id: "object-detection",
@@ -63,6 +94,7 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     requires: ["optical"],
     stageCode: "S13",
     prompt: "What objects are present, and how many of each?",
+    producesOverlayId: "detected-objects",
   },
   {
     id: "segmentation",
@@ -72,34 +104,13 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     requires: ["optical"],
     stageCode: "S13",
     prompt: "Classify land cover across this area and give the proportions.",
+    producesOverlayId: "land-cover",
   },
-  {
-    id: "index-ndvi",
-    label: "NDVI · vegetation",
-    description:
-      "Normalised difference vegetation index. Healthy vegetation reflects near-infrared strongly and absorbs red, so the ratio separates live canopy from bare ground.",
-    requires: ["optical"],
-    stageCode: "S12",
-    prompt: "Compute NDVI and show where vegetation is stressed or lost.",
-  },
-  {
-    id: "index-ndwi",
-    label: "NDWI · water",
-    description:
-      "Normalised difference water index. Water absorbs near-infrared, so the ratio maps open water and flooding.",
-    requires: ["optical"],
-    stageCode: "S12",
-    prompt: "Compute NDWI and map open water across this area.",
-  },
-  {
-    id: "index-ndbi",
-    label: "NDBI · built-up",
-    description:
-      "Normalised difference built-up index. Constructed surfaces reflect shortwave infrared more than near-infrared, which separates them from soil.",
-    requires: ["optical"],
-    stageCode: "S12",
-    prompt: "Compute NDBI and map built-up surfaces.",
-  },
+  indexOperation("ndvi", ["optical"]),
+  indexOperation("ndwi", ["optical"]),
+  indexOperation("mndwi", ["optical"]),
+  indexOperation("ndbi", ["optical"]),
+  indexOperation("nbr", ["optical", "pair"]),
   {
     id: "sar-analysis",
     label: "SAR backscatter",
@@ -108,6 +119,7 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     requires: ["sar"],
     stageCode: "S13",
     prompt: "What does the radar observation show over this area?",
+    producesOverlayId: "backscatter",
   },
   {
     id: "area-statistics",
@@ -117,6 +129,7 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     requires: ["evidence"],
     stageCode: "S15",
     prompt: "Summarise the measured area and counts of the current evidence.",
+    producesOverlayId: null,
   },
 ];
 

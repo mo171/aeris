@@ -18,16 +18,18 @@
 //         and a figure that only approximates the shape they drew is worse than no figure. The same
 //         number is what the backend will crop to.
 //
-//         Ground positions come from `globe.pick` against the camera ray rather than `scene.pickPosition`,
-//         because pickPosition depends on a depth buffer that is not guaranteed over terrain-free areas.
+//         Ground picking is layered rather than fixed to `globe.pick`, because what counts as "the ground"
+//         changes with the building mode — photorealistic tiles replace the globe outright. See pickGround.
 
 import {
   CallbackProperty,
   Cartesian2,
   Cartesian3,
   Cartographic,
+  ClassificationType,
   Color,
   ColorMaterialProperty,
+  ConstantProperty,
   CustomDataSource,
   Ellipsoid,
   EllipsoidGeodesic,
@@ -65,6 +67,11 @@ export interface DrawController {
   isDrawing: () => boolean;
   activeTool: () => StageDrawTool | null;
   clearAll: () => void;
+  /**
+   * Which surface drawn shapes drape onto. Terrain while the globe is the ground; both once
+   * photorealistic tiles are, because a shape classified against a hidden globe renders nowhere.
+   */
+  setClassificationTarget: (target: "terrain" | "both") => void;
   removeRegion: (regionId: string) => void;
   subscribeRegions: (listener: RegionListener) => () => void;
   subscribeLive: (listener: LiveListener) => () => void;
@@ -113,18 +120,51 @@ export function createDrawController(viewer: Viewer): DrawController {
   let previewPoint: StageGeoPoint | null = null;
   let lastScreenPosition: Cartesian2 | null = null;
   const regions: StageDrawnRegion[] = [];
+  /**
+   * Held as a plain constant, not a CallbackProperty, and pushed onto existing entities when it changes.
+   *
+   * Cesium decides at entity-creation time whether a shape becomes a classification primitive, and it
+   * only takes that path for a CONSTANT classificationType. Behind a callback the shape falls back to a
+   * plain primitive drawn at ellipsoid height, which over photorealistic tiles means buried under the
+   * ground — drawn, and invisible. Same reason evidence-vector-layer.ts keeps a constant and rebuilds.
+   */
+  let activeClassification: ClassificationType = ClassificationType.TERRAIN;
 
   // ── Geometry ──────────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Where a screen point lands on the ground, whichever surface is currently BEING the ground.
+   *
+   * Three strategies, in order, because no single one covers every mode:
+   *   1. `globe.pick` — the terrain surface. Correct and cheap, but returns nothing when the globe is
+   *      hidden, which is exactly what photorealistic mode does (the tiles carry their own ground).
+   *      That is why drawing silently did nothing in photoreal: every click picked null.
+   *   2. `scene.pickPosition` — reads the depth buffer, so it hits 3D tiles and building surfaces.
+   *      Only valid where something was actually rendered, hence not the first choice over open terrain.
+   *   3. `camera.pickEllipsoid` — the bare WGS84 sphere. Always answers, so a click over empty sky near
+   *      the horizon still produces a sane coordinate rather than aborting the shape mid-draw.
+   */
   function pickGround(screenPosition: Cartesian2): StageGeoPoint | null {
-    const ray = viewer.camera.getPickRay(screenPosition);
-    if (!ray) {
-      return null;
+    const { scene, camera } = viewer;
+    let intersection: Cartesian3 | undefined;
+
+    if (scene.globe.show) {
+      const ray = camera.getPickRay(screenPosition);
+      intersection = ray ? scene.globe.pick(ray, scene) : undefined;
     }
-    const intersection = viewer.scene.globe.pick(ray, viewer.scene);
+
+    if (!intersection && scene.pickPositionSupported) {
+      intersection = scene.pickPosition(screenPosition);
+    }
+
+    if (!intersection) {
+      intersection = camera.pickEllipsoid(screenPosition, Ellipsoid.WGS84) ?? undefined;
+    }
+
     if (!intersection) {
       return null;
     }
+
     const carto = Cartographic.fromCartesian(intersection);
     return {
       latitude: CesiumMath.toDegrees(carto.latitude),
@@ -324,6 +364,7 @@ export function createDrawController(viewer: Viewer): DrawController {
               ),
             ),
             heightReference: HeightReference.CLAMP_TO_GROUND,
+            classificationType: activeClassification,
           },
         }),
       );
@@ -343,6 +384,7 @@ export function createDrawController(viewer: Viewer): DrawController {
           }, false),
           width: DRAW_TOOLS.outlineWidthPixels,
           clampToGround: true,
+          classificationType: activeClassification,
           material: new ColorMaterialProperty(outlineColor.withAlpha(0.95)),
         },
       }),
@@ -378,6 +420,7 @@ export function createDrawController(viewer: Viewer): DrawController {
           hierarchy: new PolygonHierarchy(ring.map(toCartesian)),
           material: fillColor,
           heightReference: HeightReference.CLAMP_TO_GROUND,
+          classificationType: activeClassification,
         },
       }),
     );
@@ -387,6 +430,7 @@ export function createDrawController(viewer: Viewer): DrawController {
           positions: [...ring, ring[0]].map(toCartesian),
           width: DRAW_TOOLS.outlineWidthPixels,
           clampToGround: true,
+          classificationType: activeClassification,
           material: new ColorMaterialProperty(accentColor.withAlpha(0.95)),
         },
       }),
@@ -421,6 +465,7 @@ export function createDrawController(viewer: Viewer): DrawController {
                 positions: ring.map(toCartesian),
                 width: DRAW_TOOLS.outlineWidthPixels,
                 clampToGround: true,
+                classificationType: activeClassification,
                 material: new ColorMaterialProperty(measureColor.withAlpha(0.95)),
               },
         polygon:
@@ -429,6 +474,7 @@ export function createDrawController(viewer: Viewer): DrawController {
                 hierarchy: new PolygonHierarchy(ring.map(toCartesian)),
                 material: measureColor.withAlpha(DRAW_TOOLS.fillAlpha),
                 heightReference: HeightReference.CLAMP_TO_GROUND,
+                classificationType: activeClassification,
               }
             : undefined,
         label: {
@@ -642,6 +688,24 @@ export function createDrawController(viewer: Viewer): DrawController {
     isDrawing: () => isDrawing,
     activeTool: () => activeTool,
     clearAll,
+    setClassificationTarget: (target) => {
+      const next = target === "both" ? ClassificationType.BOTH : ClassificationType.TERRAIN;
+      if (next === activeClassification) {
+        return;
+      }
+      activeClassification = next;
+
+      // Committed shapes are re-draped in place. Draft shapes are not touched: they are recreated on the
+      // next draw anyway, and a mode switch mid-draw is not a thing an operator can do.
+      for (const entity of committedSource.entities.values) {
+        if (entity.polygon) {
+          entity.polygon.classificationType = new ConstantProperty(activeClassification);
+        }
+        if (entity.polyline) {
+          entity.polyline.classificationType = new ConstantProperty(activeClassification);
+        }
+      }
+    },
     removeRegion,
     subscribeRegions: (listener) => {
       regionListeners.add(listener);

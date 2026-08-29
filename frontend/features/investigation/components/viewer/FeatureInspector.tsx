@@ -26,6 +26,8 @@ import { Crosshair, X } from "lucide-react";
 import { Chip } from "@/components/sharedUI/dumbComponent/Chip";
 import { Button } from "@/components/ui/button";
 import { VECTOR_PALETTE } from "@/lib/constants/layers";
+import { findOverlay, rampToCssGradient } from "@/lib/constants/overlays";
+import { normalisePosition, resolveOverlayStyle } from "@/lib/overlay-style";
 import { formatCoordinates, formatPercentage } from "@/lib/formatters";
 
 import type { Claim } from "../../types/evidence.types";
@@ -86,6 +88,27 @@ export function FeatureInspector({
   const palette = VECTOR_PALETTE[layer.colorRampId];
   const vertexCount = feature.geometry.type === "polygon" ? feature.geometry.ring.length : null;
 
+  // Resolved through the same function the geometry is coloured by, so the swatch here and the polygon
+  // on the scene can never be two different colours for the same feature.
+  const overlayStyle = resolveOverlayStyle({
+    overlayId: layer.overlayId,
+    valueDomain: layer.valueDomain,
+    value: feature.value,
+    classId: feature.classId,
+  });
+
+  const overlay = findOverlay(layer.overlayId);
+  const continuousEncoding = overlay?.encoding.kind === "continuous" ? overlay.encoding : null;
+  const rampBackground = continuousEncoding ? rampToCssGradient(continuousEncoding.rampId) : null;
+  const rampPosition =
+    continuousEncoding && feature.value !== null
+      ? normalisePosition(
+          feature.value,
+          layer.valueDomain ?? continuousEncoding.domain,
+          continuousEncoding.rampId,
+        )
+      : null;
+
   return (
     <div className="pointer-events-auto w-72 rounded-md border border-border bg-surface-2/90 backdrop-blur-md">
       <header className="flex items-start gap-2 border-b border-border-soft px-3 py-2">
@@ -123,7 +146,53 @@ export function FeatureInspector({
         </Field>
       </dl>
 
-      <div className="px-3 pb-2.5">
+      {/*
+        The reading, and where it sits on its own ramp.
+        Deliberately above Magnitude, and deliberately separate from it: magnitude ranks this finding
+        against its siblings, while the value is what the instrument measured. An analyst asking "is the
+        ground fertile" needs the second, and until features carried a value there was nothing to show.
+      */}
+      {overlayStyle && feature.value !== null ? (
+        <div className="border-t border-border-soft px-3 py-2.5">
+          <span className="aeris-technical">Reading</span>
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              className="size-2.5 shrink-0 rounded-[2px] border"
+              style={{ backgroundColor: `${overlayStyle.fill}bb`, borderColor: overlayStyle.outline }}
+              aria-hidden="true"
+            />
+            <span className="font-mono text-[11px] tabular-nums text-foreground">
+              {overlayStyle.readout}
+            </span>
+          </div>
+          {rampPosition !== null ? (
+            <div className="relative mt-1.5 h-1.5 rounded-[2px] border border-border-soft" style={{ background: rampBackground ?? undefined }}>
+              <span
+                className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-foreground"
+                style={{ left: `${rampPosition * 100}%` }}
+                aria-hidden="true"
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* A classified feature has no scalar to plot, so it shows the class it belongs to instead. */}
+      {overlayStyle && feature.value === null && overlayStyle.categoryLabel ? (
+        <div className="border-t border-border-soft px-3 py-2.5">
+          <span className="aeris-technical">Class</span>
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              className="size-2.5 shrink-0 rounded-[2px] border"
+              style={{ backgroundColor: `${overlayStyle.fill}bb`, borderColor: overlayStyle.outline }}
+              aria-hidden="true"
+            />
+            <span className="font-mono text-[11px] text-foreground">{overlayStyle.categoryLabel}</span>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="border-t border-border-soft px-3 pt-2.5 pb-2.5">
         <span className="aeris-technical">Magnitude</span>
         <div className="mt-1 flex items-center gap-2">
           <span className="h-1 flex-1 overflow-hidden rounded-full bg-surface-3">

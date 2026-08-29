@@ -108,10 +108,25 @@ export async function fetchRegionSuggestions(
   return collection.suggestions;
 }
 
+/**
+ * Parses one stream frame, dropping anything that does not match the contract.
+ *
+ * Dropping is right in production — one malformed frame must not abort a run that is otherwise
+ * delivering — but a SILENT drop is not. A layer frame that fails validation looks exactly like a layer
+ * the backend never sent, and the workspace renders "no evidence yet" with nothing anywhere saying why.
+ * In development the reason is printed, because that is the difference between a five-minute fix and an
+ * afternoon.
+ */
 function safeParseStreamFrame(rawData: string): AnalysisStreamEvent | null {
   try {
     const parsed = analysisStreamEventSchema.safeParse(JSON.parse(rawData));
-    return parsed.success ? parsed.data : null;
+    if (!parsed.success) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[AERIS] Analysis stream frame rejected by the contract.", parsed.error.issues);
+      }
+      return null;
+    }
+    return parsed.data;
   } catch {
     return null;
   }
