@@ -30,7 +30,7 @@ import type {
   StageDrawTool,
   StageProjection,
 } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
-import { INVESTIGATION_LIMITS } from "@/lib/constants/investigation";
+import { INVESTIGATION_LIMITS, SCENE_RELIEF } from "@/lib/constants/investigation";
 import { TIMELINE_PLAYBACK, TIMELINE_QUERY } from "@/lib/constants/timeline";
 
 import type {
@@ -50,6 +50,15 @@ interface InvestigationState {
   renderMode: LayerRenderMode;
   /** Globe, flat map, or the 2.5D middle ground. Lives here so a command and the toggle agree. */
   projection: StageProjection;
+  /**
+   * Whether building massing is drawn over the scene, and how much terrain height is exaggerated.
+   *
+   * Here rather than read back off the stage for the same reason projection is: a command, a button and
+   * the renderer must not each hold their own opinion about what is on screen. It also keeps the control
+   * out of the "mirror external state into React on mount" pattern, which is a stale-UI bug waiting.
+   */
+  hasBuildingMassing: boolean;
+  terrainExaggeration: number;
   isPlaybackRunning: boolean;
   isPresentMode: boolean;
 
@@ -62,6 +71,15 @@ interface InvestigationState {
   spotlightClaimId: string | null;
   /** A trace step's intermediate product, temporarily added to the scene. */
   artefactLayerId: string | null;
+  /**
+   * The feature the operator clicked, so its full record can be shown.
+   *
+   * Separate from the spotlight: the spotlight answers "which geometry supports this claim" and points
+   * from the answer to the scene, while this answers "what IS this thing" and points the other way. The
+   * workspace could previously highlight a clicked polygon and then say nothing whatsoever about it,
+   * which is the one verb every GIS has and this did not.
+   */
+  inspectedFeature: { layerId: string; featureId: string } | null;
 
   // ── The temporal selection ───────────────────────────────────────────────────────────────────────
   //
@@ -77,6 +95,14 @@ interface InvestigationState {
   timelineComparisonSceneId: string | null;
   /** Stepping through the archive one acquisition at a time. Distinct from the comparator's dissolve. */
   isTimelinePlaying: boolean;
+  /**
+   * True while a handle is being dragged.
+   *
+   * Held here rather than locally because it changes how the RENDERER behaves, not just the control: the
+   * raster cross-fade shortens while a scrub is in progress so ten steps in one drag do not read as ten
+   * separate loads. The stage binding is the only thing that acts on it.
+   */
+  isTimelineScrubbing: boolean;
   timelinePlaybackRate: number;
   /** Optical acquisitions above this are shown on the timeline but cannot be selected as inputs. */
   timelineCloudCeilingPercentage: number;
@@ -106,6 +132,8 @@ interface InvestigationState {
   setRenderMode: (renderMode: LayerRenderMode) => void;
   toggleRenderMode: () => void;
   setProjection: (projection: StageProjection) => void;
+  setBuildingMassing: (hasBuildingMassing: boolean) => void;
+  setTerrainExaggeration: (factor: number) => void;
   setPlaybackRunning: (isRunning: boolean) => void;
   togglePresentMode: () => void;
 
@@ -115,11 +143,13 @@ interface InvestigationState {
 
   setSpotlightClaimId: (claimId: string | null) => void;
   setArtefactLayerId: (layerId: string | null) => void;
+  setInspectedFeature: (target: { layerId: string; featureId: string } | null) => void;
 
   setTimelineSelection: (role: "baseline" | "comparison", sceneId: string | null) => void;
   /** Applies a pair in one write, so a recommendation cannot land as two separate scene changes. */
   setTimelinePair: (baselineSceneId: string, comparisonSceneId: string) => void;
   setTimelinePlaying: (isPlaying: boolean) => void;
+  setTimelineScrubbing: (isScrubbing: boolean) => void;
   setTimelinePlaybackRate: (rate: number) => void;
   setTimelineCloudCeiling: (percentage: number) => void;
 
@@ -169,6 +199,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   comparatorBinding: "temporal",
   renderMode: "draped",
   projection: "3D",
+  hasBuildingMassing: SCENE_RELIEF.showBuildingsInSceneMode,
+  terrainExaggeration: SCENE_RELIEF.terrainExaggeration,
   isPlaybackRunning: false,
   isPresentMode: false,
 
@@ -178,10 +210,12 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
 
   spotlightClaimId: null,
   artefactLayerId: null,
+  inspectedFeature: null,
 
   timelineBaselineSceneId: null,
   timelineComparisonSceneId: null,
   isTimelinePlaying: false,
+  isTimelineScrubbing: false,
   timelinePlaybackRate: TIMELINE_PLAYBACK.defaultRate,
   timelineCloudCeilingPercentage: TIMELINE_QUERY.defaultMaximumCloudPercentage,
 
@@ -204,6 +238,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       comparatorBinding: mode,
       renderMode: "draped",
       projection: "3D",
+      hasBuildingMassing: SCENE_RELIEF.showBuildingsInSceneMode,
+      terrainExaggeration: SCENE_RELIEF.terrainExaggeration,
       isPlaybackRunning: false,
       isPresentMode: false,
       layerVisibilityOverrides: {},
@@ -211,9 +247,11 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       soloLayerId: null,
       spotlightClaimId: null,
       artefactLayerId: null,
+      inspectedFeature: null,
       timelineBaselineSceneId: null,
       timelineComparisonSceneId: null,
       isTimelinePlaying: false,
+      isTimelineScrubbing: false,
       timelinePlaybackRate: TIMELINE_PLAYBACK.defaultRate,
       timelineCloudCeilingPercentage: TIMELINE_QUERY.defaultMaximumCloudPercentage,
       activeDrawTool: null,
@@ -233,9 +271,11 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       isRunning: false,
       spotlightClaimId: null,
       artefactLayerId: null,
+      inspectedFeature: null,
       timelineBaselineSceneId: null,
       timelineComparisonSceneId: null,
       isTimelinePlaying: false,
+      isTimelineScrubbing: false,
       drawnRegions: [],
       activeRegionId: null,
       activeDrawTool: null,
@@ -247,6 +287,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   toggleRenderMode: () =>
     set((state) => ({ renderMode: state.renderMode === "draped" ? "extruded" : "draped" })),
   setProjection: (projection) => set({ projection }),
+  setBuildingMassing: (hasBuildingMassing) => set({ hasBuildingMassing }),
+  setTerrainExaggeration: (terrainExaggeration) => set({ terrainExaggeration }),
   setPlaybackRunning: (isPlaybackRunning) => set({ isPlaybackRunning }),
   togglePresentMode: () => set((state) => ({ isPresentMode: !state.isPresentMode })),
 
@@ -268,6 +310,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
 
   setSpotlightClaimId: (spotlightClaimId) => set({ spotlightClaimId }),
   setArtefactLayerId: (artefactLayerId) => set({ artefactLayerId }),
+  setInspectedFeature: (inspectedFeature) => set({ inspectedFeature }),
 
   setTimelineSelection: (role, sceneId) =>
     set(
@@ -280,6 +323,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
     set({ timelineBaselineSceneId, timelineComparisonSceneId }),
 
   setTimelinePlaying: (isTimelinePlaying) => set({ isTimelinePlaying }),
+  setTimelineScrubbing: (isTimelineScrubbing) => set({ isTimelineScrubbing }),
   setTimelinePlaybackRate: (timelinePlaybackRate) => set({ timelinePlaybackRate }),
 
   // Raising the ceiling only widens what is selectable, so it cannot invalidate a selection. Lowering it

@@ -16,8 +16,22 @@ export const INVESTIGATION_CAMERA = {
   /** Extra vertical room left around a bounding box when framing it, as a fraction of its diagonal. */
   frameMarginRatio: 0.35,
 
-  minimumZoomAltitudeMeters: 180,
+  /**
+   * How close the camera may get.
+   *
+   * Was 180 m, which stopped the camera well before the imagery ran out — the operator's basemap resolves
+   * to under a metre per pixel, so there were four zoom levels of detail nothing could reach. 55 m puts a
+   * single building across the viewport, which is the scale object detections are actually checked at.
+   */
+  minimumZoomAltitudeMeters: 55,
   maximumZoomAltitudeMeters: 3_000_000,
+
+  /** Pitch presets the tilt control steps through. Nadir for digitising, oblique for reading relief. */
+  pitchPresetsDegrees: [-90, -62, -35] as const,
+  /** One press of a rotate control. Twenty-two and a half degrees is a sixteenth of a turn. */
+  orbitStepDegrees: 22.5,
+  /** How long a commanded tilt or orbit takes. Short enough to feel like a control, not a flight. */
+  orientDurationSeconds: 0.55,
 
   /** The globe-to-AOI flight. Long enough to read as a journey, short enough not to test patience. */
   descentDurationSeconds: 3.4,
@@ -31,6 +45,35 @@ export const INVESTIGATION_CAMERA = {
   presentOrbitRadiansPerSecond: 0.012,
   /** Pitch the descent settles into. Slightly off nadir so relief and extrusions read as three-dimensional. */
   restingPitchDegrees: -62,
+} as const;
+
+/**
+ * How the scene conveys height.
+ *
+ * Two separate mechanisms, because a city and a landscape hold their vertical information in different
+ * places. Terrain exaggeration makes real relief legible over ground that is nearly flat; building
+ * massing supplies the vertical structure that terrain data does not contain at all.
+ */
+export const SCENE_RELIEF = {
+  /**
+   * Terrain height multiplier in scene mode.
+   *
+   * Chosen to sit where relief becomes readable without the ground starting to look like a mountain range
+   * that is not there. Horizontal position and every measured area are untouched — only height scales —
+   * and the factor is shown to the operator so the scene never silently claims true scale.
+   */
+  terrainExaggeration: 2.4,
+  exaggerationRange: { minimum: 1, maximum: 5, step: 0.2 },
+  /** Buildings are loaded in scene mode only. At orbital altitude they are below a pixel. */
+  showBuildingsInSceneMode: true,
+  /**
+   * Massing colour. Deliberately a desaturated slate rather than the default white.
+   *
+   * Buildings are context here, not the finding. White massing out-contrasts every evidence colour on the
+   * scene and turns an analysis surface into an architectural render.
+   */
+  buildingColorCss: "#1B2733",
+  buildingAlpha: 0.94,
 } as const;
 
 export const INVESTIGATION_COMPARATOR = {

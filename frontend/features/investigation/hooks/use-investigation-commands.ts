@@ -25,12 +25,14 @@
 
 import {
   Box,
+  Building2,
   CalendarClock,
   Crosshair,
   Eye,
   FileText,
   Layers,
   ListTree,
+  Mountain,
   Play,
   Presentation,
   Search,
@@ -234,6 +236,22 @@ export function useInvestigationCommands({
       }),
 
       defineCommand({
+        id: COMMAND_IDS.investigation.inspectFeature,
+        title: "Open a feature's record",
+        description:
+          "Show everything known about one piece of geometry: what it is, where, how large, how confident the model was, which model drew it and which claim it supports.",
+        group: "investigation",
+        keywords: ["identify", "attributes", "what is this", "inspect", "detail"],
+        icon: Crosshair,
+        paramsSchema: z.object({
+          layerId: z.string().min(1),
+          featureId: z.string().min(1),
+        }),
+        handler: ({ layerId, featureId }) => store().setInspectedFeature({ layerId, featureId }),
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
         id: COMMAND_IDS.investigation.clearSpotlight,
         title: "Clear the evidence spotlight",
         description: "Restore normal scene rendering.",
@@ -344,6 +362,64 @@ export function useInvestigationCommands({
         icon: Box,
         paramsSchema: z.object({ projection: z.enum(["3D", "2D", "columbus"]) }),
         handler: ({ projection }) => store().setProjection(projection),
+        isPaletteVisible: false,
+      }),
+
+      // ── Aiming the camera ──────────────────────────────────────────────────────────────────────
+      //
+      // Tilt and orbit are commands, not just buttons, for the same reason everything else here is: the
+      // autonomous run narrates by moving the camera, and "look at it from the side" has to reach exactly
+      // the control an operator would press.
+      defineCommand({
+        id: COMMAND_IDS.investigation.setTilt,
+        title: "Set the viewing angle",
+        description:
+          "Tilt the camera between straight down (-90) and a low oblique. Pivots around what the scene is framing, so the distance to it does not change.",
+        group: "investigation",
+        keywords: ["tilt", "pitch", "oblique", "nadir", "angle", "3d", "look from the side"],
+        icon: Mountain,
+        paramsSchema: z.object({ pitchDegrees: z.number().min(-90).max(-5) }),
+        handler: ({ pitchDegrees }) => stage()?.camera.orient({ pitchDegrees }),
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.orbit,
+        title: "Orbit around the area of interest",
+        description:
+          "Swing the camera around whatever the scene is framing by a number of degrees. Negative goes anticlockwise.",
+        group: "investigation",
+        keywords: ["rotate", "spin", "around", "orbit", "other side"],
+        icon: Mountain,
+        paramsSchema: z.object({ deltaDegrees: z.number().min(-360).max(360) }),
+        handler: ({ deltaDegrees }) => stage()?.camera.orbitByDegrees(deltaDegrees),
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.toggleBuildings,
+        title: "Show or hide building massing",
+        description:
+          "Put three-dimensional buildings on the scene. In a city almost none of the vertical information is in the terrain, so this is what makes the scene read as a place rather than a photograph.",
+        group: "investigation",
+        keywords: ["buildings", "3d", "massing", "height", "depth", "osm"],
+        icon: Building2,
+        paramsSchema: z.object({ isVisible: z.boolean().optional() }),
+        handler: ({ isVisible }) =>
+          store().setBuildingMassing(isVisible ?? !store().hasBuildingMassing),
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.setTerrainExaggeration,
+        title: "Exaggerate terrain relief",
+        description:
+          "Multiply terrain height so relief is legible over nearly flat ground. Scales height only — every horizontal position and measured area is unchanged.",
+        group: "investigation",
+        keywords: ["exaggeration", "relief", "terrain", "height", "vertical"],
+        icon: Mountain,
+        paramsSchema: z.object({ factor: z.number().min(1).max(8) }),
+        handler: ({ factor }) => store().setTerrainExaggeration(factor),
         isPaletteVisible: false,
       }),
 

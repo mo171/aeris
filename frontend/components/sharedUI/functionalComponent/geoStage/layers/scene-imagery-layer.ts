@@ -24,22 +24,16 @@ import {
   type Scene,
 } from "cesium";
 
-import { LAYER_DEFAULT_MAX_ZOOM, RASTER_GRADING } from "@/lib/constants/layers";
+import { LAYER_DEFAULT_MAX_ZOOM, RASTER_CROSS_FADE_MS, RASTER_GRADING } from "@/lib/constants/layers";
 
 import type { StageComparatorSide, StageLayer } from "../geo-stage.types";
 
-/** Milliseconds a newly added raster takes to reach its target opacity. */
-const FADE_IN_MS = 420;
 
-/**
- * Milliseconds a removed raster is kept on the globe while it fades out.
- *
- * Removing on the same frame the replacement is added drops straight through to the basemap for the
- * duration of the incoming fade. That is invisible when layers change once, and impossible to miss when
- * the operator is scrubbing a timeline — every step would flash. Overlapping the two is what makes a
- * scrub read as one scene changing date rather than as a series of separate loads.
- */
-const FADE_OUT_MS = 420;
+
+// A removed raster is kept on the globe and faded out over the same duration rather than dropped on the
+// frame its replacement is added. Removing immediately drops straight through to the basemap for the
+// length of the incoming fade — invisible when layers change once, impossible to miss when the operator
+// is scrubbing, where every step would flash.
 
 interface TrackedRaster {
   layer: ImageryLayer;
@@ -60,6 +54,10 @@ export interface SceneImageryLayerSet {
   bindComparator: (leftLayerId: string | null, rightLayerId: string | null) => void;
   /** Multiplies every raster's alpha — used to recede the scene while an evidence spotlight is active. */
   setGlobalDim: (factor: number) => void;
+  /** Overrides the cross-fade length. Scrubbing shortens it; deliberate layer changes keep the default. */
+  setCrossFadeMs: (durationMs: number) => void;
+  /** True when nothing is mid-fade and every visible raster has its provider ready. */
+  isSettled: () => boolean;
   update: (nowMs: number) => void;
   clear: () => void;
   destroy: () => void;
@@ -68,6 +66,7 @@ export interface SceneImageryLayerSet {
 export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
   const tracked = new Map<string, TrackedRaster>();
   let globalDim = 1;
+  let crossFadeMs: number = RASTER_CROSS_FADE_MS.settled;
 
   function resolveAlpha(entry: TrackedRaster): number {
     if (entry.retiringSince !== null) {
@@ -212,11 +211,37 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
     globalDim = factor;
   }
 
+  function setCrossFadeMs(durationMs: number): void {
+    crossFadeMs = Math.max(1, durationMs);
+  }
+
+  /**
+   * Whether the imagery has finished arriving.
+   *
+   * Play-through waits on this instead of a fixed clock. A dwell shorter than the tile fetch means the
+   * fastest speed shows the least — the archive advances past frames the operator never actually sees,
+   * which is the opposite of what a faster setting is for.
+   */
+  function isSettled(): boolean {
+    for (const entry of tracked.values()) {
+      if (entry.retiringSince !== null) {
+        return false;
+      }
+      if (!entry.layer.ready) {
+        return false;
+      }
+      if (Math.abs(entry.layer.alpha - resolveAlpha(entry)) > 0.02) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   function update(nowMs: number): void {
     for (const [layerId, entry] of tracked) {
       if (entry.retiringSince !== null) {
         const retiredFor = nowMs - entry.retiringSince;
-        if (retiredFor >= FADE_OUT_MS) {
+        if (retiredFor >= crossFadeMs) {
           if (!scene.imageryLayers.isDestroyed()) {
             scene.imageryLayers.remove(entry.layer, true);
           }
@@ -224,19 +249,19 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
           continue;
         }
 
-        entry.layer.alpha = entry.retiringFromAlpha * (1 - retiredFor / FADE_OUT_MS);
+        entry.layer.alpha = entry.retiringFromAlpha * (1 - retiredFor / crossFadeMs);
         continue;
       }
 
       const target = resolveAlpha(entry);
       const elapsed = nowMs - entry.fadeStartedAt;
 
-      if (elapsed >= FADE_IN_MS) {
+      if (elapsed >= crossFadeMs) {
         entry.layer.alpha = target;
         continue;
       }
 
-      const progress = Math.max(0, elapsed / FADE_IN_MS);
+      const progress = Math.max(0, elapsed / crossFadeMs);
       // Ease-out so the reveal decelerates into place rather than stopping dead.
       entry.layer.alpha = target * (1 - Math.pow(1 - progress, 3));
     }
@@ -252,5 +277,16 @@ export function createSceneImageryLayerSet(scene: Scene): SceneImageryLayerSet {
     globalDim = 1;
   }
 
-  return { sync, setVisibility, setOpacity, bindComparator, setGlobalDim, update, clear, destroy: clear };
+  return {
+    sync,
+    setVisibility,
+    setOpacity,
+    bindComparator,
+    setGlobalDim,
+    setCrossFadeMs,
+    isSettled,
+    update,
+    clear,
+    destroy: clear,
+  };
 }

@@ -3,28 +3,35 @@
 // what  : The dated axis of everything the archive holds over this area, with two handles that select the
 //         baseline and the comparison, coverage holes drawn in, play-through of the series, and a standing
 //         verdict on whether the chosen pair can honestly be compared.
-// where : The bottom of the centre column in InvestigationScreen, beneath the comparator labels.
+// where : The bottom of the centre column in InvestigationScreen.
 // how   : This is the input selector for the entire investigation, not a playback widget. Change detection
-//         needs a pair, and until now that pair was chosen by clicking rows in a list that never showed
-//         time — the single decision that determines the answer, made through the interface least able to
-//         inform it. Two handles on a dated axis make it the thing being looked at.
+//         needs a pair, and that pair used to be chosen by clicking rows in a list that never showed time —
+//         the single decision that determines the answer, made through the interface least able to inform
+//         it. Two handles on a dated axis make it the thing being looked at.
 //
-//         Handles SNAP to acquisitions. A handle resting between two passes would imply imagery that does
-//         not exist, and a date with nothing behind it is not something the operator can be shown.
+//         COLLAPSED BY DEFAULT. The first build put nine controls in one strip with the comparator playbar
+//         stacked above it answering an overlapping question, and it read as an instrument panel rather
+//         than a control. What survives in the compact state is what an operator uses on every
+//         investigation: the axis, two handles, one verdict, and step-and-play. Sensor lanes, speeds, the
+//         archive query and the comparator binding are all real, all one click away, and none of them are
+//         needed to answer the question the page is open for.
+//
+//         Handle positions are written straight to the DOM, never through React. They track the pointer at
+//         its own rate, and a render per pointer move would spend exactly the frame budget the scene
+//         needs — the same reason the comparator handle and the coordinate readout work this way. The
+//         SELECTION is React state and snaps to real acquisitions; the HANDLE is a DOM node that follows
+//         the finger. Separating those is what fixed the drag feeling notched: it used to jump between
+//         acquisitions because the only position it had was the committed one.
 //
 //         Unusable acquisitions stay on the axis as hollow marks and coverage holes are drawn explicitly,
 //         because a gap is information. An operator who cannot see that the archive has nothing analysable
 //         across 2021 will read a change spanning it as a finding rather than as an artefact of what was
-//         available — which is the most common way a change-detection result is quietly wrong.
-//
-//         The verdict under the track is the other half of that. Comparing March against September over
-//         farmland produces a large, real, uninteresting difference: the crop cycle. Saying so at
-//         selection time is what separates an analysis from a phenology artefact wearing its confidence.
+//         available — the most common way a change-detection result is quietly wrong.
 
 "use client";
 
-import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
-import { useCallback, useRef } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Chip } from "@/components/sharedUI/dumbComponent/Chip";
 import { Button } from "@/components/ui/button";
@@ -32,18 +39,23 @@ import { TIMELINE_LAYOUT, TIMELINE_PLAYBACK } from "@/lib/constants/timeline";
 import { cn } from "@/lib/utils";
 
 import { isSelectable, positionForTime } from "../../lib/timeline-geometry";
-import type { TimelineRole } from "../../hooks/use-timeline";
-import type { Acquisition } from "../../types/investigation.types";
-import type { CoverageGap, PairRecommendation } from "../../types/catalogue.types";
+import type { TimelineRole, useTimeline } from "../../hooks/use-timeline";
+import { useInvestigationStore } from "../../store/investigation-store";
+import type { Acquisition, WorkspaceMode } from "../../types/investigation.types";
+import type {
+  AcquisitionModality,
+  CoverageGap,
+  PairRecommendation,
+} from "../../types/catalogue.types";
 import { ArchiveQueryPopover } from "./ArchiveQueryPopover";
 import { TimelineTrack } from "./TimelineTrack";
-import type { useTimeline } from "../../hooks/use-timeline";
 
 type TimelineControls = ReturnType<typeof useTimeline>;
 
 interface TimelineScrubberProps {
   timeline: TimelineControls;
-  /** Archive query state, so the query surface and the axis it changes sit in one control. */
+  /** Whether a cross-modal pair is available, so the binding switch can say when it is not. */
+  hasCrossModalScene: boolean;
   archive: {
     isSearching: boolean;
     error: Error | null;
@@ -53,20 +65,20 @@ interface TimelineScrubberProps {
     onSearch: (window: {
       from: string;
       to: string;
-      modalities: import("../../types/catalogue.types").AcquisitionModality[];
+      modalities: AcquisitionModality[];
       cloudCeilingPercentage: number;
     }) => void;
     onDismissRecommendation: () => void;
   };
 }
 
-const VERDICT_TONE = {
-  clean: "green",
-  degraded: "amber",
-  unusable: "red",
-} as const;
+const VERDICT_TONE = { clean: "green", degraded: "amber", unusable: "red" } as const;
+const BINDING_LABEL: Record<WorkspaceMode, string> = {
+  temporal: "Temporal",
+  crossModal: "Cross-modal",
+};
 
-export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
+export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: TimelineScrubberProps) {
   const {
     lanes,
     domain,
@@ -80,25 +92,68 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
     citedSceneIds,
   } = timeline;
 
+  const [isExpanded, setExpanded] = useState(false);
+  const comparatorBinding = useInvestigationStore((state) => state.comparatorBinding);
+  const setComparatorBinding = useInvestigationStore((state) => state.setComparatorBinding);
+
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const baselineHandleRef = useRef<HTMLDivElement | null>(null);
+  const comparisonHandleRef = useRef<HTMLDivElement | null>(null);
+  const magnetRef = useRef<HTMLSpanElement | null>(null);
+  const bandRef = useRef<HTMLSpanElement | null>(null);
   const draggingRoleRef = useRef<TimelineRole | null>(null);
 
-  const baselinePosition = domain && baseline
-    ? positionForTime(Date.parse(baseline.capturedAt), domain)
-    : null;
-  const comparisonPosition = domain && comparison
-    ? positionForTime(Date.parse(comparison.capturedAt), domain)
-    : null;
+  const baselinePosition =
+    domain && baseline ? positionForTime(Date.parse(baseline.capturedAt), domain) : null;
+  const comparisonPosition =
+    domain && comparison ? positionForTime(Date.parse(comparison.capturedAt), domain) : null;
 
-  /** Which handle a gesture at this position is reaching for. Nearest wins; an empty side always wins. */
+  /** Writes a handle and the selection band to the DOM. The only place either position is set. */
+  const paint = useCallback((role: TimelineRole, position: number | null) => {
+    const element = role === "baseline" ? baselineHandleRef.current : comparisonHandleRef.current;
+    if (element) {
+      element.style.left = position === null ? "-100%" : `${position * 100}%`;
+      element.style.visibility = position === null ? "hidden" : "visible";
+    }
+
+    const band = bandRef.current;
+    if (!band) {
+      return;
+    }
+
+    const other =
+      role === "baseline"
+        ? comparisonHandleRef.current?.style.left
+        : baselineHandleRef.current?.style.left;
+    const otherPosition = other ? Number.parseFloat(other) / 100 : null;
+
+    if (position === null || otherPosition === null || Number.isNaN(otherPosition)) {
+      band.style.width = "0%";
+      return;
+    }
+
+    band.style.left = `${Math.min(position, otherPosition) * 100}%`;
+    band.style.width = `${Math.abs(position - otherPosition) * 100}%`;
+  }, []);
+
+  // React owns the SELECTION; this effect is what turns a selection into a position. During a drag the
+  // pointer owns the handle instead, so the committed position is not allowed to fight the finger.
+  useEffect(() => {
+    if (draggingRoleRef.current !== "baseline") {
+      paint("baseline", baselinePosition);
+    }
+  }, [baselinePosition, paint]);
+
+  useEffect(() => {
+    if (draggingRoleRef.current !== "comparison") {
+      paint("comparison", comparisonPosition);
+    }
+  }, [comparisonPosition, paint]);
+
   const roleNearest = useCallback(
     (position: number): TimelineRole => {
-      if (baselinePosition === null) {
-        return "baseline";
-      }
-      if (comparisonPosition === null) {
-        return "comparison";
-      }
+      if (baselinePosition === null) return "baseline";
+      if (comparisonPosition === null) return "comparison";
       return Math.abs(position - baselinePosition) <= Math.abs(position - comparisonPosition)
         ? "baseline"
         : "comparison";
@@ -113,6 +168,25 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
     }
     return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
   }, []);
+
+  /** Marks the acquisition the handle will land on, so the snap is visible before it happens. */
+  const showMagnet = useCallback(
+    (position: number | null) => {
+      const magnet = magnetRef.current;
+      if (!magnet || !domain) {
+        return;
+      }
+
+      if (position === null) {
+        magnet.style.opacity = "0";
+        return;
+      }
+
+      magnet.style.opacity = "1";
+      magnet.style.left = `${position * 100}%`;
+    },
+    [domain],
+  );
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -129,32 +203,55 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
 
       const role = roleNearest(position);
       draggingRoleRef.current = role;
+      timeline.setScrubbing(true);
       event.currentTarget.setPointerCapture(event.pointerId);
+
+      paint(role, position);
       timeline.selectNearest(role, position);
     },
-    [isPlaying, positionFromClientX, roleNearest, timeline],
+    [isPlaying, paint, positionFromClientX, roleNearest, timeline],
   );
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const role = draggingRoleRef.current;
-      if (!role) {
+      const position = positionFromClientX(event.clientX);
+      if (position === null) {
         return;
       }
-      const position = positionFromClientX(event.clientX);
-      if (position !== null) {
-        timeline.selectNearest(role, position);
+
+      if (!role) {
+        // Not dragging: the magnet still previews where a press would land.
+        showMagnet(position);
+        return;
       }
+
+      // The handle follows the finger continuously; the SELECTION snaps to a real acquisition underneath.
+      paint(role, position);
+      timeline.selectNearest(role, position);
     },
-    [positionFromClientX, timeline],
+    [paint, positionFromClientX, showMagnet, timeline],
   );
 
-  const endDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    draggingRoleRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }, []);
+  const endDrag = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const role = draggingRoleRef.current;
+      draggingRoleRef.current = null;
+      timeline.setScrubbing(false);
+
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      // Settle onto the acquisition actually selected, so the handle never rests on a date with no pass.
+      if (role === "baseline") {
+        paint("baseline", baselinePosition);
+      } else if (role === "comparison") {
+        paint("comparison", comparisonPosition);
+      }
+    },
+    [baselinePosition, comparisonPosition, paint, timeline],
+  );
 
   const handleSelectAcquisition = useCallback(
     (acquisition: Acquisition) => {
@@ -171,17 +268,21 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
     return null;
   }
 
+  // Compact merges every sensor onto one rule; expanded splits them so a cloud-blocked optical window can
+  // be read against the radar that covers it.
+  const renderedLanes = isExpanded
+    ? lanes
+    : [{ modality: "optical" as const, label: "ALL", acquisitions: lanes.flatMap((l) => l.acquisitions) }];
+
   const lanesHeight =
-    lanes.length * TIMELINE_LAYOUT.laneHeightPx + (lanes.length - 1) * TIMELINE_LAYOUT.laneGapPx;
+    renderedLanes.length * TIMELINE_LAYOUT.laneHeightPx +
+    (renderedLanes.length - 1) * TIMELINE_LAYOUT.laneGapPx;
 
   const selectedSceneIds = [baseline?.sceneId ?? null, comparison?.sceneId ?? null];
-  const bandStart = Math.min(baselinePosition ?? 0, comparisonPosition ?? 0);
-  const bandEnd = Math.max(baselinePosition ?? 0, comparisonPosition ?? 0);
-  const hasBand = baselinePosition !== null && comparisonPosition !== null;
 
   return (
     <div className="pointer-events-auto w-full max-w-3xl rounded-md border border-border bg-surface-2/70 px-3 py-2 backdrop-blur-md">
-      {/* ── What is selected, and what the archive thinks of it ────────────────────────────────── */}
+      {/* ── Always visible ──────────────────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2">
         <span className="aeris-technical shrink-0">Archive</span>
 
@@ -191,7 +292,7 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
 
         {assessment.separationDays !== null ? (
           <span className="font-mono text-[10px] tabular-nums whitespace-nowrap text-muted-foreground">
-            {assessment.separationDays.toLocaleString()} days apart
+            {assessment.separationDays.toLocaleString()}d apart
           </span>
         ) : null}
 
@@ -226,55 +327,32 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
           >
             <ChevronRight />
           </Button>
-
-          {TIMELINE_PLAYBACK.rates.map((rate) => (
-            <button
-              key={rate}
-              type="button"
-              onClick={() => timeline.setPlaybackRate(rate)}
-              aria-pressed={playbackRate === rate}
-              className={cn(
-                "rounded-sm px-1 font-mono text-[10px] transition-colors duration-fast",
-                playbackRate === rate
-                  ? "text-aeris-teal"
-                  : "text-muted-foreground/60 hover:text-foreground",
-              )}
-            >
-              {rate}×
-            </button>
-          ))}
         </div>
 
-        <ArchiveQueryPopover
-          from={new Date(domain.startMs).toISOString()}
-          to={new Date(domain.endMs).toISOString()}
-          modalities={lanes.map((lane) => lane.modality)}
-          cloudCeilingPercentage={cloudCeilingPercentage}
-          isSearching={archive.isSearching}
-          error={archive.error}
-          coverageGaps={archive.coverageGaps}
-          recommendation={archive.recommendation}
-          advisory={archive.advisory}
-          onSearch={archive.onSearch}
-          onApplyRecommendation={(recommendation) => {
-            timeline.applyPair(recommendation.t0SceneId, recommendation.t1SceneId);
-            archive.onDismissRecommendation();
-          }}
-          onDismissRecommendation={archive.onDismissRecommendation}
-        />
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={isExpanded ? "Hide archive controls" : "Show archive controls"}
+          aria-expanded={isExpanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <ChevronDown className={cn("transition-transform duration-fast", isExpanded && "rotate-180")} />
+        </Button>
       </div>
 
-      {/* ── The axis ───────────────────────────────────────────────────────────────────────────── */}
+      {/* ── The axis ────────────────────────────────────────────────────────────────────────────── */}
       <div
-        className="relative mt-2 ml-14 touch-none select-none"
-        style={{ height: lanesHeight, paddingInline: 0 }}
+        className={cn("relative mt-2 touch-none select-none", isExpanded && "ml-14")}
+        style={{ height: lanesHeight }}
         ref={trackRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onPointerLeave={() => showMagnet(null)}
       >
-        {/* Coverage holes sit behind everything: the operator should read them as absence, not as content. */}
+        {/* Coverage holes sit behind everything: they should read as absence, not as content. */}
         {gaps.map((gap) => {
           const start = positionForTime(gap.startMs, domain);
           const end = positionForTime(gap.endMs, domain);
@@ -290,19 +368,26 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
         })}
 
         {/* The interval the current pair spans — the window the answer is actually about. */}
-        {hasBand ? (
-          <span
-            aria-hidden="true"
-            className="absolute inset-y-0 border-x border-aeris-teal/30 bg-aeris-teal/8"
-            style={{ left: `${bandStart * 100}%`, width: `${(bandEnd - bandStart) * 100}%` }}
-          />
-        ) : null}
+        <span
+          ref={bandRef}
+          aria-hidden="true"
+          className="absolute inset-y-0 border-x border-aeris-teal/30 bg-aeris-teal/8"
+          style={{ left: "0%", width: "0%" }}
+        />
+
+        <span
+          ref={magnetRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 w-px bg-foreground/25 opacity-0 transition-opacity duration-fast"
+        />
 
         <div className="flex flex-col" style={{ gap: TIMELINE_LAYOUT.laneGapPx }}>
-          {lanes.map((lane) => (
+          {renderedLanes.map((lane) => (
             <TimelineTrack
-              key={lane.modality}
+              key={lane.label}
               label={lane.label}
+              showLabel={isExpanded}
+              colorByModality={!isExpanded}
               acquisitions={lane.acquisitions}
               domain={domain}
               cloudCeilingPercentage={cloudCeilingPercentage}
@@ -313,28 +398,27 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
           ))}
         </div>
 
-        {baselinePosition !== null ? (
-          <ScrubHandle
-            role="baseline"
-            label="T0"
-            acquisition={baseline}
-            position={baselinePosition}
-            onStep={timeline.step}
-          />
-        ) : null}
-        {comparisonPosition !== null ? (
-          <ScrubHandle
-            role="comparison"
-            label="T1"
-            acquisition={comparison}
-            position={comparisonPosition}
-            onStep={timeline.step}
-          />
-        ) : null}
+        <ScrubHandle
+          ref={baselineHandleRef}
+          role="baseline"
+          label="T0"
+          acquisition={baseline}
+          onStep={timeline.step}
+        />
+        <ScrubHandle
+          ref={comparisonHandleRef}
+          role="comparison"
+          label="T1"
+          acquisition={comparison}
+          onStep={timeline.step}
+        />
       </div>
 
-      {/* ── Year rule ──────────────────────────────────────────────────────────────────────────── */}
-      <div className="relative ml-14 mt-1" style={{ height: TIMELINE_LAYOUT.axisHeightPx }}>
+      {/* ── Year rule ───────────────────────────────────────────────────────────────────────────── */}
+      <div
+        className={cn("relative mt-1", isExpanded && "ml-14")}
+        style={{ height: TIMELINE_LAYOUT.axisHeightPx }}
+      >
         {yearTicks(domain.startMs, domain.endMs).map((tick) => (
           <span
             key={tick.year}
@@ -346,10 +430,79 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
         ))}
       </div>
 
-      {/* ── Why this pair may not be what it looks like ────────────────────────────────────────── */}
+      {/* ── Everything a routine investigation does not need ────────────────────────────────────── */}
+      {isExpanded ? (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-soft pt-2">
+          <span className="flex items-center gap-1">
+            <span className="aeris-technical">Speed</span>
+            {TIMELINE_PLAYBACK.rates.map((rate) => (
+              <button
+                key={rate}
+                type="button"
+                onClick={() => timeline.setPlaybackRate(rate)}
+                aria-pressed={playbackRate === rate}
+                className={cn(
+                  "rounded-sm px-1 font-mono text-[10px] transition-colors duration-fast",
+                  playbackRate === rate
+                    ? "text-aeris-teal"
+                    : "text-muted-foreground/60 hover:text-foreground",
+                )}
+              >
+                {rate}×
+              </button>
+            ))}
+          </span>
+
+          <span className="h-3 w-px bg-border" aria-hidden="true" />
+
+          {/* Absorbed from the comparator playbar: "what is compared" and "when" are one question. */}
+          <span className="flex items-center gap-1">
+            <span className="aeris-technical">Compare</span>
+            {(Object.keys(BINDING_LABEL) as WorkspaceMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                disabled={mode === "crossModal" && !hasCrossModalScene}
+                onClick={() => setComparatorBinding(mode)}
+                aria-pressed={comparatorBinding === mode}
+                className={cn(
+                  "rounded-sm px-1 font-mono text-[10px] transition-colors duration-fast disabled:opacity-40",
+                  comparatorBinding === mode
+                    ? "text-aeris-teal"
+                    : "text-muted-foreground/60 hover:text-foreground",
+                )}
+              >
+                {BINDING_LABEL[mode]}
+              </button>
+            ))}
+          </span>
+
+          <span className="flex-1" />
+
+          <ArchiveQueryPopover
+            from={new Date(domain.startMs).toISOString()}
+            to={new Date(domain.endMs).toISOString()}
+            modalities={lanes.map((lane) => lane.modality)}
+            cloudCeilingPercentage={cloudCeilingPercentage}
+            isSearching={archive.isSearching}
+            error={archive.error}
+            coverageGaps={archive.coverageGaps}
+            recommendation={archive.recommendation}
+            advisory={archive.advisory}
+            onSearch={archive.onSearch}
+            onApplyRecommendation={(recommendation) => {
+              timeline.applyPair(recommendation.t0SceneId, recommendation.t1SceneId);
+              archive.onDismissRecommendation();
+            }}
+            onDismissRecommendation={archive.onDismissRecommendation}
+          />
+        </div>
+      ) : null}
+
+      {/* Why this pair may not be what it looks like. Shown collapsed too — it is not an advanced detail. */}
       {assessment.notes.length > 0 ? (
         <ul className="mt-1.5 flex flex-col gap-0.5 border-t border-border-soft pt-1.5">
-          {assessment.notes.slice(0, 2).map((note) => (
+          {assessment.notes.slice(0, isExpanded ? 3 : 1).map((note) => (
             <li
               key={note}
               className={cn(
@@ -372,26 +525,29 @@ export function TimelineScrubber({ timeline, archive }: TimelineScrubberProps) {
  * A slider rather than a decorative marker: an operator working a keyboard has to be able to step through
  * the archive, and a date selector that only responds to a drag excludes them from the one control that
  * decides what the analysis runs on.
+ *
+ * Its position is set by the parent through the ref, never by a prop — see the file header.
  */
 function ScrubHandle({
+  ref,
   role,
   label,
   acquisition,
-  position,
   onStep,
 }: {
+  ref: React.Ref<HTMLDivElement>;
   role: TimelineRole;
   label: string;
   acquisition: Acquisition | null;
-  position: number;
   onStep: (role: TimelineRole, direction: 1 | -1) => void;
 }) {
   const capturedDate = acquisition?.capturedAt.slice(0, 10) ?? "—";
 
   return (
     <div
+      ref={ref}
       className="pointer-events-none absolute inset-y-0 z-10 -translate-x-1/2"
-      style={{ left: `${position * 100}%` }}
+      style={{ left: "-100%", visibility: "hidden" }}
     >
       <button
         type="button"

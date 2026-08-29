@@ -10,6 +10,14 @@
 //         Opacity is a slider rather than a numeric field because it is a perceptual judgement, and it
 //         writes straight through to the stage on every change so the operator is adjusting what they can
 //         see rather than committing a value and waiting.
+//
+//         Each row also QUANTIFIES what the layer contains: how many features, how much ground they cover,
+//         and how confident the model was across them. A layer stack that only toggles visibility makes the
+//         operator open the answer panel to find out how much was detected — and the numbers are already
+//         on the features, so not showing them was withholding what the row already knew.
+//
+//         The figures are measured from the features present, never quoted from elsewhere. A count that
+//         disagrees with the geometry on screen is the failure mode this product exists to prevent.
 
 "use client";
 
@@ -22,6 +30,30 @@ import { formatPercentage } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
 import type { EvidenceLayer } from "../../types/layer.types";
+
+/**
+ * What this layer actually contains, measured from its own features.
+ *
+ * Confidence is averaged only over the features that assert one. Treating "not asserted" as zero would
+ * drag the mean down and report a model as less certain than it ever claimed to be.
+ */
+function summarise(layer: EvidenceLayer) {
+  const withArea = layer.features.filter((feature) => feature.areaHectares !== null);
+  const withConfidence = layer.features.filter((feature) => feature.confidence !== null);
+
+  const totalHectares = withArea.reduce((sum, feature) => sum + (feature.areaHectares ?? 0), 0);
+  const meanConfidence =
+    withConfidence.length === 0
+      ? null
+      : withConfidence.reduce((sum, feature) => sum + (feature.confidence ?? 0), 0) /
+        withConfidence.length;
+
+  return { count: layer.features.length, totalHectares, meanConfidence };
+}
+
+function formatArea(hectares: number): string {
+  return hectares >= 100 ? `${(hectares / 100).toFixed(2)} km²` : `${hectares.toFixed(1)} ha`;
+}
 
 interface EvidenceLayerRowProps {
   layer: EvidenceLayer;
@@ -39,6 +71,7 @@ export function EvidenceLayerRow({
   onOpacityChange,
 }: EvidenceLayerRowProps) {
   const VisibilityIcon = layer.isVisible ? Eye : EyeOff;
+  const summary = summarise(layer);
 
   return (
     <div
@@ -95,6 +128,22 @@ export function EvidenceLayerRow({
           {formatPercentage(layer.opacity)}
         </span>
       </div>
+
+      {summary.count > 0 ? (
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-2 pl-1 font-mono text-[10px] tabular-nums text-foreground">
+          <span>
+            {summary.count} {summary.count === 1 ? "feature" : "features"}
+          </span>
+          {summary.totalHectares > 0 ? (
+            <span className="text-muted-foreground">{formatArea(summary.totalHectares)}</span>
+          ) : null}
+          {summary.meanConfidence !== null ? (
+            <span className="text-muted-foreground">
+              {formatPercentage(summary.meanConfidence)} mean
+            </span>
+          ) : null}
+        </p>
+      ) : null}
 
       <p className="mt-1 truncate pl-1 font-mono text-[10px] text-muted-foreground/70">
         {layer.provenance.modelId}@{layer.provenance.modelVersion}

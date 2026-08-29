@@ -46,17 +46,18 @@ import type { Claim } from "../types/evidence.types";
 import type { InvestigationSceneSlot } from "../types/investigation.types";
 import { AnswerPanel } from "./answerPanel/AnswerPanel";
 import { InvestigationHeader } from "./header/InvestigationHeader";
-import { InputsPanel } from "./inputsPanel/InputsPanel";
+import { LeftPanelTabs } from "./inputsPanel/LeftPanelTabs";
 import { ReportDrawer } from "./report/ReportDrawer";
 import { ExecutionSpine } from "./tracePanel/ExecutionSpine";
+import { CameraControls } from "./viewer/CameraControls";
 import { DrawToolbar } from "./viewer/DrawToolbar";
 import { EvidenceLegend } from "./viewer/EvidenceLegend";
+import { FeatureInspector } from "./viewer/FeatureInspector";
 import { ProjectionToggle } from "./viewer/ProjectionToggle";
 import { RegionPromptPopover } from "./viewer/RegionPromptPopover";
 import { SceneReadout } from "./viewer/SceneReadout";
 import { SplitHandle } from "./viewer/SplitHandle";
 import { TargetLockOverlay } from "./viewer/TargetLockOverlay";
-import { TemporalPlaybar } from "./viewer/TemporalPlaybar";
 import { TimelineScrubber } from "./viewer/TimelineScrubber";
 import { ViewerToolCluster } from "./viewer/ViewerToolCluster";
 
@@ -110,6 +111,34 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const projection = useInvestigationStore((state) => state.projection);
   const setProjection = useInvestigationStore((state) => state.setProjection);
   const setSpotlightClaimId = useInvestigationStore((state) => state.setSpotlightClaimId);
+  const inspectedFeature = useInvestigationStore((state) => state.inspectedFeature);
+  const setInspectedFeature = useInvestigationStore((state) => state.setInspectedFeature);
+
+  /**
+   * The clicked feature, its layer, and every claim that rests on it.
+   *
+   * The claim lookup runs the spotlight relationship backwards: a claim names its evidence, so finding the
+   * claims for one feature needs a scan. It runs once per click rather than per frame, which is why a scan
+   * is the right trade against a second index that would have to be kept in step with every streamed layer.
+   */
+  const inspection = useMemo(() => {
+    if (!inspectedFeature) {
+      return null;
+    }
+
+    const layer = graph.layersById[inspectedFeature.layerId];
+    const feature = layer?.features.find((candidate) => candidate.id === inspectedFeature.featureId);
+    if (!layer || !feature) {
+      return null;
+    }
+
+    const claims = graph.claimOrder
+      .map((claimId) => graph.claimsById[claimId])
+      .filter((claim) => featureIdsForClaim(claim.id).includes(feature.id));
+
+    return { feature, layer, claims };
+  }, [featureIdsForClaim, graph, inspectedFeature]);
+
   const toggleSoloLayer = useInvestigationStore((state) => state.toggleSoloLayer);
   const togglePlanStep = useInvestigationStore((state) => state.togglePlanStep);
 
@@ -119,6 +148,9 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
     baseLayers: timeline.layers,
     comparatorOverride: timeline.comparatorOverride,
     featureIdsForClaim,
+    // The scene is lit for the moment the comparison observation was taken, so its shadows agree with its
+    // pixels rather than with the operator's wall clock.
+    illuminationTime: timeline.comparison?.capturedAt ?? null,
   });
 
   /** Turns the popover's window into the temporal query the archive is actually asked. */
@@ -245,7 +277,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               ariaLabel="Inputs and evidence layers"
             >
               <PanelErrorBoundary panelName="Inputs">
-                <InputsPanel
+                <LeftPanelTabs
                   sceneSlots={sceneSlots}
                   acquisitions={acquisitions}
                   roleBySceneId={roleBySceneId}
@@ -272,17 +304,30 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                 onSelectTool={regionSelection.selectTool}
               />
 
+              {inspection ? (
+                <div className="pointer-events-none absolute top-0 right-0 z-10">
+                  <FeatureInspector
+                    feature={inspection.feature}
+                    layer={inspection.layer}
+                    claims={inspection.claims}
+                    onFocusClaim={handleFocusEvidence}
+                    onClose={() => setInspectedFeature(null)}
+                  />
+                </div>
+              ) : null}
+
               <div className="flex-1" aria-hidden="true" />
 
               <EvidenceLegend layers={layers} />
               <SceneReadout />
-              <div className="flex items-end gap-2">
+              <div className="flex flex-wrap items-end justify-center gap-2">
                 <ProjectionToggle projection={projection} onChange={setProjection} />
+                <CameraControls />
                 <ViewerToolCluster />
               </div>
-              <TemporalPlaybar sceneSlots={sceneSlots} />
               <TimelineScrubber
                 timeline={timeline}
+                hasCrossModalScene={sceneSlots.some((slot) => slot.role === "sar")}
                 archive={{
                   isSearching: catalogue.isSearching,
                   error: catalogue.error,

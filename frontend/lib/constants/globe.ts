@@ -54,6 +54,14 @@ export const GLOBE_BASEMAP = {
   fallbackMaximumLevel: 19,
 } as const;
 
+/**
+ * How often the camera position is sampled for the view readout, in milliseconds.
+ *
+ * Ten times a second: fast enough that a coordinate never looks stuck to a moving camera, slow enough
+ * that picking two pixels against the ellipsoid stays free next to the frame it rides on.
+ */
+export const CAMERA_SAMPLE_INTERVAL_MS = 100;
+
 export const GLOBE_APPEARANCE = {
   /** Shown where no imagery tile has loaded yet, so gaps read as space rather than as a rendering fault. */
   baseColor: AERIS_COLOR_HEX.black,

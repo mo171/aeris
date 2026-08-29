@@ -22,6 +22,10 @@ import type { Acquisition } from "../../types/investigation.types";
 
 interface TimelineTrackProps {
   label: string;
+  /** Hidden when every sensor shares one rule, where a lane name would be a lie. */
+  showLabel?: boolean;
+  /** Colours radar apart from optical. Needed only on the merged rule, where the lane cannot say it. */
+  colorByModality?: boolean;
   acquisitions: Acquisition[];
   domain: TimelineDomain;
   cloudCeilingPercentage: number;
@@ -32,6 +36,8 @@ interface TimelineTrackProps {
 
 export function TimelineTrack({
   label,
+  showLabel = true,
+  colorByModality = false,
   acquisitions,
   domain,
   cloudCeilingPercentage,
@@ -46,11 +52,13 @@ export function TimelineTrack({
       role="group"
       aria-label={`${label} acquisitions`}
     >
-      <span className="absolute inset-y-0 -left-1 flex items-center">
-        <span className="aeris-technical -translate-x-full pr-2 text-[9px] whitespace-nowrap text-muted-foreground/70">
-          {label}
+      {showLabel ? (
+        <span className="absolute inset-y-0 -left-1 flex items-center">
+          <span className="aeris-technical -translate-x-full pr-2 text-[9px] whitespace-nowrap text-muted-foreground/70">
+            {label}
+          </span>
         </span>
-      </span>
+      ) : null}
 
       {/* The lane rule. Sits behind the marks so a dense run still reads as one continuous archive. */}
       <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border-soft" aria-hidden="true" />
@@ -60,6 +68,7 @@ export function TimelineTrack({
         const isSelected = selectedSceneIds.includes(acquisition.sceneId);
         const isCited = citedSceneIds.has(acquisition.sceneId);
         const position = positionForTime(Date.parse(acquisition.capturedAt), domain);
+        const isRadar = acquisition.modality === "sar";
 
         const cloudLabel =
           acquisition.cloudCoverPercentage === null
@@ -82,10 +91,13 @@ export function TimelineTrack({
                 "mx-auto block rounded-[1px] border transition-colors duration-fast",
                 isSelected
                   ? "border-aeris-teal bg-aeris-teal"
-                  : usable
-                    ? "border-foreground/50 bg-foreground/35 hover:border-aeris-teal hover:bg-aeris-teal/60"
-                    : // Hollow: catalogued, but nothing here can answer a question.
-                      "border-aeris-amber/60 bg-transparent",
+                  : !usable
+                    ? // Hollow: catalogued, but nothing here can answer a question.
+                      "border-aeris-amber/60 bg-transparent"
+                    : colorByModality && isRadar
+                      ? // On the merged rule the mark is the only thing that can say which sensor it is.
+                        "border-aeris-blue/70 bg-aeris-blue/45 hover:border-aeris-blue hover:bg-aeris-blue/70"
+                      : "border-foreground/50 bg-foreground/35 hover:border-aeris-teal hover:bg-aeris-teal/60",
               )}
               style={{
                 width: TIMELINE_LAYOUT.markerWidthPx,

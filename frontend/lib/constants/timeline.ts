@@ -30,6 +30,15 @@ export const TIMELINE_PLAYBACK = {
   dwellMs: 1_100,
   rates: [0.5, 1, 2] as const,
   defaultRate: 1,
+  /**
+   * Play-through waits for the imagery before advancing, rather than running on a fixed clock.
+   *
+   * Without this the fastest speed shows the least: a dwell shorter than the tile fetch steps the archive
+   * past frames the operator never actually sees, which is the opposite of what a faster setting is for.
+   * The cap stops a dead tile service from stalling playback for ever — it degrades to the fixed clock.
+   */
+  settlePollMs: 120,
+  maximumSettleWaitMs: 2_400,
 } as const;
 
 export const TIMELINE_QUERY = {

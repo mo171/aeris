@@ -83,7 +83,7 @@ export function InputsPanel({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <section
         className={cn("flex flex-col", isInputsExpanded ? "min-h-0 flex-1" : "shrink-0")}
       >

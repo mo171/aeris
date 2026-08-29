@@ -32,6 +32,18 @@ export type ColorRampId = (typeof COLOR_RAMP_IDS)[number];
  * Scene imagery defaults to no grading at all: it is the subject of the page, and the operator must see
  * what the sensor saw. Only derived products are graded.
  */
+/**
+ * How long a raster takes to cross-fade when it is replaced, in milliseconds.
+ *
+ * Two speeds because the same transition serves two very different gestures. A deliberate layer change
+ * happens once and can afford to be smooth; scrubbing a timeline replaces the imagery on every step, and
+ * a fade tuned for the first reads as lag when it happens ten times inside one drag.
+ */
+export const RASTER_CROSS_FADE_MS = {
+  settled: 420,
+  scrubbing: 160,
+} as const;
+
 export const RASTER_GRADING: Readonly<
   Record<ColorRampId, { brightness: number; contrast: number; saturation: number; gamma: number }>
 > = {

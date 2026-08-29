@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo } from "react";
 
 import type { StageLayer } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 import { TIMELINE_PLAYBACK } from "@/lib/constants/timeline";
+import { useGeoStageStore } from "@/store/geo-stage-store";
 
 import {
   assessPair,
@@ -71,6 +72,8 @@ interface TimelineControls {
   step: (role: TimelineRole, direction: 1 | -1) => void;
   applyPair: (baselineSceneId: string, comparisonSceneId: string) => void;
   setPlaying: (isPlaying: boolean) => void;
+  /** Told while a handle is being dragged, so the renderer can shorten its cross-fade. */
+  setScrubbing: (isScrubbing: boolean) => void;
   setPlaybackRate: (rate: number) => void;
   setCloudCeiling: (percentage: number) => void;
 }
@@ -94,6 +97,7 @@ export function useTimeline({ investigation, citedSceneIds }: TimelineOptions): 
   const setTimelineSelection = useInvestigationStore((state) => state.setTimelineSelection);
   const setTimelinePair = useInvestigationStore((state) => state.setTimelinePair);
   const setPlaying = useInvestigationStore((state) => state.setTimelinePlaying);
+  const setScrubbing = useInvestigationStore((state) => state.setTimelineScrubbing);
   const setPlaybackRate = useInvestigationStore((state) => state.setTimelinePlaybackRate);
   const setCloudCeiling = useInvestigationStore((state) => state.setTimelineCloudCeiling);
 
@@ -242,6 +246,10 @@ export function useTimeline({ investigation, citedSceneIds }: TimelineOptions): 
   );
 
   // ── Play-through ─────────────────────────────────────────────────────────────────────────────────
+  //
+  // Self-scheduling rather than an interval, because the next step waits for the imagery of the current
+  // one. A fixed clock shorter than the tile fetch makes the fastest speed show the least: the archive
+  // advances past frames the operator never sees, which is the opposite of what a faster setting is for.
   useEffect(() => {
     if (!isPlaying) {
       return;
@@ -257,18 +265,46 @@ export function useTimeline({ investigation, citedSceneIds }: TimelineOptions): 
       return;
     }
 
-    const intervalMs = TIMELINE_PLAYBACK.dwellMs / Math.max(0.25, playbackRate);
-    const intervalId = window.setInterval(() => {
+    const dwellMs = TIMELINE_PLAYBACK.dwellMs / Math.max(0.25, playbackRate);
+    let timerId = 0;
+    let isCancelled = false;
+    let waitedMs = 0;
+
+    const advance = () => {
+      if (isCancelled) {
+        return;
+      }
+
+      const sceneLayers = useGeoStageStore.getState().handle?.sceneLayers;
+      if (
+        sceneLayers &&
+        !sceneLayers.isSettled() &&
+        waitedMs < TIMELINE_PLAYBACK.maximumSettleWaitMs
+      ) {
+        // Still loading. Hold this frame rather than skipping it — but only up to the cap, so a dead tile
+        // service degrades playback to the fixed clock instead of stopping it.
+        waitedMs += TIMELINE_PLAYBACK.settlePollMs;
+        timerId = window.setTimeout(advance, TIMELINE_PLAYBACK.settlePollMs);
+        return;
+      }
+
+      waitedMs = 0;
       const store = useInvestigationStore.getState();
-      const currentSceneId =
-        store.timelineComparisonSceneId ?? slotSceneIdFor("comparison") ?? null;
+      const currentSceneId = store.timelineComparisonSceneId ?? slotSceneIdFor("comparison");
       const next = stepAcquisition(acquisitions, currentSceneId, 1, cloudCeilingPercentage);
       if (next) {
         store.setTimelineSelection("comparison", next.sceneId);
       }
-    }, intervalMs);
 
-    return () => window.clearInterval(intervalId);
+      timerId = window.setTimeout(advance, dwellMs);
+    };
+
+    timerId = window.setTimeout(advance, dwellMs);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timerId);
+    };
   }, [acquisitions, cloudCeilingPercentage, isPlaying, playbackRate, setPlaying, slotSceneIdFor]);
 
   return {
@@ -289,6 +325,7 @@ export function useTimeline({ investigation, citedSceneIds }: TimelineOptions): 
     step,
     applyPair: setTimelinePair,
     setPlaying,
+    setScrubbing,
     setPlaybackRate,
     setCloudCeiling,
   };

@@ -25,6 +25,7 @@ import { useEffect, useRef } from "react";
 
 import type { StageLayer } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 import { COMPARATOR_BINDING, INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
+import { RASTER_CROSS_FADE_MS } from "@/lib/constants/layers";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
 import { useInvestigationStore } from "../store/investigation-store";
@@ -47,6 +48,14 @@ interface SceneStageBindingOptions {
   comparatorOverride?: { left: string | null; right: string | null } | null;
   /** Resolves the claim under the pointer into the stage features that support it. */
   featureIdsForClaim: (claimId: string) => string[];
+  /**
+   * Capture time of the observation currently on the right of the comparator.
+   *
+   * Drives the scene's sun, so the shadows rendered are the shadows in the pixels. Shadow direction and
+   * length are how an analyst reads building height and separates a genuine new structure from a shadow
+   * that moved — a scene lit from the wrong side quietly contradicts its own imagery.
+   */
+  illuminationTime?: string | null;
 }
 
 export function useSceneStageBinding({
@@ -55,6 +64,7 @@ export function useSceneStageBinding({
   baseLayers,
   comparatorOverride,
   featureIdsForClaim,
+  illuminationTime,
 }: SceneStageBindingOptions): void {
   const stage = useGeoStageStore((state) => state.handle);
   const consumeDescent = useGeoStageStore((state) => state.consumeDescent);
@@ -62,10 +72,14 @@ export function useSceneStageBinding({
   const comparatorBinding = useInvestigationStore((state) => state.comparatorBinding);
   const renderMode = useInvestigationStore((state) => state.renderMode);
   const projection = useInvestigationStore((state) => state.projection);
+  const hasBuildingMassing = useInvestigationStore((state) => state.hasBuildingMassing);
+  const terrainExaggeration = useInvestigationStore((state) => state.terrainExaggeration);
   const spotlightClaimId = useInvestigationStore((state) => state.spotlightClaimId);
   const artefactLayerId = useInvestigationStore((state) => state.artefactLayerId);
   const activeDrawTool = useInvestigationStore((state) => state.activeDrawTool);
   const isPlaybackRunning = useInvestigationStore((state) => state.isPlaybackRunning);
+  const isTimelineScrubbing = useInvestigationStore((state) => state.isTimelineScrubbing);
+  const isTimelinePlaying = useInvestigationStore((state) => state.isTimelinePlaying);
   const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
 
   // Mirrored so the spotlight effect never re-runs when the resolver changes identity.
@@ -126,9 +140,34 @@ export function useSceneStageBinding({
     stage?.sceneLayers.setRenderMode(renderMode);
   }, [renderMode, stage]);
 
+  // A scrub replaces the imagery on every step. The fade tuned for a deliberate layer change reads as lag
+  // when it happens ten times inside one drag, so it shortens while the operator is moving through time
+  // and returns to normal the moment they stop.
+  useEffect(() => {
+    stage?.sceneLayers.setCrossFadeMs(
+      isTimelineScrubbing || isTimelinePlaying
+        ? RASTER_CROSS_FADE_MS.scrubbing
+        : RASTER_CROSS_FADE_MS.settled,
+    );
+  }, [isTimelinePlaying, isTimelineScrubbing, stage]);
+
   useEffect(() => {
     stage?.appearance.setProjection(projection);
   }, [projection, stage]);
+
+  // Relief is pushed after the mode switch has already applied its defaults, so an operator override
+  // survives — entering scene mode sets a starting point, it does not overrule a choice already made.
+  useEffect(() => {
+    stage?.appearance.setBuildingsVisible(hasBuildingMassing);
+  }, [hasBuildingMassing, stage]);
+
+  useEffect(() => {
+    stage?.appearance.setTerrainExaggeration(terrainExaggeration);
+  }, [stage, terrainExaggeration]);
+
+  useEffect(() => {
+    stage?.appearance.setIlluminationTime(illuminationTime ?? null);
+  }, [illuminationTime, stage]);
 
   // ── Comparator ───────────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -205,12 +244,15 @@ export function useSceneStageBinding({
       return;
     }
 
-    stage.sceneLayers.setFeatureClickHandler((featureId) => {
+    stage.sceneLayers.setFeatureClickHandler((featureId, layerId) => {
       const store = useInvestigationStore.getState();
       const graphClaimId = findClaimIdForFeature(featureId, featureIdsForClaimRef.current);
       // Clicking a polygon on the scene is the same gesture as hovering its claim in the answer, run
       // backwards. Both end at the same spotlight, so the two directions cannot disagree.
       store.setSpotlightClaimId(graphClaimId);
+      // And the click also opens the record. Highlighting a detection while refusing to say what it is
+      // was the largest working gap on this surface.
+      store.setInspectedFeature({ layerId, featureId });
     });
 
     return () => {

@@ -68,8 +68,15 @@ export function formatCoordinates(latitude: number, longitude: number): string {
   return `${Math.abs(latitude).toFixed(3)}°${latitudeHemisphere} ${Math.abs(longitude).toFixed(3)}°${longitudeHemisphere}`;
 }
 
-export function formatPercentage(value: number, fractionDigits = 0): string {
-  return `${value.toFixed(fractionDigits)}%`;
+/**
+ * A 0–1 ratio as a percentage.
+ *
+ * Takes the RATIO, not an already-scaled number. Every value in this codebase that ends up here —
+ * confidence, opacity, magnitude — is stored 0–1, which is also what ConfidenceMeter expects, so a
+ * formatter that skipped the multiplication rendered full opacity as "1%" at every call site it had.
+ */
+export function formatPercentage(ratio: number, fractionDigits = 0): string {
+  return `${(ratio * 100).toFixed(fractionDigits)}%`;
 }
 
 export function formatDurationMs(durationMs: number): string {

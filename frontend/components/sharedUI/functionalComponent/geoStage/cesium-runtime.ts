@@ -14,16 +14,20 @@
 //         The fallback exists so the application never boots to a black sphere, not as an equal option.
 
 import {
+  Cesium3DTileStyle,
   EllipsoidTerrainProvider,
   ImageryLayer,
   Ion,
   UrlTemplateImageryProvider,
+  createOsmBuildingsAsync,
   createWorldTerrainAsync,
+  type Cesium3DTileset,
   type TerrainProvider,
   type Viewer,
 } from "cesium";
 
 import { CESIUM_BASE_URL, GLOBE_APPEARANCE, GLOBE_BASEMAP } from "@/lib/constants/globe";
+import { SCENE_RELIEF } from "@/lib/constants/investigation";
 import { env } from "@/lib/env";
 
 declare global {
@@ -116,4 +120,36 @@ export async function upgradeToIonImageryAndTerrain(viewer: Viewer): Promise<voi
 
 export function createEllipsoidTerrain(): TerrainProvider {
   return new EllipsoidTerrainProvider();
+}
+
+/**
+ * Building massing for the close-range scene.
+ *
+ * This is the single largest visual return available to this surface. Terrain cannot make a city look
+ * three-dimensional — relief across a four-kilometre urban area is tens of metres, well under one percent
+ * of the view at the altitude that frames it — because in a city the vertical information is in the
+ * buildings, not the ground. One tileset supplies it.
+ *
+ * Styled to a desaturated slate rather than left at the default white. Buildings are context, not the
+ * finding: white massing out-contrasts every evidence colour on the scene and turns an analysis surface
+ * into an architectural render.
+ *
+ * Returns null without an Ion token, which is a supported state — the scene stays flat rather than
+ * failing.
+ */
+export async function createBuildingMassing(): Promise<Cesium3DTileset | null> {
+  if (!hasIonAccess()) {
+    return null;
+  }
+
+  try {
+    const tileset = await createOsmBuildingsAsync();
+    tileset.style = new Cesium3DTileStyle({
+      color: `color("${SCENE_RELIEF.buildingColorCss}", ${SCENE_RELIEF.buildingAlpha})`,
+    });
+    return tileset;
+  } catch (error) {
+    console.warn("[AERIS] Building massing unavailable, the scene stays flat.", error);
+    return null;
+  }
 }

@@ -20,6 +20,13 @@
 //         budget this page exists to showcase. Everything outside reaches the camera imperatively through
 //         the published handle.
 //
+//         INVARIANT: every method on the published handle must be a no-op once the viewer is destroyed.
+//         The handle outlives the viewer — a feature captures it in an effect closure and its CLEANUP then
+//         runs after the layout has already torn the viewer down, so `sceneLayers.clear()` and
+//         `appearance.setMode("globe")` are routinely called against a dead scene. Cesium nulls its
+//         internals on destroy, so an unguarded write lands on `undefined` and takes the route down with
+//         it. Any new method that touches `viewer`, `scene` or `basemapLayer` needs the same guard.
+//
 //         `requestRenderMode` is deliberately left off. The scene always has something animating — pulsing
 //         arcs on the globe, revealing evidence and a moving comparator in the workspace — so render-on-
 //         demand would require calling requestRender every frame anyway, which is strictly worse than not
@@ -40,23 +47,27 @@ import {
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   Viewer,
-  type Cartesian2,
+  Cartesian2,
+  JulianDate,
+  type Cesium3DTileset,
 } from "cesium";
 import { useEffect, useRef } from "react";
 
 import {
+  CAMERA_SAMPLE_INTERVAL_MS,
   GLOBE_APPEARANCE,
   GLOBE_CAMERA,
   GLOBE_HIDDEN_TAB_RENDER_INTERVAL_MS,
   GLOBE_MAX_RESOLUTION_SCALE,
   GLOBE_PROJECTION_MORPH_SECONDS,
 } from "@/lib/constants/globe";
-import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
+import { INVESTIGATION_CAMERA, SCENE_RELIEF } from "@/lib/constants/investigation";
 import { LAYER_RENDERING } from "@/lib/constants/layers";
 import { AERIS_COLOR_HEX } from "@/lib/constants/theme";
 import { useGeoStageStore } from "@/store/geo-stage-store";
 
 import {
+  createBuildingMassing,
   createEllipsoidTerrain,
   createFallbackImageryLayer,
   hasIonAccess,
@@ -66,6 +77,8 @@ import type {
   GeoStageHandle,
   StageBoundingBox,
   StageCameraBookmark,
+  StageCameraState,
+  StageOrientation,
   StageFlyToTarget,
   StageFrameOptions,
   StageLayerRenderMode,
@@ -160,6 +173,14 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     let projection: StageProjection = "3D";
     let onMarkerClick: ((markerId: string) => void) | null = null;
     let onFeatureClick: ((featureId: string, layerId: string) => void) | null = null;
+    /** The extent the scene is framing, kept so tilt and orbit have something to pivot around. */
+    let sceneTargetBounds: StageBoundingBox | null = null;
+    let buildings: Cesium3DTileset | null = null;
+    let wantsBuildings = false;
+    let isLoadingBuildings = false;
+    let terrainExaggeration = 1;
+    const cameraStateListeners = new Set<(state: StageCameraState) => void>();
+    let lastCameraSampleMs = 0;
 
     const clearResumeTimer = () => {
       if (resumeTimeoutId !== null) {
@@ -182,6 +203,9 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     };
 
     const applyZoomLimits = (minimumMeters: number, maximumMeters: number) => {
+      if (viewer.isDestroyed()) {
+        return;
+      }
       scene.screenSpaceCameraController.minimumZoomDistance = minimumMeters;
       scene.screenSpaceCameraController.maximumZoomDistance = maximumMeters;
     };
@@ -205,6 +229,19 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
       evidenceVectors.update(now);
       aoiOutline.update(now);
       comparator.update(now);
+
+      // Camera state is sampled here and pushed to subscribers rather than being held in React. It
+      // changes every frame; a render per frame would spend exactly the budget this surface exists to
+      // showcase, so the readout writes to the DOM the same way the comparator handle does.
+      if (cameraStateListeners.size > 0 && now - lastCameraSampleMs >= CAMERA_SAMPLE_INTERVAL_MS) {
+        lastCameraSampleMs = now;
+        const state = readCameraState();
+        if (state) {
+          for (const listener of cameraStateListeners) {
+            listener(state);
+          }
+        }
+      }
 
       if (prefersAutoRotate && !isInteracting && !isFlying) {
         const rate =
@@ -460,6 +497,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
 
     /** Orbiting in scene mode must spin around the area of interest, not around the planet's poles. */
     const setOrbitCentre = (bounds: StageBoundingBox | null) => {
+      sceneTargetBounds = bounds;
       if (!bounds) {
         orbitAxis = Cartesian3.clone(Cartesian3.UNIT_Z);
         return;
@@ -471,6 +509,111 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
       // The axis runs from the Earth's centre through the AOI, so rotating about it carries the camera
       // around that point rather than around the pole.
       orbitAxis = Ellipsoid.WGS84.geodeticSurfaceNormalCartographic(centre);
+    };
+
+    // ── Aiming the camera ──────────────────────────────────────────────────────────────────────────
+    //
+    // Tilt has to be a verb this surface owns, not a gesture the operator is expected to discover.
+    // Cesium's own tilt is a middle-drag, which does not exist on a trackpad, and a camera that cannot
+    // leave nadir cannot show relief at all — the scene reads as a flat picture however good the terrain
+    // under it is.
+    //
+    // Re-aiming pivots around whatever the scene is framing and preserves the distance to it, so tilting
+    // never doubles as a zoom.
+    const targetSphere = (): BoundingSphere | null => {
+      if (!sceneTargetBounds) {
+        return null;
+      }
+      return BoundingSphere.fromRectangle3D(
+        Rectangle.fromDegrees(
+          sceneTargetBounds.west,
+          sceneTargetBounds.south,
+          sceneTargetBounds.east,
+          sceneTargetBounds.north,
+        ),
+      );
+    };
+
+    const orient = (orientation: StageOrientation) => {
+      if (viewer.isDestroyed()) {
+        return;
+      }
+
+      const sphere = targetSphere();
+      const headingRadians = CesiumMath.toRadians(
+        orientation.headingDegrees ?? CesiumMath.toDegrees(camera.heading),
+      );
+      const pitchRadians = CesiumMath.toRadians(
+        orientation.pitchDegrees ?? CesiumMath.toDegrees(camera.pitch),
+      );
+      const durationSeconds = isMotionReducedRef.current
+        ? 0
+        : (orientation.durationMs ?? INVESTIGATION_CAMERA.orientDurationSeconds * 1000) / 1000;
+
+      if (!sphere) {
+        // Nothing framed — rotate in place rather than refusing. Used on the globe, where there is no
+        // area of interest to pivot around.
+        camera.setView({
+          destination: camera.position,
+          orientation: { heading: headingRadians, pitch: pitchRadians, roll: 0 },
+        });
+        return;
+      }
+
+      markFlightStart();
+      camera.flyToBoundingSphere(sphere, {
+        offset: new HeadingPitchRange(
+          headingRadians,
+          pitchRadians,
+          // Preserving the current distance is what keeps a tilt from also being a zoom.
+          Cartesian3.distance(camera.positionWC, sphere.center),
+        ),
+        duration: durationSeconds,
+        complete: markFlightEnd,
+        cancel: markFlightEnd,
+      });
+    };
+
+    const orbitByDegrees = (deltaHeadingDegrees: number) => {
+      orient({ headingDegrees: CesiumMath.toDegrees(camera.heading) + deltaHeadingDegrees });
+    };
+
+    /**
+     * Ground metres per screen pixel at the centre of the view.
+     *
+     * Measured by picking two adjacent centre pixels rather than derived from altitude, so it stays
+     * correct under tilt and in every projection. Without it a scale bar would be a guess.
+     */
+    const groundMetersPerPixel = (): number | null => {
+      const canvas = scene.canvas;
+      if (canvas.clientWidth < 2 || canvas.clientHeight < 2) {
+        return null;
+      }
+
+      const centre = new Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
+      const beside = new Cartesian2(centre.x + 1, centre.y);
+      const first = camera.pickEllipsoid(centre, Ellipsoid.WGS84);
+      const second = camera.pickEllipsoid(beside, Ellipsoid.WGS84);
+
+      if (!first || !second) {
+        return null;
+      }
+      return Cartesian3.distance(first, second);
+    };
+
+    const readCameraState = (): StageCameraState | null => {
+      if (viewer.isDestroyed()) {
+        return null;
+      }
+      const position = camera.positionCartographic;
+      return {
+        latitude: CesiumMath.toDegrees(position.latitude),
+        longitude: CesiumMath.toDegrees(position.longitude),
+        altitudeMeters: position.height,
+        headingDegrees: CesiumMath.toDegrees(camera.heading),
+        pitchDegrees: CesiumMath.toDegrees(camera.pitch),
+        groundMetersPerPixel: groundMetersPerPixel(),
+      };
     };
 
     // ── The published handle ───────────────────────────────────────────────────────────────────────
@@ -491,6 +634,17 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
         isAutoRotating: () => prefersAutoRotate,
         setZoomLimits: applyZoomLimits,
         isFlying: () => isFlying,
+        orient,
+        orbitByDegrees,
+        getState: readCameraState,
+        subscribeState: (listener) => {
+          cameraStateListeners.add(listener);
+          const initial = readCameraState();
+          if (initial) {
+            listener(initial);
+          }
+          return () => cameraStateListeners.delete(listener);
+        },
       },
 
       globeLayers: {
@@ -500,6 +654,9 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           onMarkerClick = handler;
         },
         clear: () => {
+          if (viewer.isDestroyed()) {
+            return;
+          }
           markerLayer.setMarkers([]);
           arcLayer.setTracks([]);
         },
@@ -507,6 +664,9 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
 
       sceneLayers: {
         setLayers: (layers) => {
+          if (viewer.isDestroyed()) {
+            return;
+          }
           sceneImagery.sync(layers);
           evidenceVectors.sync(layers, renderMode);
         },
@@ -523,6 +683,9 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           evidenceVectors.setRenderMode(nextRenderMode);
         },
         setSpotlight: (featureIds) => {
+          if (viewer.isDestroyed()) {
+            return;
+          }
           evidenceVectors.setSpotlight(featureIds);
           // The scene recedes so the evidence does not have to shout. Dimming the imagery is cheaper and
           // cleaner than masking geometry, and it reads as a spotlight rather than as a filter.
@@ -538,10 +701,17 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
           onFeatureClick = handler;
         },
         setAreaOfInterestOutline: (bounds) => {
-          aoiOutline.set(bounds);
           setOrbitCentre(bounds);
+          if (!viewer.isDestroyed()) {
+            aoiOutline.set(bounds);
+          }
         },
+        setCrossFadeMs: sceneImagery.setCrossFadeMs,
+        isSettled: sceneImagery.isSettled,
         clear: () => {
+          if (viewer.isDestroyed()) {
+            return;
+          }
           sceneImagery.clear();
           evidenceVectors.clear();
           aoiOutline.set(null);
@@ -576,7 +746,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
 
       appearance: {
         setMode: (nextMode) => {
-          if (nextMode === mode) {
+          if (nextMode === mode || viewer.isDestroyed()) {
             return;
           }
           mode = nextMode;
@@ -590,6 +760,12 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
             orbitAxis = Cartesian3.clone(Cartesian3.UNIT_Z);
             basemapBrightness = GLOBE_APPEARANCE.imageryBrightness;
             prefersAutoRotate = !isMotionReducedRef.current;
+
+            // Restored for the orbital instrument: pinning the camera's up-vector to world Z is what
+            // keeps north up while the planet turns underneath.
+            camera.constrainedAxis = Cartesian3.UNIT_Z;
+            handle.appearance.setTerrainExaggeration(1);
+            handle.appearance.setBuildingsVisible(false);
           } else {
             handle.globeLayers.clear();
             applyZoomLimits(
@@ -600,6 +776,15 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
             // back so it never competes with what the sensor actually saw.
             basemapBrightness = 0.62;
             prefersAutoRotate = false;
+
+            // RELEASED for the close-range instrument. The constraint that keeps north up on a spinning
+            // globe fights every attempt to orbit or tilt around a target four kilometres wide — it was
+            // the reason the workspace camera felt locked. The two instruments want opposite things here,
+            // which is exactly why this belongs in the mode switch rather than in one-time setup.
+            camera.constrainedAxis = undefined;
+
+            handle.appearance.setTerrainExaggeration(SCENE_RELIEF.terrainExaggeration);
+            handle.appearance.setBuildingsVisible(SCENE_RELIEF.showBuildingsInSceneMode);
           }
 
           basemapLayer.brightness = basemapBrightness;
@@ -631,13 +816,76 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
 
         setBasemapBrightness: (brightness) => {
           basemapBrightness = brightness;
-          basemapLayer.brightness = brightness;
+          if (!viewer.isDestroyed()) {
+            basemapLayer.brightness = brightness;
+          }
         },
         setMotionReduced: (isReduced) => {
           isMotionReducedRef.current = isReduced;
           if (isReduced) {
             prefersAutoRotate = false;
           }
+        },
+
+        setBuildingsVisible: (isVisible) => {
+          wantsBuildings = isVisible;
+
+          if (buildings) {
+            buildings.show = isVisible;
+            return;
+          }
+
+          // Guarded against a second request while the first is still in flight. The mode switch and the
+          // store both push this on entering the workspace, and without the guard each call would start
+          // its own tileset — three copies of every building, all paying for their own tiles.
+          if (!isVisible || isLoadingBuildings) {
+            return;
+          }
+
+          // Loaded on first request rather than at boot: it is a large tileset and Mission Command never
+          // needs it. The flag is re-read on arrival because the operator may have left scene mode while
+          // the request was in flight.
+          isLoadingBuildings = true;
+          void createBuildingMassing().then((tileset) => {
+            isLoadingBuildings = false;
+            if (!tileset) {
+              return;
+            }
+            if (viewer.isDestroyed()) {
+              tileset.destroy();
+              return;
+            }
+            buildings = tileset;
+            buildings.show = wantsBuildings;
+            scene.primitives.add(buildings);
+          });
+        },
+        areBuildingsVisible: () => wantsBuildings,
+
+        setTerrainExaggeration: (factor) => {
+          if (viewer.isDestroyed()) {
+            return;
+          }
+          terrainExaggeration = factor;
+          scene.verticalExaggeration = factor;
+        },
+        getTerrainExaggeration: () => terrainExaggeration,
+
+        setIlluminationTime: (isoTimestamp) => {
+          if (viewer.isDestroyed()) {
+            return;
+          }
+
+          if (isoTimestamp === null) {
+            viewer.clock.currentTime = JulianDate.now();
+            return;
+          }
+
+          const parsed = Date.parse(isoTimestamp);
+          if (!Number.isFinite(parsed)) {
+            return;
+          }
+          viewer.clock.currentTime = JulianDate.fromDate(new Date(parsed));
         },
       },
     };
@@ -678,8 +926,14 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
       store.setHandle(null);
       store.setReady(false);
 
+      cameraStateListeners.clear();
+
       if (!viewer.isDestroyed()) {
         scene.preUpdate.removeEventListener(onPreUpdate);
+        if (buildings && !buildings.isDestroyed()) {
+          scene.primitives.remove(buildings);
+        }
+        buildings = null;
         viewer.destroy();
       }
     };

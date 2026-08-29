@@ -68,6 +68,32 @@ export interface StageCameraBookmark {
   pitchDegrees: number;
 }
 
+/**
+ * Where the camera is and what it can see, sampled continuously.
+ *
+ * Published as a subscription rather than as a return value because it changes every frame. An operator
+ * reading a coordinate off a viewer that refuses to state one is being asked to trust it about position,
+ * and a scale that is not shown is a scale the reader has to guess from the imagery.
+ */
+export interface StageCameraState {
+  latitude: number;
+  longitude: number;
+  altitudeMeters: number;
+  /** Compass bearing the camera faces, 0 at north. Drives the north indicator. */
+  headingDegrees: number;
+  /** Negative looks down. -90 is straight nadir. */
+  pitchDegrees: number;
+  /** Ground metres covered by one screen pixel at the centre of the view. Null when off the globe. */
+  groundMetersPerPixel: number | null;
+}
+
+/** A change to where the camera looks from, leaving the point it looks AT alone. */
+export interface StageOrientation {
+  headingDegrees?: number;
+  pitchDegrees?: number;
+  durationMs?: number;
+}
+
 export interface StageCameraApi {
   flyTo: (target: StageFlyToTarget) => void;
   /** Frames a bounding box, choosing the altitude that fits it. Used by the descent and by evidence focus. */
@@ -83,6 +109,20 @@ export interface StageCameraApi {
   isAutoRotating: () => boolean;
   setZoomLimits: (minimumMeters: number, maximumMeters: number) => void;
   isFlying: () => boolean;
+
+  /**
+   * Re-aims the camera around whatever it is currently framing, without moving closer or further away.
+   *
+   * Tilt has to be a first-class verb rather than a gesture. Cesium's own tilt is a middle-drag, which is
+   * undiscoverable on a trackpad, and an operator who cannot leave nadir cannot see relief at all — the
+   * scene reads as a flat picture no matter how good the terrain under it is.
+   */
+  orient: (orientation: StageOrientation) => void;
+  /** Nudges the heading by a delta, keeping the same target. Used by the rotate controls. */
+  orbitByDegrees: (deltaHeadingDegrees: number) => void;
+  /** Fires on camera movement, throttled. Returns an unsubscribe. */
+  subscribeState: (listener: (state: StageCameraState) => void) => () => void;
+  getState: () => StageCameraState | null;
 }
 
 // ── Globe layers (Mission Command) ────────────────────────────────────────────────────────────────
@@ -198,6 +238,21 @@ export interface StageSceneLayersApi {
   ) => void;
   /** The area-of-interest outline drawn during and after the descent. Null removes it. */
   setAreaOfInterestOutline: (bounds: StageBoundingBox | null) => void;
+  /**
+   * How long a raster takes to cross-fade when it is replaced.
+   *
+   * Scrubbing a timeline replaces the imagery on every step, and a fade tuned for a deliberate layer
+   * change reads as lag when it happens ten times in a drag. The caller shortens it while scrubbing and
+   * restores it afterwards.
+   */
+  setCrossFadeMs: (durationMs: number) => void;
+  /**
+   * True when nothing is mid-fade and every visible raster has its provider ready.
+   *
+   * Play-through waits on this rather than on a fixed clock. A dwell shorter than the tile fetch means
+   * the fastest speed shows the least — the archive advances past frames the operator never sees.
+   */
+  isSettled: () => boolean;
   clear: () => void;
 }
 
@@ -291,6 +346,38 @@ export interface StageAppearanceApi {
   /** 1 is normal. Lower values recede the basemap so overlays dominate. */
   setBasemapBrightness: (brightness: number) => void;
   setMotionReduced: (isReduced: boolean) => void;
+
+  /**
+   * Building massing over the scene.
+   *
+   * Terrain alone cannot make a city look three-dimensional: relief across a four-kilometre urban area is
+   * tens of metres, which at the altitude that frames it is under one percent of the view. Buildings are
+   * where the vertical information in a city actually is, so this is the control that decides whether the
+   * scene reads as a photograph or as a place.
+   */
+  setBuildingsVisible: (isVisible: boolean) => void;
+  areBuildingsVisible: () => boolean;
+  /**
+   * Multiplies terrain height. 1 is true scale.
+   *
+   * Exaggeration is a reading aid, not a lie: it scales height only, so every horizontal position and
+   * every measured area stays exactly where it was. The operator is told the factor so nothing about the
+   * scene is claiming to be at true scale when it is not.
+   */
+  setTerrainExaggeration: (factor: number) => void;
+  getTerrainExaggeration: () => number;
+
+  /**
+   * Puts the scene's sun where it actually was when the image was taken.
+   *
+   * Terrain lighting is already driven by real solar position, so handing it the acquisition timestamp
+   * makes the shadows on screen the shadows in the pixels. That is not decoration: shadow direction and
+   * length are how an analyst reads building height and how they tell a genuine new structure from a
+   * shadow that moved, and a scene lit from the wrong side quietly contradicts its own imagery.
+   *
+   * Null returns to the current wall-clock sun.
+   */
+  setIlluminationTime: (isoTimestamp: string | null) => void;
 }
 
 /** The complete imperative surface published once the viewer has painted its first frame. */
