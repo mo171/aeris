@@ -5,6 +5,132 @@ cold: what was decided, why, what is still broken, and what not to relitigate.
 
 ---
 
+## Session — 2026-08-31 (0.5) · Inngest, provisioned and deliberately unbound. Plus a timeout in the wrong unit.
+
+**Phase 0.5 is done, and the thing it delivers is partly a proof that something was *not* built.** Against a
+live `inngest/inngest:v1.44.0`: the dev server is reachable, and an event sent through the Python SDK is read
+back off the bus by the id the server handed out. 8 new integration tests, **53/53 green**, ruff clean,
+`uv lock --check` clean.
+
+### The bug that cost the most, and the trap in it
+
+`inngest.Inngest(request_timeout=...)` is typed `int | timedelta`, and **the `int` branch is milliseconds** —
+`client.py` does `request_timeout / 1000`. Passing `settings.inngest_request_timeout_seconds` (10) directly
+meant every send timed out after **10 ms**. Every other timeout in this backend, and in botocore, redis-py
+and asyncpg, is seconds.
+
+What made it expensive is what the SDK reported: `SendEventsError: never received response while sending
+events`. No mention of a timeout, no mention of a unit. It took reading the SDK source to find the `/ 1000`.
+
+The fix passes `timedelta(seconds=...)`, which the signature also accepts. **Prefer the `timedelta` overload
+whenever a library offers one** — it is the only form that carries its unit, and this class of bug is
+invisible at the call site otherwise.
+
+### Deferred by design, and asserted rather than asserted-in-prose
+
+ADR-002 splits the work: LangGraph owns the graph, its state, its checkpointing and its resume; Inngest owns
+durable *execution*; LangChain owns LLM access. Phase 1 runs the engine as a CLI where durability **is** the
+LangGraph checkpointer, so there is nothing for Inngest to retry until Phase 2.5. No function, trigger or
+step is defined.
+
+Rather than leave that as a sentence in `roadmap.md`, `test_no_functions_are_registered_yet_and_that_is_deliberate`
+checks it against the **dev server's own app list** — because the claim is about what the server was told,
+not about what the repository contains. If a function appears before 2.5 the test fails and asks the useful
+question: did the durability decision change, or did someone add a worker without noticing the checkpointer
+already handles it?
+
+Provisioning it now is not busywork. It proved three things that would otherwise have surfaced in 2.5 *while
+blocking the binding*: the SDK installs and runs on cp314 (0.5.19), the dev server runs alongside the rest of
+the stack, and the event round trip is real.
+
+### Mutation checks — and one of them was itself wrong first
+
+Three mutations, and **two are server mutations rather than code ones**, because the claims are about how the
+dev server was started:
+
+| Mutation | Caught by |
+|---|---|
+| A (code) read-back queries an event name never sent | `test_an_event_sent_..._read_back_off_the_bus` |
+| B (server) started with `-u <app url>` | `test_no_functions_are_registered_yet_...` |
+| C (server) started with no flags at all | `test_app_discovery_is_off_...` |
+
+**C exists because B did not fail the discovery test.** Passing `-u` turns `autodiscover` *off* while filling
+`urls`, so B alone would have left that assertion unproven — possibly vacuous. Measured:
+
+```
+no flags                   autodiscover=True   urls=[]        poll=True
+-u http://localhost:3000/… autodiscover=False  urls=[<the url>] poll=True
+--no-discovery --no-poll   autodiscover=False  urls=[]        poll=False   <- ours
+```
+
+The lesson generalises: **a mutation that does not fail the test has not proved the test is fine — it has
+proved the mutation was the wrong one.** Keep going until the assertion has actually been seen to fail.
+
+### The image has nothing in it
+
+`inngest/inngest` carries the `inngest` binary and essentially nothing else: **no curl, no wget, no nc, no
+busybox**, and `/bin/sh` is `dash`, so not even bash's `/dev/tcp` trick. The first healthcheck (`wget
+--spider`) left the container permanently `unhealthy` while the server was answering fine from the host.
+
+The answer is the image's own binary: `inngest api health`, which targets the local dev server by default.
+Verified to exit **0** when the server answers and **1** when it does not — checked without a pipe, because
+`docker exec … | head` reports `head`'s exit code and I briefly mis-read it as "always 0". That is the second
+time this session's family of bugs has been a pipe eating an exit code; the first was `alembic … | tail` in
+0.2. **When measuring an exit code, never pipe.**
+
+### What was built
+
+| File | What it settles |
+|---|---|
+| `docker-compose.yml` | `inngest/inngest:v1.44.0`, `--no-discovery --no-poll`, healthcheck via its own binary |
+| `app/constants/tasks.py` | `aeris/<domain>.<action>`, past tense, and the one event that actually exists |
+| `app/config.py` | App id, both base URLs, request timeout; `inngest_is_production` derived from `environment` |
+| `app/lib/inngest.py` | The client, `send_event`, `check_health`, `check_event_delivery` |
+| `tests/integration/test_inngest_connectivity.py` | The gate, and the proof of what was not built |
+
+### Decisions worth not relitigating
+
+- **The client lives in `lib/inngest.py`; the functions will live in `app/inngest/`.** Same split as
+  `lib/database.py` vs `app/db/models/`. `folder-archtecture.md` updated to say so, so nobody puts the
+  Phase 2.5 functions in `lib/`.
+- **Every SDK argument is passed explicitly.** The Inngest client falls back to `INNGEST_EVENT_KEY`,
+  `INNGEST_SIGNING_KEY`, `INNGEST_DEV` and `INNGEST_BASE_URL` from the process environment when an argument
+  is omitted — a second source of configuration that `.env.example` does not document and `aeris doctor`
+  cannot report. `code-standards.md` §4 is *config.py or nowhere*, and a library's own defaults do not get an
+  exemption. Pinned by a test.
+- **`is_production` is derived from `environment`, never configured separately.** Two switches would
+  eventually disagree, and the failure is a deployed process posting events at a dev server that is not
+  there — or a local run writing into the production event history.
+- **Acceptance is not delivery.** The event API answers `200` the moment it accepts a well-formed request, so
+  `check_event_delivery()` sends *and then reads back by id*. A check that stopped at the 200 would pass
+  against a server dropping every event. Same shape as 0.4's status-code-versus-header lesson.
+- **`reset_client()`, not `close_client()`.** The Inngest SDK exposes no shutdown and its
+  `AuthenticatedHTTPClient` has no `aclose` — checked, not assumed. Naming it `close_client` for symmetry with
+  the other three `lib/` modules would claim connections were released when they are only dereferenced. It is
+  deliberately *not* wired into the conftest teardown, because there is nothing to tear down.
+- **No volume and no `--persist`.** Nothing in this server is durable state: the events sent here are health
+  probes with no consumer, and Phase 2.5's durable record is Inngest Cloud's, not a local disk's.
+- **`app/constants/tasks.py` lists one event, not the Phase 2.5 ones.** An event name is the hardest string
+  in the system to change — it is written into durable history and matched by triggers that deploy
+  separately. The *convention* is fixed now; the names are not invented before something sends them.
+
+### Phase 0 is now one sub-phase from done
+
+0.1–0.5 are all **done**. What remains:
+
+- **0.6 — `aeris doctor`.** This is now mostly rendering. All four dependencies already return a
+  purpose-built dataclass for their row: `DatabaseHealth`, `RedisHealth`, `StorageHealth`, `InngestHealth`,
+  plus `CrossOriginAccess` and `EventDeliveryProof`. The command is a Typer entry point, a `rich` table, and
+  the masked-settings block — the probing is written and tested.
+- **0.7 — Contract vendoring.** Zod → JSON Schema into `bcontext/contracts/`, and a pytest that fails on a
+  deliberately wrong field name.
+
+Then **Phase 0's own gate**: `docker compose up` then `aeris doctor`, all green, on a machine that has never
+run this project. Worth actually doing on a clean volume rather than declaring — four services now, and
+`ensure_buckets()` and the migrations both have to run on first contact.
+
+---
+
 ## Session — 2026-08-31 (0.4) · Object storage. The CORS rule everyone gets wrong, measured rather than assumed.
 
 **Phase 0.4 is done and the gate is demonstrated.** Against a live MinIO `RELEASE.2025-09-07T16-13-09Z`: five
@@ -130,7 +256,7 @@ development rather than discovered in production.
 
 ### Next session
 
-0.5 — Inngest, and it is deliberately the smallest sub-phase in Phase 0. Dev server in compose, event keys in
+0.5 — **Done; see the 0.5 entry above.** Inngest, and it is deliberately the smallest sub-phase in Phase 0. Dev server in compose, event keys in
 config, connectivity proven, **no workflow logic**: Phase 1 durability comes from the LangGraph checkpointer
 and Inngest is not bound until Phase 2.5 (ADR-002). Record it as *deferred by design* rather than as
 unfinished. Then 0.6 — `aeris doctor` — which is now four `check_health()` functions away from existing,

@@ -78,6 +78,27 @@ class Settings(BaseSettings):
     inngest_event_key: SecretStr
     inngest_signing_key: SecretStr
 
+    # --- Inngest endpoints and identity. Phase 0.5. -------------------------------------------------------
+    #
+    # Passed to the SDK **explicitly**, never left to it. The Inngest client reads `INNGEST_EVENT_KEY`,
+    # `INNGEST_SIGNING_KEY`, `INNGEST_DEV` and `INNGEST_BASE_URL` from the process environment when they are
+    # not supplied - which would make the environment a second source of configuration that `aeris doctor`
+    # cannot report and `.env.example` does not document. code-standards.md §4: this file, or nowhere.
+
+    # Identifies this deployment in the Inngest dashboard and namespaces its functions. Changing it in a
+    # deployed environment orphans in-flight runs, which is why it is configuration rather than a constant.
+    inngest_app_id: str = "aeris-backend"
+
+    # The Inngest API - function state, replays, the dashboard's own queries. Locally the `inngest` dev
+    # server in docker-compose.yml; in production, Inngest Cloud.
+    inngest_api_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8288")
+
+    # Where events are POSTed. The same host as the API on the dev server, a different one on Cloud, which
+    # is why the SDK takes two and why they are two settings here rather than one.
+    inngest_event_api_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8288")
+
+    inngest_request_timeout_seconds: int = Field(default=10, ge=1, le=120)
+
     # --- Database. Phase 0.2. -----------------------------------------------------------------------------
     #
     # Postgres with PostGIS. Locally that is the `postgis` service in `docker-compose.yml`; in a deployed
@@ -272,6 +293,16 @@ class Settings(BaseSettings):
         CORS check fails on a deployment whose CORS is configured perfectly, which is a long afternoon.
         """
         return str(self.storage_browser_origin).rstrip("/")
+
+    @property
+    def inngest_is_production(self) -> bool:
+        """Whether the Inngest SDK should behave as production rather than as a dev-server client.
+
+        Derived from `environment` rather than configured separately. Two independent switches would
+        eventually disagree, and the failure mode is a deployed process quietly sending its events to a dev
+        server that is not there - or worse, a local run writing into the production event history.
+        """
+        return self.environment in {"staging", "production"}
 
     @property
     def is_production(self) -> bool:

@@ -59,6 +59,7 @@ dependencies = [
     "redis[hiredis]>=8.1.0",
     "aioboto3>=15.5.0",
     "aiohttp>=3.14.3",
+    "inngest>=0.5.19",
 ]
 
 [dependency-groups]

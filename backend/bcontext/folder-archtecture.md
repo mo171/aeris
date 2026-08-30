@@ -273,6 +273,9 @@ backend/
 │   │   ├── database.py                  # async engine + AsyncSession (asyncpg)
 │   │   ├── redis.py                     # model locks, short-lived cache
 │   │   ├── storage.py                   # MinIO over the S3 API, presigned PUT/GET
+│   │   ├── inngest.py                   # the Inngest client + health probe. The FUNCTIONS live in
+│   │   │                                #   app/inngest/ (Phase 2.5) and import from here - same split
+│   │   │                                #   as database.py vs app/db/models/.
 │   │   ├── tiles.py                     # TiTiler URLs, TileJSON
 │   │   ├── websocket.py                 # (Phase 2)
 │   │   ├── telemetry.py
@@ -293,7 +296,7 @@ backend/
 │       ├── pagination.py                # default and maximum page size (named for what it bounds, not `limits.py`)
 │       ├── color_ramps.py               # (Phase 1.2.1) named ramps + their domains. Shared vocabulary with the frontend's legends.
 │       ├── ui_commands.py               # (deferred) mirrors frontend/lib/constants/commands.ts - written when `ui-command` is first emitted
-│       └── tasks.py                     # (Phase 0.3) Inngest event and function names
+│       └── tasks.py                     # (Phase 0.5) Inngest event names + the `aeris/<domain>.<action>` convention
 │
 ├── notebooks/                           # A thinking surface. Nothing ships from here.
 │   ├── 00_experiment/

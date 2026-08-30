@@ -16,6 +16,7 @@ how   : `Settings` deliberately has required fields with no defaults, so that a 
 """
 
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import pytest
 
@@ -40,6 +41,12 @@ def mandatory_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set every required variable, so a test can then break exactly the one it is about."""
     for name, value in MANDATORY_ENVIRONMENT.items():
         monkeypatch.setenv(name, value)
+
+
+@pytest.fixture
+def unique_marker() -> str:
+    """A value no other test or previous run uses, for asserting a payload survived a round trip."""
+    return uuid4().hex
 
 
 @pytest.fixture(scope="session", autouse=True)

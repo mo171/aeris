@@ -1,8 +1,8 @@
 # The infrastructure a developer needs running before `aeris doctor` can go green.
 #
-# what  : One service per Phase 0 dependency. PostGIS (0.2), Redis (0.3) and MinIO (0.4) today; the Inngest
-#         dev server (0.5) is added by the sub-phase that first needs it, following the Phase 0 setup
-#         pattern rather than being stubbed in now.
+# what  : One service per Phase 0 dependency: PostGIS (0.2), Redis (0.3), MinIO (0.4), the Inngest dev
+#         server (0.5). Phase 1.2 adds TiTiler. Each arrived with the sub-phase that first needed it,
+#         following the Phase 0 setup pattern rather than being stubbed in up front.
 # where : `docker compose up -d` from `backend/`. Every integration test - the ones that demonstrate a Phase 0
 #         gate - runs against these containers. `aeris doctor` reports on exactly this set.
 # how   : Local development runs Postgres in a container; deployed environments point DATABASE_URL at
@@ -131,6 +131,38 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+
+  inngest:
+    # The dev server, not a worker. AERIS registers **no functions** with it until Phase 2.5 (ADR-002):
+    # Phase 1 runs the whole engine as a CLI, where durability is the LangGraph checkpointer and a killed
+    # run resumes from its last checkpoint with no queue involved. This service exists so that the SDK, the
+    # server and the event round trip are proven now instead of at the moment they block the binding.
+    image: inngest/inngest:v1.44.0
+    container_name: aeris-inngest
+    restart: unless-stopped
+    # --host 0.0.0.0    the default binds inside the container only, which makes the published port useless.
+    # --no-discovery    stop it scanning localhost for apps to sync. There are none, and leaving it on fills
+    #                   the dashboard with sync failures against an app that does not exist. app/lib/inngest.py
+    #                   reads this flag back through /dev and reports it, so the two cannot drift.
+    # --no-poll         the same, for re-polling apps it has already found.
+    command: inngest dev --host 0.0.0.0 --no-discovery --no-poll
+    ports:
+      # 8288 is both the event API and the dashboard. Open http://localhost:8288 to watch events arrive -
+      # the Phase 0.5 gate is visible there as well as in the test.
+      - "127.0.0.1:8288:8288"
+    healthcheck:
+      # The image's own binary, because there is nothing else in it: no curl, no wget, no nc, no busybox,
+      # and /bin/sh is dash, so not even bash's /dev/tcp trick. `inngest api health` calls the local dev
+      # server's /api/v2/health by default. Verified to exit 0 when the server answers and 1 when it does
+      # not - a healthcheck that cannot fail is not one, and this command prints its error either way.
+      test: ["CMD", "inngest", "api", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    # No volume, and `--persist` deliberately absent. Nothing here is durable state: the events this phase
+    # sends are health probes with no consumer, and when Phase 2.5 binds real functions their durable record
+    # is Inngest Cloud's, not a local disk's.
 
 volumes:
   postgis_data:
