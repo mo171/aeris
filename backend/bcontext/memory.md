@@ -5,6 +5,140 @@ cold: what was decided, why, what is still broken, and what not to relitigate.
 
 ---
 
+## Session — 2026-08-31 (0.7) · Contract vendoring. **Phase 0 is complete.**
+
+**Phase 0.7 is done, and with it all of Phase 0.** `pnpm run contracts:export` writes **92 schemas from 14
+modules** into `bcontext/contracts/schemas.json`; 34 new tests hold the backend to them. **97/97 green**,
+ruff clean, `uv lock --check` clean, `aeris doctor` exit 0, `contracts:check` exit 0.
+
+### Zod 4 removed the hard part
+
+The frontend is on **Zod 4.4.3**, which ships `z.toJSONSchema()` natively — no `zod-to-json-schema`
+dependency, no conversion code to maintain. The only new devDependency is `tsx`, to run a TypeScript script
+that resolves the `@/` path aliases.
+
+**`io: "input"` is the whole correctness of the exporter, and it is not the obvious choice.** The frontend
+calls `schema.parse(response.data)`, so a backend payload is the schema's *input*. Any schema carrying a
+`.transform()`, a `.default()` or a coercion has a different output type, and exporting the output side would
+produce a contract demanding values the backend cannot send — a `Date` object where the wire has a string.
+Nothing currently transforms, which is exactly why the flag had to be set now rather than the day one does.
+
+### The pairings were discovered, not guessed
+
+Rather than hand-write which backend enum matches which frontend schema, I compared value sets
+programmatically. **22 of 27 backend `StrEnum`s match a frontend schema exactly.** Two match *two* schemas
+each — `SceneModality` is both `acquisitionModalitySchema` and `sensorModalitySchema`; `TraceStepState` is
+both `traceStepStateSchema` and `executionStepStateSchema`. That is the frontend defining one vocabulary
+twice, and both aliases are now checked, so if those two ever drift apart the backend finds out.
+
+The five unpaired backend enums each carry a reason in `app/constants/contracts.py`. Two are worth knowing:
+`FigureKind` and `LegendKind` have no counterpart because **`figure-ready` is agreed in `api-contract.md` §6
+and not yet implemented on the frontend** — when it lands, the test starts matching. `ErrorCode` is unpaired
+because the frontend types `ApiErrorPayload` in TypeScript rather than Zod, so there is nothing to compare
+against; that was verified, not assumed.
+
+The reverse direction turned out to be the more useful artefact. `FRONTEND_ONLY_VOCABULARIES` lists nine
+frontend enums the backend has not met, each with the phase that will — `agreementStateSchema` and
+`fusionRefusalIdSchema` at 1.11, `colorRampIdSchema` at 1.2.1, and so on. **Read down it and you are reading
+what Phase 1 still owes the frontend**, and a test fails if a new frontend enum appears unclassified.
+
+### The test that keeps the rest honest
+
+`test_every_backend_enum_is_classified` is the one that matters. Not the pairings — those are checked easily
+enough. The way a contract suite rots is that someone adds an enum, no test mentions it, and a year later the
+two sides turn out to have spelled it differently all along. Every `StrEnum` in `app/constants/` must be
+either paired or declared backend-only **with a reason**, and both maps are checked for staleness in the
+other direction too, so an entry naming an enum that no longer exists is caught rather than silently doing
+nothing.
+
+Mutation-checked, including the exact bug `api-contract.md` §7 records as already made once:
+
+| Mutation | Result |
+|---|---|
+| `ModelId.CHANGEFORMER = "mdl_changeformer"` | **4 tests failed** — the vocabulary check, the named-twelve check, and two payload validations |
+| `RunStatus` gains a `PAUSED` the frontend never heard of | `test_a_shared_vocabulary_matches_the_frontend_exactly[statuses.RunStatus]` failed |
+| a new unclassified `StrEnum` | `test_every_backend_enum_is_classified` failed |
+
+### Three payload facts that were invisible from either side
+
+**`nextCursor` is nullable *and required*.** Zod's `.nullable()` means "the key is present and may be null";
+it is not optional. So `model_dump(by_alias=True, exclude_none=True)` — a reasonable-looking way to keep
+payloads small — drops the key and the frontend rejects the whole page.
+
+**A timestamp must end in `Z`.** The exported pattern ends `(?:Z)$`; Zod permits no numeric offset unless
+asked. Measured, because the three obvious ways to serialise the same instant disagree:
+
+```
+datetime.isoformat()                    2026-08-31T12:00:00+00:00   REJECTED
+model_dump(mode="json")                 2026-08-31T12:00:00Z        accepted
+model_dump()          (mode="python")   datetime(...) object        not a string at all
+```
+
+So **`mode="json"` is part of the contract**, not a formatting preference — and Pydantic emitting exactly the
+right form is luck rather than design. My first draft of that test claimed "Python's default is `+00:00`",
+which is true of `datetime.isoformat()` and misleading about Pydantic; corrected to the measured three-way
+result.
+
+**The gate is written as the real mistake.** The roadmap asked for "a deliberately wrong field name". A
+hand-typed typo would prove the validator works; `model_dump()` without `by_alias=True` proves it catches
+*the* error — one keyword argument away at every call site, producing a dictionary that looks entirely
+correct in a debugger.
+
+### Decisions worth not relitigating
+
+- **The exporter is TypeScript and lives in `frontend/`, not Python in `backend/scripts/`** as
+  `folder-archtecture.md` planned. It has to *evaluate* Zod, which only Node can do; a Python version would
+  parse TypeScript or shell out to Node anyway. It also belongs where `api-contract.md` §0 puts the
+  authority. The doc now records the relocation and the reason rather than silently disagreeing with the
+  tree.
+- **`schemas.json` is committed, not generated at test time.** A test that regenerates its own fixtures
+  passes by construction and proves nothing. Committing it also means `uv run pytest` works on a machine
+  that has never installed the frontend — verified by running `tests/contracts/` alone.
+- **Deterministic output: sorted keys, no timestamp.** Regenerating an unchanged contract is byte-identical,
+  so a diff means the contract changed rather than someone ran the script. That is what makes
+  `pnpm run contracts:check` meaningful; verified by tampering with the committed file and watching it exit 1.
+- **Schemas are inlined rather than `$ref`-linked.** 276 KB for 92 schemas. The alternative puts a reference
+  resolver between every Python test and the thing it validates; each entry here goes straight to a validator.
+- **Discovery by directory scan, on both sides.** The exporter scans for `*.schema.ts`; the test walks
+  `app/constants/`. A curated list on either side is a second thing to maintain, and the failure it invites —
+  a vocabulary one side added and the other never saw — is silent.
+- **Format checking is on.** `jsonschema` ignores `format` unless asked, and `date-time` is precisely the
+  constraint most likely to be got subtly wrong. Off, the timestamp test above would pass against anything.
+- **`.mts`, not `.ts`.** The frontend is not `"type": "module"`, so tsx compiled the script to CJS and
+  top-level `await` and `import.meta.url` both failed. The `.mts` extension forces ESM.
+
+### Phase 0 is complete
+
+0.1 skeleton · 0.2 PostGIS · 0.3 Redis · 0.4 MinIO · 0.5 Inngest · 0.6 `aeris doctor` · 0.7 contracts.
+**97 tests.** Four containers. The gate, stated honestly as three commands:
+
+```
+docker compose up -d
+uv run alembic upgrade head
+uv run aeris doctor          # exit 0, every row green
+```
+
+A full `docker compose down -v` clean-machine run has still **not** been done — it destroys the local
+volumes, so it remains the product owner's call. The 0.6 entry demonstrates the equivalent against a
+never-migrated database and an unused bucket prefix.
+
+### Next session — Phase 1.0
+
+The Typer CLI already exists (0.6 built `app/cli/main.py` and `doctor.py`), so 1.0 is the **LangGraph spine**
+and nothing else: `services/pipeline/state.py` (the `TypedDict`), `checkpointer.py` (SQLite, selected from
+config), `stream.py` over `get_stream_writer()`, `app/schemas/events/` (models only, no protocol),
+`cli/renderers/` (the live S1–S20 trace and the JSONL journal), a two-node throwaway graph to exercise it,
+and cancellation checked at every node boundary.
+
+**Explicitly not built**: `StepRunner`, `EventSink`, `LLMProvider`, an executor, a context object, a retry
+loop (ADR-002).
+
+Two things 0.7 hands to 1.0 directly: the run journal has to validate against the vendored contracts, and
+`tests/contracts/` is where that test goes. And `app/schemas/events/` will be the first place the
+`mode="json"` / `Z`-suffix rule actually bites, because every event carries a timestamp.
+
+---
+
 ## Session — 2026-08-31 (0.6) · `aeris doctor`. Two performance bugs and one race that had been passing.
 
 **Phase 0.6 is done.** `aeris doctor` prints seven rows, exits 0 or 1, masks every credential, and is green
@@ -140,7 +274,7 @@ run has not been done** — it would destroy the local volumes, so it is the pro
 
 ### Next session
 
-**0.7 — Contract vendoring**, the last of Phase 0. A script exports the frontend's Zod schemas to JSON Schema
+**0.7 — Contract vendoring**, the last of Phase 0. **Done — see the 0.7 entry above.** A script exports the frontend's Zod schemas to JSON Schema
 into `bcontext/contracts/`, and a pytest validates backend fixtures against them. Gate: a deliberately wrong
 field name fails the contract test.
 
