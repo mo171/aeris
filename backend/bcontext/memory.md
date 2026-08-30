@@ -5,6 +5,155 @@ cold: what was decided, why, what is still broken, and what not to relitigate.
 
 ---
 
+## Session — 2026-08-31 (0.6) · `aeris doctor`. Two performance bugs and one race that had been passing.
+
+**Phase 0.6 is done.** `aeris doctor` prints seven rows, exits 0 or 1, masks every credential, and is green
+against the running stack. 10 new tests, **63/63 green across three consecutive full-suite runs**, ruff and
+`uv lock --check` clean. `aeris` is now a real console script (`[project.scripts]` in `pyproject.toml`).
+
+The command was supposed to be mostly rendering — 0.2–0.5 had already written and tested every probe. It was.
+What it also did was **run all four dependencies together for the first time**, and that found three bugs
+that no single sub-phase could have.
+
+### 1. `localhost` costs 2.09 seconds per connection on this machine
+
+The first doctor run reported 2720 ms for PostgreSQL and 2157 ms for Redis. My first guess — botocore
+blocking the event loop during client construction — was wrong; measuring showed construction at 473 ms for
+storage, 38 ms for the engine, 0.3 ms for Redis. The cost was in the **connection**:
+
+```
+localhost    -> [('IPv6', '::1'), ('IPv4', '127.0.0.1')]
+127.0.0.1    -> [('IPv4', '127.0.0.1')]
+
+connect to localhost      2089.4 ms
+connect to 127.0.0.1        56.7 ms
+connect to localhost      2089.8 ms      <- every connection, not just the first
+connect to 127.0.0.1        44.9 ms
+```
+
+`localhost` resolves to `::1` first, and `docker-compose.yml` publishes every port on `127.0.0.1` only — a
+deliberate choice from 0.2, and the right one. So each connection spends ~2.09 s on a doomed IPv6 attempt
+before falling back. **Every DSN and endpoint in `.env` now uses `127.0.0.1`.** Postgres latency went
+2720 → 668 ms, Redis 2157 → 107 ms.
+
+**`STORAGE_BROWSER_ORIGIN` deliberately stays `localhost`**, and that exception matters: it is the `Origin` a
+*browser* sends, and to a browser `http://localhost:3000` and `http://127.0.0.1:3000` are different origins —
+which 0.4 demonstrated by using exactly that difference as its negative CORS test. Changing it would break
+CORS while looking like a consistency fix.
+
+This is worth remembering beyond Phase 0: a Phase 1 CLI run opens all four connections at start-up, so this
+was about six seconds of dead time before any analysis began.
+
+### 2. The Inngest round trip had been passing by luck
+
+The doctor's round-trip row failed while the Phase 0.5 test passed. Measuring the propagation delay:
+
+```
+run 1: visible after 5 retries, 154.7 ms
+run 2: visible after 8 retries, 232.4 ms
+run 3: visible after 8 retries, 251.0 ms
+run 4: visible after 8 retries, 264.5 ms
+run 5: visible after 7 retries, 218.8 ms
+```
+
+The event API answers `200` on *acceptance*; the event becomes queryable 150–265 ms later. Both
+`check_event_delivery()` and the 0.5 test read once, immediately. **The 0.5 gate was a coin flip that landed
+heads three times.**
+
+Fixed by polling to a deadline, and — more importantly — by giving both callers **one** function,
+`find_event_on_bus()`, so the knowledge that the bus is eventually consistent lives in one place instead of
+being re-remembered at each call site. The 0.5 test now goes through it too. Verified with three consecutive
+full-suite runs rather than one.
+
+This is the concrete instance of the thing the 0.4 and 0.5 entries kept circling: **passing is not evidence.**
+It is also why the recorded-run convention now says how many times a suite was run, not just that it passed.
+
+### 3. rich eats square brackets, and it ate the environment
+
+`aeris version` printed `SatQuery AI (AERIS) 1.0.0` with nothing where `[local]` should be — rich parsed
+`[local]` as a style tag. The same hazard applies to **every data cell in the doctor table**: an unescaped
+version string or failure message containing brackets is silently altered, which in a command whose whole job
+is reporting values accurately is a correctness bug, not a cosmetic one. Every value cell now goes through
+`rich.markup.escape()`; the ok/FAILED cell is the exception because its markup is ours.
+
+Two smaller rendering fixes from the same run: columns are `overflow="fold"` so a long DSN wraps instead of
+being truncated with an ellipsis (a diagnostic must not hide the part someone needed), and the Postgres
+version banner is trimmed to its first two words.
+
+### The noise floor had never grown
+
+The first doctor run emitted **142 KB** of botocore hook-registration chatter over a twenty-line table.
+`THIRD_PARTY_LOG_LEVELS` existed from 0.1 and had not been extended when 0.4 and 0.5 added dependencies.
+Added: `botocore`, `boto3`, `aiobotocore`, `s3transfer`, `httpx`, `httpcore`, `aiohttp`, `redis`, `alembic`.
+Output went 142 KB → 6 KB.
+
+One subtlety: the `inngest` entry did not silence the SDK, because `app/lib/inngest.py` **hands the client our
+own logger**. It now hands it a child logger, `app.lib.inngest.sdk`, so the SDK's narration can be silenced
+without also silencing our messages about Inngest. **A library given your logger inherits your level** — the
+noise floor cannot reach it by the library's own name.
+
+### The Phase 0 gate is three commands, not two
+
+`roadmap.md` said `docker compose up` then `aeris doctor`. That was never going to be true: a fresh database
+has no schema. Rather than make the diagnostic run migrations — **a diagnostic that alters a schema is one
+nobody can safely run against a database they care about** — the gate is stated honestly as three commands,
+and doctor reports the missing revision with the command that fixes it.
+
+Demonstrated without destroying the working environment, by pointing the command at a database created empty
+and a bucket prefix that had never existed:
+
+```
+aeris doctor          EXIT 1   PostgreSQL 17.5, no PostGIS / not migrated / 2 of 7 checks failed
+                               ...and Object storage: ok, 5 buckets  <- provisioned by that run
+alembic upgrade head  exit 0
+aeris doctor          EXIT 0   All dependencies are healthy.
+```
+
+The temporary database and buckets were dropped afterwards. **A full `docker compose down -v` clean-machine
+run has not been done** — it would destroy the local volumes, so it is the product owner's call.
+
+### Decisions worth not relitigating
+
+- **The exit code is the contract, and it is tested from a subprocess.** Calling the Typer callback in-process
+  tests neither the exit status nor the console-script entry point, and `main.py` calls `asyncio.run()`, which
+  raises inside the tests' already-running loop. `subprocess.run(...).returncode` is also the one form that
+  cannot be misread — this session lost time twice to a pipe eating an exit code (`alembic … | tail` in 0.2,
+  `docker exec … | head` in 0.5).
+- **`doctor` writes by default; `--read-only` opts out.** It creates missing buckets and sends one
+  health-probe event, both idempotent. A setup verifier that reports a fixable problem and refuses to fix it
+  makes the operator run a second command to finish the job.
+- **A row is not "reachable".** A Postgres with no schema, a Redis on `allkeys-lru`, storage with no buckets
+  and an Inngest scanning for a nonexistent app all answer a ping perfectly, and every one is a real first-run
+  failure. Each is its own row, and `test_a_reachable_redis_that_would_evict_a_lock_is_reported_unhealthy`
+  pins the principle.
+- **The credential test is written as a canary sweep, not a field list.** It runs the real command with
+  distinctive passwords in every credential-bearing setting and fails if any appears in the output — so a
+  *future* setting that carries a credential fails it without anyone remembering to add it. Forgetting is the
+  whole failure mode: the code works perfectly while printing the password.
+- **`MASKED_URL_PROPERTIES` in `config.py`** handles the secrets that cannot be `SecretStr` because
+  SQLAlchemy and redis-py must parse them. Two masking mechanisms because there are two kinds of declaration.
+- **Probes run concurrently.** Serially, a machine with three things down costs three timeouts one after
+  another, and the command people run when something is broken must not be slowest exactly then.
+- **`check_schema_version()` lives in `lib/database.py`, not the CLI.** It needs the engine, and "is the
+  schema the shape this checkout expects" is a database question. `_read_current_revision` is sync because
+  Alembic's `MigrationContext` is, and it is handed to `run_sync` — the §7 framework-callback case.
+
+### Next session
+
+**0.7 — Contract vendoring**, the last of Phase 0. A script exports the frontend's Zod schemas to JSON Schema
+into `bcontext/contracts/`, and a pytest validates backend fixtures against them. Gate: a deliberately wrong
+field name fails the contract test.
+
+Worth deciding first: whether the export runs from Node (`zod-to-json-schema` against
+`frontend/features/*/schemas/*.ts`) as a committed script, and whether the generated schemas are committed.
+They should be — `bcontext/contracts/` is read by tests, and a test that regenerates its own fixtures proves
+nothing.
+
+Then **Phase 1.0** — the Typer CLI skeleton already exists, so 1.0 is the LangGraph spine: `state.py`,
+`checkpointer.py`, `stream.py`, the renderers, and cancellation at every node boundary.
+
+---
+
 ## Session — 2026-08-31 (0.5) · Inngest, provisioned and deliberately unbound. Plus a timeout in the wrong unit.
 
 **Phase 0.5 is done, and the thing it delivers is partly a proof that something was *not* built.** Against a
@@ -118,7 +267,7 @@ time this session's family of bugs has been a pipe eating an exit code; the firs
 
 0.1–0.5 are all **done**. What remains:
 
-- **0.6 — `aeris doctor`.** This is now mostly rendering. All four dependencies already return a
+- **0.6 — `aeris doctor`.** **Done — see the 0.6 entry above.** This is now mostly rendering. All four dependencies already return a
   purpose-built dataclass for their row: `DatabaseHealth`, `RedisHealth`, `StorageHealth`, `InngestHealth`,
   plus `CrossOriginAccess` and `EventDeliveryProof`. The command is a Typer entry point, a `rich` table, and
   the masked-settings block — the probing is written and tested.

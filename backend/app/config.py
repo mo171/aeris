@@ -20,7 +20,7 @@ how   : Instantiating `Settings()` at the bottom of this file means a missing or
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, field_validator
 from pydantic_core import Url
@@ -31,6 +31,19 @@ from sqlalchemy.engine import make_url
 # rather than from the working directory, so `uv run pytest`, `uvicorn` and the CLI all find the same `.env`
 # no matter where they are launched from.
 BACKEND_ROOT_DIRECTORY: Path = Path(__file__).resolve().parent.parent
+
+
+# Fields whose *value* carries a credential even though the field itself is not a `SecretStr`. A DSN has to
+# stay parseable by SQLAlchemy and redis-py, so it cannot be wrapped - the masking happens on the way out
+# instead, through the property named here. Read by `aeris doctor` when it prints the configuration in force.
+#
+# Adding a URL field with credentials in it and forgetting this map is the mistake this exists to make
+# survivable: `tests/integration/test_doctor.py` runs the command with distinctive passwords in every
+# credential-bearing setting and fails if any of them reaches the output.
+MASKED_URL_PROPERTIES: Final[dict[str, str]] = {
+    "database_url": "database_url_without_password",
+    "redis_url": "redis_url_without_password",
+}
 
 
 class Settings(BaseSettings):
@@ -91,11 +104,11 @@ class Settings(BaseSettings):
 
     # The Inngest API - function state, replays, the dashboard's own queries. Locally the `inngest` dev
     # server in docker-compose.yml; in production, Inngest Cloud.
-    inngest_api_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8288")
+    inngest_api_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8288")
 
     # Where events are POSTed. The same host as the API on the dev server, a different one on Cloud, which
     # is why the SDK takes two and why they are two settings here rather than one.
-    inngest_event_api_base_url: AnyHttpUrl = AnyHttpUrl("http://localhost:8288")
+    inngest_event_api_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8288")
 
     inngest_request_timeout_seconds: int = Field(default=10, ge=1, le=120)
 

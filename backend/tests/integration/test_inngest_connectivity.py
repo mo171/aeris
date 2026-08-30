@@ -24,6 +24,7 @@ from app.constants.tasks import EVENT_NAME_PREFIX, EventName
 from app.lib.inngest import (
     check_event_delivery,
     check_health,
+    find_event_on_bus,
     get_client,
     require_healthy_inngest,
     send_event,
@@ -75,22 +76,19 @@ async def test_a_sent_event_keeps_its_name_and_payload(unique_marker: str) -> No
     Asserted separately from the gate because the gate only matches on id. An event whose payload were
     dropped or whose name were rewritten in transit would still satisfy an id match, and both would surface
     in Phase 2.5 as a function that never triggers.
+
+    Reads back through `find_event_on_bus`, which waits for propagation. **This test originally did its own
+    immediate read and passed three runs in a row before failing** - the bus takes 150-265 ms to make an
+    event queryable, so a single read is a coin flip. One helper now owns that knowledge.
     """
     event_ids = await send_event(EventName.HEALTH_PROBE, {"marker": unique_marker})
     assert len(event_ids) == 1
 
-    api_base_url = str(settings.inngest_api_base_url).rstrip("/")
-    async with ClientSession() as http_session:
-        async with http_session.get(
-            f"{api_base_url}/v1/events?name={EventName.HEALTH_PROBE.value}"
-        ) as response:
-            assert response.status == 200
-            payload = await response.json()
+    event = await find_event_on_bus(EventName.HEALTH_PROBE, event_ids[0])
 
-    matching = [entry for entry in payload["data"] if entry["id"] == event_ids[0]]
-    assert len(matching) == 1, "the event was accepted and then not returned"
-    assert matching[0]["name"] == EventName.HEALTH_PROBE.value
-    assert matching[0]["data"]["marker"] == unique_marker
+    assert event is not None, "the event was accepted and then never appeared on the bus"
+    assert event["name"] == EventName.HEALTH_PROBE.value
+    assert event["data"]["marker"] == unique_marker
 
 
 async def test_every_event_name_carries_the_project_prefix() -> None:

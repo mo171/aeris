@@ -84,6 +84,11 @@ dev = [
     "rioxarray>=0.23",
 ]
 
+# The `aeris` command. Phase 1 is a CLI application, so this is the product's entry point, not a convenience
+# script: `aeris doctor` is what verifies a setup and what the Phase 0 gate is written against.
+[project.scripts]
+aeris = "app.cli.main:app"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

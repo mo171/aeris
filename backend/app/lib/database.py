@@ -27,10 +27,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from time import perf_counter
 
-from sqlalchemy import text
+from alembic.config import Config as AlembicConfig
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from app.config import settings
+from app.config import BACKEND_ROOT_DIRECTORY, settings
 from app.lib.exceptions import UpstreamUnavailableError
 
 # Module-level singletons, built on first use. Not thread-local: one event loop owns them.
@@ -155,6 +158,85 @@ async def require_healthy_database() -> None:
             "The database is not available.",
             details={"upstream": "postgis", "reason": health.failure_reason},
         )
+
+
+
+@dataclass(frozen=True, slots=True)
+class SchemaVersion:
+    """Whether the database's schema is the one this checkout expects.
+
+    Separate from `DatabaseHealth` because it answers a different question. Health is "can we talk to it";
+    this is "is what we are talking to the right shape". A fresh clone with `docker compose up` already run
+    passes the first and fails the second, and that gap is the single most likely reason a first run breaks -
+    which is exactly what `aeris doctor` exists to catch before the run rather than during it.
+    """
+
+    current_revision: str | None
+    head_revision: str | None
+    is_at_head: bool
+    failure_reason: str | None
+
+
+async def check_schema_version() -> SchemaVersion:
+    """Compare the database's Alembic revision against the head in `migrations/`. Never raises.
+
+    `None` for `current_revision` means the migrations have never been applied - not that something is
+    broken - so the message says `alembic upgrade head` rather than reporting a fault.
+    """
+    try:
+        script_directory = ScriptDirectory.from_config(AlembicConfig(BACKEND_ROOT_DIRECTORY / "alembic.ini"))
+        head_revision = script_directory.get_current_head()
+    except Exception as error:
+        return SchemaVersion(
+            current_revision=None,
+            head_revision=None,
+            is_at_head=False,
+            failure_reason=f"Could not read the migration scripts: {type(error).__name__}: {error}",
+        )
+
+    try:
+        engine = await get_engine()
+        async with engine.connect() as connection:
+            # Alembic's migration context is synchronous - it predates asyncio and takes a DBAPI-style
+            # connection. `run_sync` hands it the underlying sync connection from inside the async one,
+            # which is the supported bridge rather than a workaround.
+            current_revision = await connection.run_sync(_read_current_revision)
+    except Exception as error:
+        return SchemaVersion(
+            current_revision=None,
+            head_revision=head_revision,
+            is_at_head=False,
+            failure_reason=f"Could not read the applied revision: {type(error).__name__}: {error}",
+        )
+
+    is_at_head = current_revision == head_revision
+
+    return SchemaVersion(
+        current_revision=current_revision,
+        head_revision=head_revision,
+        is_at_head=is_at_head,
+        failure_reason=(
+            None
+            if is_at_head
+            else (
+                "The database has no schema yet. Run `uv run alembic upgrade head`."
+                if current_revision is None
+                else f"The database is at revision {current_revision!r} and this checkout expects "
+                f"{head_revision!r}. Run `uv run alembic upgrade head`, or check out the code that matches "
+                "the database."
+            )
+        ),
+    )
+
+
+def _read_current_revision(connection: Connection) -> str | None:
+    """The revision stamped in `alembic_version`, or `None` if the table is absent.
+
+    Sync because Alembic's `MigrationContext` is sync, and it is handed to `run_sync` - the `code-standards.md`
+    §7 case of a callback a library calls for us. Declaring it `async def` would hand `run_sync` a coroutine
+    object where it expects a value.
+    """
+    return MigrationContext.configure(connection).get_current_revision()
 
 
 async def dispose_engine() -> None:

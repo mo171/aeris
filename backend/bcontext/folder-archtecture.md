@@ -37,7 +37,7 @@ backend/
 │   │
 │   ├── cli/                             # PHASE 1 ADAPTER. Sibling to routes/, never imported by it.
 │   │   ├── main.py                      # Typer app. The only place asyncio.run() is called.
-│   │   ├── doctor.py                    # `aeris doctor` - the dependency table (Phase 0.6)
+│   │   ├── doctor.py                    # `aeris doctor` - the dependency table (Phase 0.6) DONE
 │   │   ├── dataset.py                   # `aeris dataset list|fetch`
 │   │   ├── ingest.py                    # `aeris ingest <path>`
 │   │   ├── analyse.py                   # `aeris analyse --scene --query`

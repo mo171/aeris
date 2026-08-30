@@ -37,4 +37,28 @@ THIRD_PARTY_LOG_LEVELS: Final[dict[str, str]] = {
     "fiona": "INFO",
     "urllib3": "WARNING",
     "asyncio": "INFO",
+    # Added in Phase 0.6, and measured rather than assumed: the first run of `aeris doctor` with
+    # LOG_LEVEL=DEBUG produced **142 KB** of botocore hook-registration chatter above a table that is
+    # twenty lines long. botocore logs its entire event-name remapping at DEBUG on client construction.
+    "botocore": "WARNING",
+    "boto3": "WARNING",
+    "aiobotocore": "WARNING",
+    "s3transfer": "WARNING",
+    # The Inngest SDK's transport, and aiohttp's. Both log a line per request at DEBUG, which turns a
+    # health probe into a paragraph.
+    "httpx": "WARNING",
+    "httpcore": "WARNING",
+    "aiohttp": "WARNING",
+    # Ours to hear from - it reports real send failures - but not at DEBUG, where it narrates every retry.
+    "inngest": "INFO",
+    # The Inngest SDK logs through a logger we hand it (`app/lib/inngest.py`), so the entry above does not
+    # reach it. This is that injected child logger, kept separate so the SDK's chatter can be silenced
+    # without also silencing our own messages about Inngest.
+    "app.lib.inngest.sdk": "INFO",
+    # redis-py narrates protocol negotiation at DEBUG - including a `MAINT_NOTIFICATIONS` probe that fails
+    # by design against any server older than its newest feature.
+    "redis": "INFO",
+    # Alembic announces its migration context at INFO on every schema check, which `aeris doctor` performs
+    # on every run.
+    "alembic": "WARNING",
 }

@@ -29,6 +29,7 @@ how   : **Read this before wondering where the workers are.** ADR-002 divides th
         means nothing in production.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
@@ -43,6 +44,20 @@ from app.constants.tasks import EventName
 from app.lib.exceptions import UpstreamUnavailableError
 
 logger = logging.getLogger(__name__)
+
+# How long to wait for a sent event to become visible on the bus, and how often to look. **Measured, not
+# guessed**: against the v1.44.0 dev server a health-probe event took 150-265 ms across five runs to appear
+# on `/v1/events`. A single immediate read is therefore a coin flip - which is exactly how the Phase 0.5 test
+# passed three times in a row while `aeris doctor` failed on the same code. The deadline is an order of
+# magnitude above the observed spread, because the failure this guards is a *flaky gate*, and a flaky gate is
+# worse than no gate: it teaches people to re-run.
+EVENT_VISIBILITY_DEADLINE_SECONDS = 3.0
+EVENT_VISIBILITY_POLL_SECONDS = 0.05
+
+# Handed to the Inngest client so its own output is separable from ours. Without this the SDK logs through
+# `app.lib.inngest` and inherits our level, which means silencing its DEBUG narration would also silence the
+# messages this module writes about it. `constants/logs.py` sets the floor for this name.
+sdk_logger = logging.getLogger(f"{__name__}.sdk")
 
 # One client per process, built on first use - the same shape as the engine, the Redis pool and the S3
 # client. The Inngest client holds an HTTP session, so a second one is a second pool for no reason.
@@ -97,7 +112,7 @@ async def get_client() -> inngest.Inngest:
             # `inngest_request_timeout_seconds` directly made every send time out after 10 ms, and the SDK
             # reported it as "never received response while sending events" with no mention of a timeout.
             request_timeout=timedelta(seconds=settings.inngest_request_timeout_seconds),
-            logger=logger,
+            logger=sdk_logger,
         )
     return _client
 
@@ -178,10 +193,9 @@ async def check_event_delivery() -> EventDeliveryProof:
         )
 
     event_id = event_ids[0]
-    api_base_url = str(settings.inngest_api_base_url).rstrip("/")
 
     try:
-        payload = await _get_json(f"{api_base_url}/v1/events?name={EventName.HEALTH_PROBE.value}")
+        was_read_back = await find_event_on_bus(EventName.HEALTH_PROBE, event_id) is not None
     except Exception as error:
         return EventDeliveryProof(
             event_id=event_id,
@@ -190,8 +204,6 @@ async def check_event_delivery() -> EventDeliveryProof:
             failure_reason=f"The event was accepted but could not be read back: {type(error).__name__}: {error}",
         )
 
-    was_read_back = any(entry.get("id") == event_id for entry in payload.get("data", []))
-
     return EventDeliveryProof(
         event_id=event_id,
         event_name=EventName.HEALTH_PROBE.value,
@@ -199,11 +211,41 @@ async def check_event_delivery() -> EventDeliveryProof:
         failure_reason=(
             None
             if was_read_back
-            else f"Inngest accepted event {event_id} and then did not return it. The event API answers 200 "
-            "on receipt, so acceptance alone is not delivery - something between the API and the bus is "
-            "dropping events."
+            else f"Inngest accepted event {event_id} and did not return it within "
+            f"{EVENT_VISIBILITY_DEADLINE_SECONDS:g} s. The event API answers 200 on receipt, so acceptance "
+            "alone is not delivery - something between the API and the bus is dropping events."
         ),
     )
+
+
+async def find_event_on_bus(event_name: EventName | str, event_id: str) -> dict[str, Any] | None:
+    """Read one event back off the bus by id, waiting for it to propagate. `None` if it never appears.
+
+    **Public, and it has to be, because anything verifying a send needs it.** Polling rather than reading
+    once is not defensive coding: the bus is asynchronous, so the event API answers `200` when it has
+    *accepted* the request and the event becomes queryable a little later. A single immediate read tests the
+    propagation delay instead of the delivery.
+
+    That is not hypothetical. The Phase 0.5 test passed three runs in a row doing its own immediate read, and
+    then `aeris doctor` failed on the same code path; measuring showed the event taking 150-265 ms to appear.
+    Both callers go through here now, so there is one place that knows the bus is eventually consistent
+    rather than two places that have to remember it.
+
+    Returns the whole event, not a boolean, so a caller can also check that the name and payload survived.
+    """
+    api_base_url = str(settings.inngest_api_base_url).rstrip("/")
+    name = event_name.value if isinstance(event_name, EventName) else event_name
+    query_url = f"{api_base_url}/v1/events?name={name}"
+    deadline = asyncio.get_running_loop().time() + EVENT_VISIBILITY_DEADLINE_SECONDS
+
+    while True:
+        payload = await _get_json(query_url)
+        for entry in payload.get("data", []):
+            if entry.get("id") == event_id:
+                return dict(entry)
+        if asyncio.get_running_loop().time() >= deadline:
+            return None
+        await asyncio.sleep(EVENT_VISIBILITY_POLL_SECONDS)
 
 
 async def require_healthy_inngest() -> None:
