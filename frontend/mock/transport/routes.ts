@@ -9,10 +9,12 @@
 //         When the live backend arrives nothing upstream changes — this table is simply deleted.
 
 import type { ImageryScene } from "@/features/missionCommand/types/imagery.types";
+import type { ConfidenceBandId } from "@/lib/constants/evidence-audit";
 import { REST_API } from "@/lib/constants/rest.api";
 
 import { MOCK_ASSISTANT_SUGGESTIONS } from "../data/assistant.data";
 import { getMockCrossModal } from "../data/cross-modal.data";
+import { selectMockAuditedClaimPage } from "../data/evidence-audit.data";
 import {
   attachMockScene,
   createMockInvestigation,
@@ -27,6 +29,7 @@ import {
 } from "../data/investigation.data";
 import { insertUploadedScene, selectImageryPage } from "../data/imagery.data";
 import {
+  createMockMission,
   getGlobeMarkers,
   getSatelliteTracks,
   selectMissionPage,
@@ -120,6 +123,28 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     handle: ({ query }) => ({
       status: 200,
       data: selectMissionPage(query.cursor ?? null, parsePositiveInteger(query.limit, 20)),
+    }),
+  },
+  {
+    method: "POST",
+    match: exactPath(REST_API.missions.create),
+    handle: ({ body }) => ({
+      status: 201,
+      data: createMockMission(body as Parameters<typeof createMockMission>[0]),
+    }),
+  },
+  {
+    method: "GET",
+    match: exactPath(REST_API.evidence.claims),
+    handle: ({ query }) => ({
+      status: 200,
+      data: selectMockAuditedClaimPage({
+        search: query.search ?? null,
+        modelId: query.modelId ?? null,
+        band: (query.band as ConfidenceBandId | undefined) ?? null,
+        cursor: query.cursor ?? null,
+        limit: parsePositiveInteger(query.limit, 25),
+      }),
     }),
   },
   {

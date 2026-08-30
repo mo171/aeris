@@ -22,6 +22,7 @@ import {
   randomInteger,
 } from "../transport/deterministic-random";
 import { MOCK_AREAS, MOCK_SENSOR_PLATFORMS } from "./geography";
+import { getMockInvestigation } from "./investigation.data";
 
 const MISSION_SEED = 771026;
 const MARKER_SEED = 4410882;
@@ -109,6 +110,49 @@ function generateMissions(): Mission[] {
   });
 
   return missions;
+}
+
+/**
+ * Promotes an investigation into a saved mission, at the head of the list.
+ *
+ * Unshifted rather than appended so the operator sees what they just saved without paging — the real
+ * backend orders alerts first then recency, and a mission created seconds ago is the most recent thing
+ * there is.
+ */
+export function createMockMission(request: {
+  investigationId: string;
+  name: string;
+  analysisKind: Mission["analysisKind"];
+}): Mission {
+  const investigation = getMockInvestigation(request.investigationId);
+  const now = new Date(REFERENCE_TIME_MS).toISOString();
+
+  const mission: Mission = {
+    id: `msn_${request.investigationId}`,
+    name: request.name,
+    status: "monitoring",
+    analysisKind: request.analysisKind,
+    areaOfInterestName: investigation?.areaOfInterestName ?? "Unknown area",
+    centroid: investigation?.centroid ?? { latitude: 0, longitude: 0 },
+    createdAt: now,
+    lastRunAt: now,
+    // Scheduling is later-tier scope, so a freshly saved mission has no next run planned yet.
+    nextRunAt: null,
+    sceneCount: investigation?.sceneSlots.length ?? 0,
+    confidence: null,
+    openAlertCount: 0,
+    summary: MISSION_SUMMARIES[request.analysisKind],
+  };
+
+  const missions = getMissions();
+  const existingIndex = missions.findIndex((candidate) => candidate.id === mission.id);
+  if (existingIndex === -1) {
+    missions.unshift(mission);
+  } else {
+    missions[existingIndex] = mission;
+  }
+
+  return mission;
 }
 
 export function selectMissionPage(cursor: string | null, limit: number) {

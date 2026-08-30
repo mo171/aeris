@@ -39,6 +39,18 @@ export const missionSchema = z.object({
 
 export const missionPageSchema = createCursorPageSchema(missionSchema);
 
+/**
+ * Promoting a finished investigation into a saved mission.
+ *
+ * Carries the investigation id rather than a copy of its area and scenes: the backend already holds those,
+ * and duplicating them here would let a mission drift from the investigation it was created from.
+ */
+export const missionCreateRequestSchema = z.object({
+  investigationId: z.string().min(1),
+  name: z.string().min(1, "Give the mission a name."),
+  analysisKind: missionAnalysisKindSchema,
+});
+
 export const globeMarkerSchema = z.object({
   id: z.string().min(1),
   missionId: z.string().nullable(),

@@ -1,4 +1,4 @@
-// lib/constants/navigation.ts — the six AERIS surfaces, as data. Drives the nav rail and the palette.
+// lib/constants/navigation.ts — the four AERIS surfaces, as data. Drives the nav rail and the palette.
 //
 // what  : Declarative definition of every application surface: route, label, icon, description, availability.
 // where : Read by components/sharedUI/functionalComponent/appShell/NavigationRail.tsx and by the
@@ -11,21 +11,21 @@
 //         and an icon that is not a duplicate of another row's. Three of those four are invisible in the
 //         page's own diff, which is exactly how a finished page ends up still reading "Not built yet".
 //
-//         EVERY ROW HERE MUST BE A PLACE. Cross-modal was listed as a surface and was not one — it reads
-//         an investigation that already exists, so it needed an id the rail could not supply, and the
-//         index route papering over that was a symptom rather than a fix. It now lives in the
-//         Investigation Workspace as a lens, and the test this file applies is: could an operator arrive
-//         here with nothing open? If not, it is not a rail item.
+//         EVERY ROW HERE MUST BE A PLACE. The test is: could an operator arrive here with nothing open?
+//         If not, it is not a rail item. Three of the original seven failed it:
+//
+//         - CROSS-MODAL reads an investigation that already exists, so it needed an id the rail could not
+//           supply. It is a lens in the Investigation Workspace.
+//         - TEMPORAL asked "T0 versus T1" of nothing in particular. The timeline, the split comparator and
+//           change detection all shipped inside the workspace; the route would have been that workspace
+//           with its tools removed.
+//         - MISSION LIBRARY was redundant three ways — Mission Command lists missions and draws their
+//           globe markers, and the investigation index is the shelf. Continuous monitoring and alerting
+//           are later-tier scope (see design_report.md), so the half that would justify a surface does not
+//           exist yet. If scheduled runs and an alert queue get built, that queue IS a place and this
+//           entry comes back.
 
-import {
-  Cpu,
-  FileSearch,
-  GitCompareArrows,
-  Globe,
-  Radar,
-  ScanSearch,
-  type LucideIcon,
-} from "lucide-react";
+import { Cpu, FileSearch, Globe, ScanSearch, type LucideIcon } from "lucide-react";
 
 import { ROUTES, type RoutePath } from "./routes";
 
@@ -57,35 +57,22 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     isAvailable: true,
   },
   {
-    id: "temporal",
-    label: "Temporal Explorer",
-    description: "Bi-temporal change maps, timeline scrubber and before/after comparison",
-    href: ROUTES.TEMPORAL,
-    icon: GitCompareArrows,
-    isAvailable: false,
-  },
-  {
     id: "evidence",
-    label: "Evidence Explorer",
-    description: "Trace every claim to its region, mask, model and confidence",
+    label: "Evidence Audit",
+    description: "Search every claim ever asserted by model, confidence and source scene",
     href: ROUTES.EVIDENCE,
     icon: FileSearch,
+    // Built, and the route works, but the surface does not hydrate — the filters are inert and the claim
+    // list never loads. Left unavailable rather than shipping a rail entry to a page that cannot be used.
+    // See fcontext/memory.md for the reproduction; flip this once that is fixed.
     isAvailable: false,
   },
   {
     id: "models",
     label: "Model Observatory",
-    description: "Registry of specialist models, versions and selection rationale",
+    description: "What each specialist model is, how it is doing, and when the router picks it",
     href: ROUTES.MODEL_OBSERVATORY,
     icon: Cpu,
-    isAvailable: false,
-  },
-  {
-    id: "missions",
-    label: "Mission Library",
-    description: "Saved investigations and continuous monitoring missions",
-    href: ROUTES.MISSION_LIBRARY,
-    icon: Radar,
-    isAvailable: false,
+    isAvailable: true,
   },
 ] as const;

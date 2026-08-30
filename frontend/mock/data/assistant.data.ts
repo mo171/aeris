@@ -54,11 +54,11 @@ const CHANGE_DETECTION_SCRIPT: AssistantScript = {
   keywords: ["change", "built-up", "built up", "increase", "compare", "expansion", "growth"],
   trace: [
     { id: "s1", label: "Inspecting scene metadata", detail: "2 scenes · Sentinel-2A · 10 m GSD", durationMs: 240, modelId: null },
-    { id: "s2", label: "Classifying intent", detail: "Bi-temporal change quantification", durationMs: 380, modelId: "mdl_rsvlm" },
+    { id: "s2", label: "Classifying intent", detail: "Bi-temporal change quantification", durationMs: 380, modelId: "rs-vlm" },
     { id: "s3", label: "Co-registering T0 and T1", detail: "RMSE 0.42 px", durationMs: 1_180, modelId: null },
     { id: "s4", label: "Masking cloud", detail: "Cloud fraction 4.1% · excluded from statistics", durationMs: 620, modelId: null },
-    { id: "s5", label: "Running change detection", detail: "ChangeFormer v3.0.1", durationMs: 3_140, modelId: "mdl_changeformer" },
-    { id: "s6", label: "Segmenting built-up class", detail: "SegFormer-B4 LandCover", durationMs: 2_260, modelId: "mdl_segformer" },
+    { id: "s5", label: "Running change detection", detail: "ChangeFormer v3.0.1", durationMs: 3_140, modelId: "changeformer" },
+    { id: "s6", label: "Segmenting built-up class", detail: "SegFormer-B4 LandCover", durationMs: 2_260, modelId: "segformer-landcover" },
     { id: "s7", label: "Quantifying change area", detail: "Georeferenced pixel count · EPSG:32643", durationMs: 410, modelId: null },
     { id: "s8", label: "Validating evidence", detail: "3 regions passed sanity checks", durationMs: 300, modelId: null },
   ],
@@ -72,10 +72,10 @@ const VEGETATION_SCRIPT: AssistantScript = {
   keywords: ["vegetation", "ndvi", "crop", "unhealthy", "stress", "health", "forest"],
   trace: [
     { id: "s1", label: "Inspecting scene metadata", detail: "1 scene · 13 bands · multispectral", durationMs: 210, modelId: null },
-    { id: "s2", label: "Classifying intent", detail: "Spectral index + anomaly localisation", durationMs: 340, modelId: "mdl_rsvlm" },
-    { id: "s3", label: "Computing NDVI", detail: "(NIR - Red) / (NIR + Red)", durationMs: 190, modelId: "mdl_spectral" },
+    { id: "s2", label: "Classifying intent", detail: "Spectral index + anomaly localisation", durationMs: 340, modelId: "rs-vlm" },
+    { id: "s3", label: "Computing NDVI", detail: "(NIR - Red) / (NIR + Red)", durationMs: 190, modelId: "index-engine" },
     { id: "s4", label: "Thresholding stressed vegetation", detail: "NDVI < 0.28 over vegetated mask", durationMs: 260, modelId: null },
-    { id: "s5", label: "Segmenting affected parcels", detail: "SegFormer-B4 LandCover", durationMs: 2_050, modelId: "mdl_segformer" },
+    { id: "s5", label: "Segmenting affected parcels", detail: "SegFormer-B4 LandCover", durationMs: 2_050, modelId: "segformer-landcover" },
     { id: "s6", label: "Quantifying affected area", detail: "Georeferenced pixel count", durationMs: 300, modelId: null },
   ],
   answer:
@@ -88,7 +88,7 @@ const FLOOD_SCRIPT: AssistantScript = {
   keywords: ["flood", "water", "inundat", "sar", "backscatter"],
   trace: [
     { id: "s1", label: "Inspecting scene metadata", detail: "1 scene · Sentinel-1A · VV+VH · 10 m", durationMs: 230, modelId: null },
-    { id: "s2", label: "Classifying intent", detail: "Water extent delineation", durationMs: 310, modelId: "mdl_rsvlm" },
+    { id: "s2", label: "Classifying intent", detail: "Water extent delineation", durationMs: 310, modelId: "rs-vlm" },
     { id: "s3", label: "Applying speckle filter", detail: "Refined Lee · 5x5", durationMs: 880, modelId: null },
     { id: "s4", label: "Thresholding VV backscatter", detail: "Otsu threshold at -16.4 dB", durationMs: 540, modelId: null },
     { id: "s5", label: "Removing permanent water", detail: "Differenced against reference water mask", durationMs: 460, modelId: null },
@@ -104,11 +104,11 @@ const CROSS_MODAL_SCRIPT: AssistantScript = {
   keywords: ["verify", "cross", "fusion", "disagree", "confirm", "optical and sar"],
   trace: [
     { id: "s1", label: "Inspecting scene metadata", detail: "2 scenes · optical + SAR · same AOI", durationMs: 260, modelId: null },
-    { id: "s2", label: "Classifying intent", detail: "Cross-modal verification", durationMs: 350, modelId: "mdl_rsvlm" },
+    { id: "s2", label: "Classifying intent", detail: "Cross-modal verification", durationMs: 350, modelId: "rs-vlm" },
     { id: "s3", label: "Co-registering across sensors", detail: "RMSE 0.71 px", durationMs: 1_420, modelId: null },
-    { id: "s4", label: "Analysing optical evidence", detail: "SegFormer-B4 LandCover", durationMs: 2_180, modelId: "mdl_segformer" },
+    { id: "s4", label: "Analysing optical evidence", detail: "SegFormer-B4 LandCover", durationMs: 2_180, modelId: "segformer-landcover" },
     { id: "s5", label: "Analysing SAR evidence", detail: "Backscatter change analysis", durationMs: 1_960, modelId: null },
-    { id: "s6", label: "Late fusion", detail: "Optical-SAR Late Fusion v0.9.3", durationMs: 4_120, modelId: "mdl_fusion" },
+    { id: "s6", label: "Late fusion", detail: "Optical-SAR Late Fusion v0.9.3", durationMs: 4_120, modelId: "optical-sar-fusion" },
     { id: "s7", label: "Reconciling disagreement", detail: "2 regions in conflict", durationMs: 520, modelId: null },
   ],
   answer:
@@ -120,7 +120,7 @@ const CROSS_MODAL_SCRIPT: AssistantScript = {
 const GENERAL_SCRIPT: AssistantScript = {
   keywords: [],
   trace: [
-    { id: "s1", label: "Parsing question", detail: "Extracting intent, region and time range", durationMs: 280, modelId: "mdl_rsvlm" },
+    { id: "s1", label: "Parsing question", detail: "Extracting intent, region and time range", durationMs: 280, modelId: "rs-vlm" },
     { id: "s2", label: "Checking available evidence", detail: "Scanning selected scenes and mission history", durationMs: 420, modelId: null },
     { id: "s3", label: "Assessing answerability", detail: "No specialist model can ground this claim", durationMs: 240, modelId: null },
   ],

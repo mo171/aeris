@@ -68,6 +68,7 @@ export const COMMAND_IDS = {
     togglePresentMode: "investigation.togglePresentMode",
     toggleTrace: "investigation.toggleTrace",
     openReport: "investigation.openReport",
+    saveAsMission: "investigation.saveAsMission",
     saveCameraView: "investigation.saveCameraView",
     resetView: "investigation.resetView",
   },

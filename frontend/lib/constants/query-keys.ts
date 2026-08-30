@@ -41,6 +41,11 @@ export const QUERY_KEYS = {
     crossModal: (investigationId: string) =>
       ["investigations", "cross-modal", investigationId] as const,
   },
+  evidenceAudit: {
+    all: ["evidence-audit"] as const,
+    /** Keyed by the serialised filter, so two different audits are two different caches. */
+    claims: (filterKey: string) => ["evidence-audit", "claims", filterKey] as const,
+  },
   regions: {
     all: ["regions"] as const,
     suggestions: (investigationId: string, geometryKey: string) =>

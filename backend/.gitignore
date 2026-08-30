@@ -1,4 +1,14 @@
+# Secrets and the local interpreter. `.env.example` is committed; `.env` never is.
 .env
-__pycache__
 venv
 .venv
+
+# Build and test artefacts.
+__pycache__
+*.egg-info
+.pytest_cache
+.ruff_cache
+.ipynb_checkpoints
+
+# uv.lock is deliberately NOT ignored. It is what makes `uv sync` reproduce this environment on another
+# machine, which is the Phase 0.1 gate.

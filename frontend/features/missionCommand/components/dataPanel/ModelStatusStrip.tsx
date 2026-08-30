@@ -11,11 +11,14 @@
 "use client";
 
 import { ChevronDown, Cpu } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { GlowDot, type GlowDotTone } from "@/components/sharedUI/dumbComponent/GlowDot";
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
+import { getModel } from "@/lib/constants/models";
+import { ROUTES } from "@/lib/constants/routes";
 import { formatDurationMs } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
@@ -81,40 +84,46 @@ export function ModelStatusStrip() {
       </div>
 
       {isExpanded ? (
-        <ul className="max-h-40 overflow-y-auto px-3 pb-1">
-          {models.map((model) => (
-            <li
-              key={model.id}
-              className="flex items-center gap-2 border-t border-border-soft/60 py-1.5 first:border-t-0"
-            >
-              <GlowDot
-                tone={HEALTH_TONE[model.health]}
-                isPulsing={model.health === "warming"}
-              />
-              <span className="min-w-0 flex-1 truncate text-[10px] text-foreground">
-                {model.name}
-              </span>
-              <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
-                v{model.version}
-              </span>
-              <span
-                className="shrink-0 font-mono text-[9px] text-muted-foreground"
-                title="Median latency"
+        <>
+          <ul className="max-h-40 overflow-y-auto px-3 pb-1">
+            {models.map((model) => (
+              <li
+                key={model.id}
+                className="flex items-center gap-2 border-t border-border-soft/60 py-1.5 first:border-t-0"
               >
-                {formatDurationMs(model.medianLatencyMs)}
-              </span>
-              {model.queueDepth > 0 ? (
-                <span
-                  className="shrink-0 font-mono text-[9px] text-aeris-amber"
-                  title="Queue depth"
-                >
-                  ×{model.queueDepth}
+                <GlowDot tone={HEALTH_TONE[model.health]} isPulsing={model.health === "warming"} />
+                <span className="min-w-0 flex-1 truncate text-[10px] text-foreground">
+                  {getModel(model.id)?.name ?? model.id}
                 </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+                <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
+                  v{model.version}
+                </span>
+                <span
+                  className="shrink-0 font-mono text-[9px] text-muted-foreground"
+                  title="Median latency"
+                >
+                  {formatDurationMs(model.medianLatencyMs)}
+                </span>
+                {model.queueDepth > 0 ? (
+                  <span className="shrink-0 font-mono text-[9px] text-aeris-amber" title="Queue depth">
+                    ×{model.queueDepth}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+
+          {/* This strip answers "is it up". What each model is, and why the router picks it, is the
+              Observatory's job — so the detail view ends by pointing at it rather than restating it. */}
+          <Link
+            href={ROUTES.MODEL_OBSERVATORY}
+            className="mx-3 mb-1 block rounded-sm py-1 font-mono text-[9px] tracking-wide text-muted-foreground uppercase transition-colors duration-fast hover:text-aeris-teal focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            Open the Model Observatory →
+          </Link>
+        </>
       ) : null}
+
     </section>
   );
 }

@@ -7,13 +7,11 @@
 import type { z } from "zod";
 
 import type {
-  modelCapabilitySchema,
   modelHealthSchema,
   modelStatusCollectionSchema,
   modelStatusSchema,
 } from "../schemas/model.schema";
 
 export type ModelHealth = z.infer<typeof modelHealthSchema>;
-export type ModelCapability = z.infer<typeof modelCapabilitySchema>;
 export type ModelStatus = z.infer<typeof modelStatusSchema>;
 export type ModelStatusCollection = z.infer<typeof modelStatusCollectionSchema>;

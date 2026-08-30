@@ -8,6 +8,7 @@ import type { z } from "zod";
 
 import type {
   missionAnalysisKindSchema,
+  missionCreateRequestSchema,
   missionPageSchema,
   missionSchema,
   missionStatusSchema,
@@ -17,3 +18,4 @@ export type MissionStatus = z.infer<typeof missionStatusSchema>;
 export type MissionAnalysisKind = z.infer<typeof missionAnalysisKindSchema>;
 export type Mission = z.infer<typeof missionSchema>;
 export type MissionPage = z.infer<typeof missionPageSchema>;
+export type MissionCreateRequest = z.infer<typeof missionCreateRequestSchema>;

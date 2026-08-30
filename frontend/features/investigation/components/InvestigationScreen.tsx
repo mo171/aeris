@@ -33,6 +33,7 @@ import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/fe
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
 import { PanelSkeleton } from "@/components/sharedUI/functionalComponent/feedback/PanelSkeleton";
 import { AgreementSection } from "@/features/crossModal/components/AgreementSection";
+import { useSaveAsMission } from "@/features/missionCommand/hooks/use-save-as-mission";
 import { SensorsSection } from "@/features/crossModal/components/SensorsSection";
 import { useCrossModal } from "@/features/crossModal/hooks/use-cross-modal";
 import {
@@ -106,6 +107,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const scenePopout = useScenePopout({ investigationId, onAssignRole: assignSceneRole });
   const catalogue = useCatalogueSearch(investigationId);
   const referenceLayers = useReferenceLayers();
+  const mission = useSaveAsMission(investigation);
   /**
    * The cross-modal reading of this same investigation.
    *
@@ -419,6 +421,9 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
             <InvestigationHeader
               investigation={investigation}
               onFocusScene={handleFocusScene}
+              onSaveAsMission={mission.save}
+              isSavingMission={mission.isSaving}
+              isSavedAsMission={mission.savedMission !== null}
             />
           </PanelErrorBoundary>
 

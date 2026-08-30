@@ -1,6 +1,6 @@
 // lib/constants/routes.ts — every in-app URL, in one registry. No route string is ever written inline.
 //
-// what  : Canonical route paths for the six AERIS application surfaces.
+// what  : Canonical route paths for the four AERIS application surfaces.
 // where : Consumed by lib/constants/navigation.ts, the command bus `nav.goto` command, and any <Link>.
 // how   : Only Mission Command exists today; the rest are declared now so navigation, command ids and
 //         analytics never have to be renamed when those pages land.
@@ -8,10 +8,8 @@
 export const ROUTES = {
   MISSION_COMMAND: "/",
   INVESTIGATION: "/investigation",
-  TEMPORAL: "/temporal",
   EVIDENCE: "/evidence",
   MODEL_OBSERVATORY: "/models",
-  MISSION_LIBRARY: "/missions",
 } as const;
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
@@ -39,4 +37,7 @@ export const buildRoute = {
  *
  * It is now a lens inside the Investigation Workspace, reachable from the Toolbox, the command palette and
  * the header. A rail names PLACES; cross-modal was never one.
+ *
+ * /temporal and /missions were removed for the same reason — see lib/constants/navigation.ts, which holds
+ * the test and what each one failed on.
  */

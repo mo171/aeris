@@ -1,0 +1,99 @@
+# The single declaration of what this backend depends on, and the interpreter it is allowed to run on.
+#
+# what  : Project metadata, the runtime dependency set, the `dev` group (notebooks and tests), and the tool
+#         configuration for pytest and ruff. `uv.lock` beside this file pins the exact resolution.
+# where : Replaces `requirements.txt`, which was a flat pip freeze and had already drifted out of date - it
+#         listed `earthpy`, which nothing imports, and omitted `pystac-client`, `planetary-computer`,
+#         `rioxarray` and `xarray`, which the remote-sensing notebooks import on every run.
+# how   : Lower bounds here, exact versions in the lock. Dependencies are added by the sub-phase that first
+#         needs them, following the Phase 0 setup pattern (provision -> client in app/lib/ -> health probe ->
+#         a row in `aeris doctor` -> a test), so this file grows one line at a time rather than up front.
+
+[project]
+name = "aeris-backend"
+version = "1.0.0"
+description = "AERIS - agentic Earth-observation analysis with evidence-grounded answers."
+readme = "bcontext/README.md"
+
+# Pinned to 3.14 deliberately, and verified rather than assumed. The scientific stack (rasterio, geopandas,
+# numpy, matplotlib, scipy, scikit-image) runs on 3.14.5 today, and the heavy dependencies Phase 1.6/1.7/1.13
+# will need were checked for cp314 wheels before this pin was written: torch 2.13.0, torchvision 0.28.0,
+# transformers 5.16.1, timm 1.0.29, ctranslate2 4.8.1, faster-whisper 1.2.1, onnxruntime 1.29.0, langgraph.
+# The upper bound is a gate, not pessimism: a scientific stack is re-verified before an interpreter bump.
+requires-python = ">=3.14,<3.15"
+
+dependencies = [
+    # Configuration and typed boundaries. config.py validates at import; every wire model is a Pydantic model.
+    "pydantic>=2.13",
+    "pydantic-settings>=2.15",
+
+    # The Phase 1 adapter. Typer for the CLI, rich for the live S1-S20 trace the terminal renderer draws.
+    "typer>=0.27",
+    "rich>=14.0",
+
+    # Structured JSON logs, so a run is greppable by run_id rather than by eye.
+    "python-json-logger>=4.2",
+
+    # Raster and vector core - Phase 1.2 onwards. rasterio is the raster engine; the notebooks' rioxarray
+    # convenience layer is deliberately dev-only, because the application reads windows, not datasets.
+    "numpy>=2.5",
+    "rasterio>=1.5",
+    "shapely>=2.1",
+    "pyproj>=3.7",
+    "geopandas>=1.1",
+    "scipy>=1.18",
+    "scikit-image>=0.26",
+
+    # Figure rendering - ADR-004. Matplotlib is used on the Agg backend only; never an interactive one.
+    "matplotlib>=3.11",
+    "pillow>=12.0",
+
+    # Scene acquisition - Phase 1.1/1.2. `aeris dataset fetch` searches STAC and signs Planetary Computer
+    # asset URLs, which is exactly what notebooks/01_remote_sensing already does by hand.
+    "pystac-client>=0.9",
+    "planetary-computer>=1.0",
+]
+
+[dependency-groups]
+# Installed by `uv sync` by default. Everything here is a research or verification tool, never imported by
+# anything under `app/`.
+dev = [
+    "pytest>=9.0",
+    "pytest-asyncio>=1.0",
+
+    # Phase 0.7 validates every backend fixture against the JSON Schema exported from the frontend's Zod.
+    "jsonschema>=4.26",
+
+    "ruff>=0.14",
+
+    # The notebook surface. Some notebooks are the product owner's, most are research instruments - see
+    # bcontext/README.md on when writing one is justified.
+    "jupyter>=1.1",
+    "jupyterlab>=4.6",
+    "ipykernel>=7.3",
+    "ipywidgets>=8.1",
+    "xarray>=2026.7",
+    "rioxarray>=0.23",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `auto` rather than `strict` because code-standards.md §7 makes every function above `math/` a coroutine, so
+# every test above `math/` is `async def`. Under strict mode each one would carry an identical marker, and a
+# forgotten marker fails as a silently skipped test rather than as an error.
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# E501 is off because the file headers wrap prose at 120 and the linter should not argue with a sentence.
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+ignore = ["E501"]

@@ -48,5 +48,15 @@ Update the relevant context file whenever implementation changes:
 ## Before Moving To The Next Unit
 
 1. The current unit works end to end within its defined scope.
-2. No invariant defined in `architecture-context.md` was violated.
-4. also refer `folder-archtecure.md` to know folder staructure and purpose
+2. No invariant defined in `architecture-context.md` §13 was violated. In particular, check the four that are
+   easiest to break without noticing:
+   - **Nothing hand-written orchestrates, checkpoints, streams or retries.** LangGraph owns the graph and its
+     state; Inngest owns retry and replay; LangChain owns LLM access (ADR-002).
+   - **Every function added is `async def`**, except functions inside a `math/` module, which are sync and are
+     called through `asyncio.to_thread` (ADR-003).
+   - **No numerical method was written inside a service, node, controller or route.** It belongs in that
+     subsystem's `math/` (ADR-003).
+   - **No hardcoded fixed set outside `app/constants/`, and no `os.environ` outside `config.py`.**
+3. Also refer to `folder-archtecture.md` for the folder structure and each folder's purpose — including its
+   "Placement questions, answered" table when a new file has no obvious home.
+4. `memory.md` has an entry for the session.

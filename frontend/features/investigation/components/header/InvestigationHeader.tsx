@@ -14,7 +14,16 @@
 
 "use client";
 
-import { ArrowLeft, Check, Copy, FileText, Presentation, Radar } from "lucide-react";
+import {
+  ArrowLeft,
+  BookmarkCheck,
+  BookmarkPlus,
+  Check,
+  Copy,
+  FileText,
+  Presentation,
+  Radar,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -35,11 +44,18 @@ const COPY_FEEDBACK_MS = 1_400;
 interface InvestigationHeaderProps {
   investigation: Investigation;
   onFocusScene: (slot: InvestigationSceneSlot) => void;
+  /** Saves this investigation as a re-runnable mission. See useSaveAsMission. */
+  onSaveAsMission: () => void;
+  isSavingMission: boolean;
+  isSavedAsMission: boolean;
 }
 
 export function InvestigationHeader({
   investigation,
   onFocusScene,
+  onSaveAsMission,
+  isSavingMission,
+  isSavedAsMission,
 }: InvestigationHeaderProps) {
   const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
   const [hasCopiedTraceId, setHasCopiedTraceId] = useState(false);
@@ -133,6 +149,32 @@ export function InvestigationHeader({
             </TooltipContent>
           </Tooltip>
         ) : null}
+
+        {/*
+          Saving is a verb on this investigation, not a destination — there is no Mission Library page.
+          The saved state persists on the button rather than in a toast, because the operator's question
+          afterwards is "did that stick", and a notification that has already faded cannot answer it.
+        */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={isSavedAsMission ? "Saved as a mission" : "Save as a mission"}
+              disabled={isSavingMission || isSavedAsMission}
+              onClick={onSaveAsMission}
+              className={cn(isSavedAsMission && "text-aeris-green")}
+            >
+              {isSavedAsMission ? <BookmarkCheck /> : <BookmarkPlus />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-56">
+            {isSavedAsMission
+              ? "Saved. It is on Mission Command and on the globe."
+              : "Keep this as a mission over the same area, re-runnable from Mission Command"}
+          </TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>

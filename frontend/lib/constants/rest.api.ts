@@ -27,6 +27,8 @@ export const REST_API = {
   missions: {
     list: `${API_VERSION_PREFIX}/missions`,
     detail: (missionId: string) => `${API_VERSION_PREFIX}/missions/${missionId}`,
+    /** Promotes a completed investigation into a saved, re-runnable mission over the same area. */
+    create: `${API_VERSION_PREFIX}/missions`,
   },
   globe: {
     markers: `${API_VERSION_PREFIX}/globe/markers`,
@@ -57,6 +59,16 @@ export const REST_API = {
      */
     crossModal: (investigationId: string) =>
       `${API_VERSION_PREFIX}/investigations/${investigationId}/cross-modal`,
+  },
+  evidence: {
+    /**
+     * The claim corpus across every investigation.
+     *
+     * Separate from investigations.evidence, which returns one investigation's graph. This one answers
+     * questions that span them — every claim a model version produced, everything resting on a scene later
+     * found faulty — which is exactly what a single investigation's graph cannot express.
+     */
+    claims: `${API_VERSION_PREFIX}/evidence/claims`,
   },
   regions: {
     suggestions: `${API_VERSION_PREFIX}/regions/suggestions`,

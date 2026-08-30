@@ -529,8 +529,8 @@ function buildSceneLayers(
       attribution: tiles.attribution,
       maximumZoom: tiles.maximumZoom,
       provenance: {
-        modelId: slot.modality === "sar" ? "sar-preprocess" : "ingest",
-        modelVersion: slot.modality === "sar" ? "0.9.2" : "1.4.0",
+        modelId: slot.modality === "sar" ? "sar-preprocess" : "s2cloudless",
+        modelVersion: slot.modality === "sar" ? "0.9.2" : "1.5.0",
         traceStepId: `${investigationId}-step-${slot.modality === "sar" ? "S8" : "S1"}`,
         confidence: null,
       },
@@ -862,7 +862,7 @@ function buildAnalysisProducts(
       maximumZoom: null,
       features: residualFeatures,
       provenance: {
-        modelId: "registration",
+        modelId: "co-registration",
         modelVersion: "0.7.1",
         traceStepId: `${investigationId}-step-S9`,
         confidence: null,
@@ -912,7 +912,7 @@ function buildAnalysisProducts(
       maximumZoom: null,
       features: landCoverFeatures,
       provenance: {
-        modelId: "segformer-lulc",
+        modelId: "segformer-landcover",
         modelVersion: "3.0.1",
         traceStepId: `${investigationId}-step-S13`,
         confidence: 0.84,
@@ -936,7 +936,7 @@ function buildAnalysisProducts(
       maximumZoom: null,
       features: waterFeatures,
       provenance: {
-        modelId: "mndwi-threshold",
+        modelId: "index-engine",
         modelVersion: "1.0.4",
         traceStepId: `${investigationId}-step-S13`,
         confidence: 0.79,
@@ -962,7 +962,7 @@ function buildAnalysisProducts(
       maximumZoom: null,
       features: densityFeatures,
       provenance: {
-        modelId: "density-kernel",
+        modelId: "geospatial-engine",
         modelVersion: "0.4.0",
         traceStepId: `${investigationId}-step-S15`,
         confidence: null,
@@ -1149,24 +1149,24 @@ function buildTraceSteps(
     step("S6", "Nodata 0.4%, histograms nominal", null, null, null),
     step("S7", "6.1% cloud masked on T1", "s2cloudless", "1.5.0", artefactLayerIds.cloudLayerId),
     step("S8", "Reprojected to analysis grid", null, null, null),
-    step("S9", "Residual 0.61 px RMSE", "registration", "0.7.1", artefactLayerIds.residualLayerId),
+    step("S9", "Residual 0.61 px RMSE", "co-registration", "0.7.1", artefactLayerIds.residualLayerId),
     step("S11", "512 px windows, 10% overlap", null, null, null),
-    step("S12", "NDBI and NDVI computed", "index-engine", "1.1.0", null),
+    step("S12", "NDBI and NDVI computed", "index-engine", "4.0.0", null),
     step(
       "S13",
       "Bi-temporal change detection",
       "changeformer",
-      "1.2.0",
+      "3.0.1",
       artefactLayerIds.changeLayerId,
     ),
     step(
       "S15",
       "Change bound to 14 georeferenced regions",
       "dota-detector",
-      "2.1.3",
+      "2.3.4",
       artefactLayerIds.detectionLayerId,
     ),
-    step("S16", "Answer rendered from validated results", "rs-vlm", "0.4.2", null),
+    step("S16", "Answer rendered from validated results", "rs-vlm", "1.4.2", null),
     step("S18", "Aggregate confidence 0.91", null, null, null),
     step("S19", "Trace appended", null, null, null),
     step("S20", "Response released", null, null, null),
@@ -1176,7 +1176,7 @@ function buildTraceSteps(
     steps.splice(
       10,
       0,
-      step("S14", "Cross-modal reading over both sensors", "optical-sar-fusion", "0.6.0", null),
+      step("S14", "Cross-modal reading over both sensors", "optical-sar-fusion", "0.9.3", null),
     );
   }
 

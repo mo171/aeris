@@ -15,10 +15,11 @@ import type { CursorPageRequest } from "@/lib/types/api.types";
 import {
   globeMarkerCollectionSchema,
   missionPageSchema,
+  missionSchema,
   satelliteTrackCollectionSchema,
 } from "../schemas/mission.schema";
 import type { GlobeMarker, SatelliteTrack } from "../types/globe.types";
-import type { MissionPage } from "../types/mission.types";
+import type { Mission, MissionCreateRequest, MissionPage } from "../types/mission.types";
 
 export const MISSION_PAGE_SIZE = 20;
 
@@ -35,6 +36,16 @@ export async function fetchMissionPage(
   });
 
   return parseApiResponse(missionPageSchema, response.data, "the mission list");
+}
+
+/** Saves a finished investigation as a mission over the same area. */
+export async function createMission(
+  request: MissionCreateRequest,
+  signal?: AbortSignal,
+): Promise<Mission> {
+  const response = await apiClient.post(REST_API.missions.create, request, { signal });
+
+  return parseApiResponse(missionSchema, response.data, "the saved mission");
 }
 
 export async function fetchGlobeMarkers(signal?: AbortSignal): Promise<GlobeMarker[]> {
