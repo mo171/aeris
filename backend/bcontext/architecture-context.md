@@ -127,7 +127,8 @@ Three libraries, three concerns, no overlap. **We do not rebuild what they provi
 | Run state, resume from the last completed node | **LangGraph** checkpointer — SQLite in Phase 1, Postgres in Phase 2 |
 | Plan approval before execution | **LangGraph** `interrupt()` |
 | Streaming trace steps, ready layers, claims, tokens | **LangGraph** `get_stream_writer()` / `astream(stream_mode="custom")`, carrying our Pydantic event models |
-| Cancellation and voice barge-in | `asyncio` task cancellation plus the checkpoint, so a cancelled run stays resumable |
+| Explicit run abandonment | `asyncio` task cancellation checked at node boundaries, plus the checkpoint, so an abandoned run stays resumable. **Barge-in does not use this** — it stops one utterance and the run continues (`product-truth.md` §1.3) |
+| Session thread memory, and long-term memory across sessions | **LangGraph** checkpointer (thread) and `BaseStore` (long-term namespace) — `product-truth.md` §1.6 |
 | LLM calls, structured output, tool binding | **LangChain** — `init_chat_model`, `with_structured_output`, `bind_tools` |
 | Durable background execution, retry with backoff, replay, dashboard | **Inngest**, Phase 2 (ADR-001) |
 

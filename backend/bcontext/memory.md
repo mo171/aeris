@@ -1,3 +1,85 @@
+## Session - 2026-08-31 (revision) - **The harness correction.** Barge-in must not kill the run.
+
+A concept revision before Phase 1.0, and it turned up **one thing the documents had backwards and one they
+never had at all.** Both were recorded into the docs, not just noted, because 1.0 is the phase that builds
+the thing they affect.
+
+### What was backwards
+
+`api-contract.md` §5 and `product-truth.md` §1.3 both said: speech during an utterance cancels synthesis
+**and the run behind it**, emitting `run-error`. The product owner: **no.**
+
+The reasoning is sound and worth keeping. A ten-minute run is normal here. An operator who says *"wait, which
+sensor is that?"* mid-run is asking a question, not withdrawing the request - and under the old rule they
+would learn that speaking costs them ten minutes, so they would stop speaking. That kills the product's
+identity, not a feature of it.
+
+Now **three** signals where there was one:
+
+| Signal | Stops | Survives |
+|---|---|---|
+| Barge-in | synthesis of that one utterance | the run, streaming, unaffected |
+| Standby ("quiet down") | all speech until released | the run, silently |
+| Abandon (explicit only) | the run at the next node boundary | the checkpoint |
+
+Node-boundary cancellation is **still built in 1.0**, for row three, for the original reason. Only *who pulls
+it* changed.
+
+### The consequence nobody had drawn, and why it lands on 1.0 rather than 1.13
+
+If the run outlives the interruption, **the conversation has to run concurrently with it.** That is not a
+voice-loop concern; it is a shape constraint on the spine:
+
+- the agent **narrates** from trace steps already on the stream;
+- a mid-run question is answered from model knowledge, **labelled provisional, `claimIds` empty**, then
+  superseded by the grounded answer (`supersedesUtteranceId`). An *unlabelled* provisional answer is the
+  worst thing this system can emit - a fluent unsourced number, the exact failure the whole evidence
+  architecture exists to prevent. So the label is a contract term, not a UI nicety;
+- a finished run **interrupts the conversation** three turns later: *"coming back to the built-up question."*
+
+None of that is possible if 1.0 awaits `graph.astream()` to exhaustion inside the turn. So 1.0 now owes
+`app/services/sessions/` - a session owning a thread id and its runs, `run_handle.py` returning immediately
+while a background task consumes the stream, and `fanout.py` splitting one stream to many consumers. **This
+is the same argument the docs already made for cancellation**: nearly free now, a rewrite of every node
+signature later.
+
+New 1.0 gate: *with a run in flight, a second command into the same session is accepted and answered while
+the run continues, and the run still reaches `run-complete` with the journal it would have produced
+undisturbed.* That gate fails on any inline-await design, which is the point of it.
+
+### What was missing entirely
+
+**No memory of any kind existed in these documents** beyond the LangGraph checkpointer - and the checkpointer
+is not memory, it is the resume point of one run. Grepped for it: no `BaseStore`, no long-term store, no
+cross-session recall, anywhere in `bcontext/`.
+
+The requirement is JARVIS-shaped: a session opened by keypress (the frontend already carries `shortcut` on
+every `CommandDefinition`), **thread memory** for the session, **long-term memory** across sessions.
+
+Two decisions worth not relitigating:
+
+- **Long-term memory is opt-in.** The operator says "remember that", or the agent proposes and the operator
+  agrees. Not a limitation - a system that silently retains everything an analyst said is unauditable, and
+  this workload is disaster response and defence. Every entry records who, when, and which session: the
+  provenance rule the evidence chain already runs on, applied to what the agent believes.
+- **Recalled memory is context, never evidence.** It shapes what AERIS does; it can never become a claim. A
+  claim comes from a specialist model, every time. This is the guardrail that keeps "add memory" from
+  quietly becoming the RAG-over-chat-logs system that produces confident nonsense.
+
+Mechanics are LangGraph's - checkpointer for the thread, `BaseStore` for the namespace - per ADR-002. 1.0
+wires the store from `config.py` and leaves it empty; `remember` / `recall` become ordinary agent tools in
+1.9.
+
+### Documents changed
+
+`product-truth.md` (§1.3 rewritten, §1.3.1 and §1.6 new) - `api-contract.md` §5 - `architecture-context.md`
+- `architecture-decisions.md` - `roadmap.md` (1.0 deliverable + gate, 1.13 deliverable + gate) -
+`folder-archtecture.md` (`services/sessions/`, `pipeline/memory_store.py`).
+
+**Nothing in Phase 0 is affected** - 97 tests still green, no code touched.
+
+---
+
 # Backend Memory
 
 Session log for the AERIS backend. Newest first. Written for the next agent or developer picking this up

@@ -84,7 +84,8 @@ rationale cites those paths.
 | Run state persistence and resume-from-checkpoint | LangGraph checkpointer — SQLite in Phase 1, Postgres in Phase 2 |
 | Human-in-the-loop plan approval | LangGraph `interrupt()` |
 | Streaming trace steps, ready layers and claims | LangGraph custom stream, carrying our Pydantic event models |
-| Cancellation and voice barge-in | Task cancellation plus the checkpoint, so a cancelled run is resumable |
+| Explicit run abandonment | Task cancellation plus the checkpoint, so an abandoned run is resumable. Barge-in does **not** trigger it — `product-truth.md` §1.3 |
+| Thread memory and long-term memory | Checkpointer and `BaseStore` — `product-truth.md` §1.6 |
 | LLM calls, structured output, tool binding | LangChain — `init_chat_model`, `with_structured_output`, `bind_tools` |
 | Durable background execution, retry, replay, dashboard | Inngest, Phase 2 |
 | Phase 1 invocation | The CLI calls `graph.astream()` directly |

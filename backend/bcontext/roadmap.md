@@ -97,7 +97,18 @@ docs before writing, because most of this sub-phase is *configuring* a library r
   terminal, `journal_writer.py` appends `runs/<run_id>.jsonl`.
 - A two-node throwaway graph to exercise all of the above end to end.
 - **Cancellation**: `asyncio` cancellation checked at every node boundary, leaving the checkpoint intact.
-  Required by voice barge-in (§1.3 of `product-truth.md`) and cheap only if it exists now.
+  Used only by *explicit* abandonment — **not** by barge-in (`product-truth.md` §1.3, corrected 2026-08-31).
+  Cheap only if it exists now.
+- **The run is a detached task, not an awaited call.** `app/services/sessions/` — a session owns a thread id,
+  a checkpointer thread and the set of runs launched under it; starting a run returns a handle immediately
+  while `graph.astream()` is consumed by a background task that fans its events to the registered renderers.
+  **This is the structural consequence of §1.3.1** and the reason it is in 1.0: a spine that awaits a run to
+  completion inside the turn cannot narrate it, cannot be spoken over, and cannot answer anything else while
+  it runs. Retrofitting that is a rewrite of every node signature.
+- **Thread memory now, long-term memory wired but empty.** The checkpointer already gives the thread; the
+  long-term namespace is a `BaseStore` selected from `config.py` alongside it, with `remember` / `recall` as
+  ordinary tools the agent gains in 1.9. Nothing is hand-rolled and nothing is populated yet — what 1.0 owes
+  is that the store exists, is configured in one place, and that a session carries its namespace.
 
 **Explicitly not built**: `StepRunner`, `EventSink`, `LLMProvider`, an executor, a context object, or a retry
 loop. See ADR-002 and `folder-archtecture.md` → "Folders that were deliberately removed".
@@ -105,8 +116,12 @@ loop. See ADR-002 and `folder-archtecture.md` → "Folders that were deliberatel
 **Gate**
 - `aeris run --replay <run_id>` reproduces a completed run from its journal without recomputing.
 - A run killed mid-pipeline resumes from its last checkpoint, not from the beginning.
-- A cancelled run stops within one node boundary, emits `run-error` with a cancellation reason, and is still
-  resumable afterwards.
+- An **explicitly abandoned** run stops within one node boundary, emits `run-error` with a cancellation
+  reason, and is still resumable afterwards.
+- **A run survives being interrupted.** With a run in flight, a second command issued into the same session
+  is accepted and answered while the run continues, and the run still reaches `run-complete` with the same
+  journal it would have produced undisturbed. This is the gate that proves §1.3, and it fails on any design
+  that awaits the run inline.
 - The JSONL journal validates against the vendored contracts (0.7) — Phase 2 wire compatibility, proven now.
 
 ## 1.1 — Datasets
@@ -368,12 +383,17 @@ PDF rendering may follow in Phase 2.
 - Utterance → agent → analysis tools **and** `ui-command` events → answer.
 - **`speech` generation from the validated claim object**, not from the answer text.
 - Piper/Kokoro synthesis, streamed.
-- **Barge-in**: speaking over AERIS cancels synthesis and the run behind it.
+- **Barge-in**: speaking over AERIS stops *that utterance's synthesis*. The run continues (`product-truth.md`
+  §1.3). Standby suppresses speech without touching the run; only an explicit "stop this run" abandons it.
+- **Narration and provisional answers**: spoken progress generated from trace steps, and a mid-run question
+  answered from model knowledge, labelled provisional with empty `claimIds`, then superseded by the grounded
+  utterance when the run completes.
 
 **Gate** — *a full spoken investigation in the terminal.* The operator asks a question aloud; AERIS states
 its plan aloud, runs a real analysis over real imagery, and speaks a real answer with a real number in it.
-Interrupting mid-answer stops it inside one step boundary. `ui-command` events are printed where the
-frontend will later dispatch them.
+The operator speaks over it mid-answer, asks something unrelated, gets a provisional answer marked as such —
+**and the original run finishes and reports back anyway.** `ui-command` events are printed where the frontend
+will later dispatch them.
 
 ## 1.14 — Evaluation
 

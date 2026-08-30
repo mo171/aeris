@@ -51,12 +51,50 @@ produced.
 So speech is a **separate generation from the structured claim object**, delivered as its own `speech`
 stream event. The evidence-first rule is unchanged — it is simply applied to a second surface.
 
-### 1.3 Barge-in requires runs to be cancellable, and that must be designed in
+### 1.3 Interruption stops the *speaking*. It never kills the work.
 
-Interrupting the system mid-sentence must stop the speech *and* the analysis behind it. That needs an
-`asyncio` cancellation checked at every pipeline node boundary, with the LangGraph checkpoint left intact so a
-cancelled run stays resumable. It is nearly free if the pipeline is built for it and close to impossible to
-retrofit, so it belongs in Phase 1.0, not in the phase where voice ships.
+**Corrected by the product owner on 2026-08-31, against every earlier draft of this document and of
+`api-contract.md` §5.** The rule those drafts state — speech detected during an utterance cancels synthesis
+*and* the run behind it, emitting `run-error` — is **wrong and must not be built.**
+
+JARVIS is not a system you wait for in silence. A ten-minute run is normal here: co-registration, specialist
+inference, vectorisation. An operator who says *"wait, which sensor is that?"* halfway through is asking a
+question, not withdrawing the request. Cancelling on barge-in makes every long analysis unaskable, because
+the operator learns that speaking costs them ten minutes.
+
+So there are **three** distinct signals, and only the first is barge-in:
+
+| Signal | What stops | What survives |
+|---|---|---|
+| **Barge-in** — the operator speaks over an utterance | Synthesis of *that utterance* | The run. It keeps going, keeps streaming, keeps emitting `ui-command` |
+| **Standby** — "quiet down", "stop talking" | All speech until released | The run, silently. Narration resumes on release, or at completion |
+| **Abandon** — "stop", "cancel that", explicit and only explicit | The run, at the next node boundary | The checkpoint, so it stays resumable |
+
+Node-boundary cancellation is still built in Phase 1.0, for the third row, and for the original reason: it is
+nearly free at a boundary and impossible to retrofit. What changes is **who is allowed to pull it.** Barge-in
+is not.
+
+### 1.3.1 A run in progress is something the agent can talk about while it runs
+
+Because the run outlives the interruption, the agent has to hold a conversation *concurrently with it*. Three
+consequences, all architectural:
+
+- **The agent narrates.** *"Co-registering the pair now — about two minutes."* Progress is not a spinner; it
+  is spoken, generated from the trace steps already on the stream.
+- **The agent answers provisionally, and says that it is.** Asked something mid-run that the analysis has not
+  reached, it answers from model knowledge, **labelled**, then supersedes that answer with the grounded one
+  when the run completes. This does not weaken the evidence rule — it makes it explicit. A provisional answer
+  carries **no `claimIds`** and is marked provisional on every surface: written, spoken, shown. An
+  *unlabelled* provisional answer is the worst output this system can produce, because it is a fluent
+  unsourced number, which is precisely what the PDF says a VLM must never be permitted to emit.
+- **A finished run interrupts the conversation, politely.** The result arrives asynchronously, possibly three
+  turns later, against a conversation that has moved on: *"coming back to the built-up question — eighteen
+  percent."*
+
+**Consequence for Phase 1.0, which is why this is recorded before it is built:** the run must not be awaited
+inline by the conversation. The agent loop and the pipeline run are **separate tasks over one shared
+session**, communicating by stream. A spine that awaits `graph.astream()` to exhaustion inside the turn
+cannot be made to do any of the above later without being rewritten.
 
 ### 1.4 Voice stack (decided)
 
@@ -124,6 +162,34 @@ part of the evidence chain, not a screenshot.
 `api-contract.md` §6 defines the `figure-ready` event and the endpoints; `architecture-context.md` §7 places
 the `rendering/` subsystem; `roadmap.md` 1.2.1 builds it; **ADR-004** records why this is rendered on the
 backend rather than composed in the browser, and what was rejected.
+
+### 1.6 AERIS is a session-scoped harness with two memories
+
+**Stated by the product owner on 2026-08-31.** Also a gap: nothing in these documents described memory of any
+kind beyond the LangGraph checkpointer, and **the checkpointer is not memory** — it is the resume point of one
+run.
+
+The operator opens a session deliberately, by keypress. The frontend already has the shape for it: every
+`CommandDefinition` carries a `shortcut`, and the command palette is the surface. From that moment AERIS is
+*present* — it holds the thread, it knows what "it", "there" and "the second one" refer to, and it is the
+thing driving the interface rather than a panel sitting inside it.
+
+| Memory | Scope | Holds | Written |
+|---|---|---|---|
+| **Thread** | One session | Turns, referents, the active investigation, what is running | Continuously, automatically |
+| **Long-term** | Across sessions, indefinitely | Durable facts the operator chose to keep: this AOI is the Ghaziabad site, this operator works in hectares, this pair is the baseline | **Deliberately** — the operator says "remember that", or the agent proposes and the operator agrees |
+
+**Long-term memory being opt-in is the design, not a limitation.** A system that silently retains everything
+an analyst said is one nobody can audit, and this workload is disaster response and defence. Every long-term
+entry records who wrote it, when, and the session it came from — the provenance rule the evidence chain
+already runs on, applied to the things the agent believes.
+
+**What it is not.** Not a vector store of chat logs retrieved by similarity, which is how this is usually
+built and why it usually produces confident nonsense. **Recalled memory is context, never evidence.** It can
+shape what AERIS does; it can never become a claim. A claim comes from a specialist model, every time.
+
+LangGraph owns the mechanics of both — the checkpointer for the thread, `BaseStore` for the long-term
+namespace — for the reason ADR-002 gives for everything else: we do not rebuild what the library provides.
 
 ---
 

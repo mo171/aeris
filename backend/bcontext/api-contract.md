@@ -173,11 +173,27 @@ Hence `claimIds`. **An utterance with no claim behind it is not emitted** — th
 rest of the system runs on, applied to a second surface. Spoken numbers are rounded for the ear ("about
 eighteen percent") while the written claim keeps its declared `precision`; the underlying value is identical.
 
-`interruptible: false` marks a refusal or a safety statement that should finish before barge-in cancels it.
+`interruptible: false` marks a refusal or a safety statement that should finish before barge-in silences it.
 
-**Barge-in.** Speech detected while an utterance is playing cancels synthesis *and* the run behind it. The
-run stops at the next step boundary and emits `run-error` with a cancellation reason. This requires the
-`CancellationToken` built in Phase 1.0.
+**Barge-in cancels the utterance, not the run.** *(Corrected 2026-08-31; the earlier text here said it
+cancels both, and that was wrong — `product-truth.md` §1.3.)* Speech detected during playback stops synthesis
+of that one utterance. The run behind it continues, keeps emitting `trace-step`, `layer-ready`, `claim` and
+`ui-command`, and completes normally. A ten-minute analysis has to survive being spoken over, or no operator
+will risk asking a question during one.
+
+Three signals, three effects:
+
+| Signal | Effect |
+|---|---|
+| Barge-in (speech over an utterance) | That utterance's synthesis stops. Nothing else. |
+| Standby ("quiet down") | Speech suppressed until released; the run continues silently and narration resumes at completion. |
+| Abandon (explicit "stop this run") | The run stops at the next node boundary and emits `run-error` with a cancellation reason. **The only thing that uses the Phase 1.0 cancellation.** |
+
+**Provisional utterances.** A question asked mid-run that the analysis has not answered yet is answered from
+model knowledge, and that is the one case where `claimIds` is empty. It **must** then carry
+`"provisional": true`, and the client must mark it unsourced. An unlabelled empty-`claimIds` utterance is a
+contract violation, not a degraded case — it is a fluent number with nothing behind it. The grounded
+utterance that later supersedes it carries `supersedesUtteranceId`.
 
 ---
 

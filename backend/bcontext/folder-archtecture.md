@@ -90,11 +90,20 @@ backend/
 │   │
 │   ├── services/
 │   │   │
+│   │   ├── sessions/                    # The harness. A session = one thread id + its running tasks.
+│   │   │   ├── session.py               # Opens/closes a session; owns the thread id and memory namespace
+│   │   │   ├── run_handle.py            # Launching a run returns a handle IMMEDIATELY; astream() is
+│   │   │   │                            #   consumed by a background task. Why: product-truth.md §1.3.1 -
+│   │   │   │                            #   the conversation must continue while the run runs.
+│   │   │   └── fanout.py                # One run's stream -> many consumers (trace, journal, speech)
+│   │   │
 │   │   ├── pipeline/                    # LangGraph only. Nothing here orchestrates by hand.
 │   │   │   ├── state.py                 # The TypedDict state schemas carried between nodes
 │   │   │   ├── checkpointer.py          # Selects SQLite (P1) / Postgres (P2) checkpointer from config
 │   │   │   ├── stream.py                # Thin helpers that write event models via get_stream_writer()
-│   │   │   ├── cancellation.py          # Cancellation checked at node boundaries - barge-in (product-truth §1.3)
+│   │   │   ├── cancellation.py          # Node-boundary cancellation. EXPLICIT abandonment only, never
+│   │   │   │                             #   barge-in (product-truth.md §1.3, corrected 2026-08-31)
+│   │   │   ├── memory_store.py           # BaseStore for long-term memory, selected from config (§1.6)
 │   │   │   │
 │   │   │   ├── nodes/                   # One stage each. async def(state) -> state update. No retry, no maths.
 │   │   │   │   ├── input_validation.py
