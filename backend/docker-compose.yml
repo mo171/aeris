@@ -1,0 +1,52 @@
+# The infrastructure a developer needs running before `aeris doctor` can go green.
+#
+# what  : One service per Phase 0 dependency. PostGIS today (0.2); Redis (0.3), MinIO (0.4) and the Inngest
+#         dev server (0.5) are added by the sub-phase that first needs them, following the Phase 0 setup
+#         pattern rather than being stubbed in now.
+# where : `docker compose up -d` from `backend/`. Every integration test - the ones that demonstrate a Phase 0
+#         gate - runs against these containers. `aeris doctor` reports on exactly this set.
+# how   : Local development runs Postgres in a container; deployed environments point DATABASE_URL at
+#         Supabase instead. Both are Postgres with the PostGIS extension, so nothing in `app/` changes
+#         between them - which is the reason for using the real engine locally rather than SQLite.
+#
+#         Ports are bound to 127.0.0.1 rather than 0.0.0.0. A database reachable from the local network is
+#         a habit worth not forming.
+
+name: aeris
+
+services:
+  postgis:
+    # PostGIS 3.5 on Postgres 17. Pinned to a minor tag rather than `latest`: a spatial database that
+    # silently changes version between machines is a class of "works here, not there" that costs a day.
+    image: postgis/postgis:17-3.5
+    container_name: aeris-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aeris
+      POSTGRES_PASSWORD: aeris_local_development
+      POSTGRES_DB: aeris
+      # Deterministic collation. Left to the host locale, index ordering differs between developer machines
+      # and a `ORDER BY name` test passes in one place and fails in another.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      # Host port 5433, not 5432: a developer machine commonly already has a Postgres on the default
+      # port, and the collision surfaces as "password authentication failed" against a database that
+      # is not ours - which is a confusing failure to debug. The container still listens on 5432.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      # Runs once on a fresh volume, after the image's own PostGIS setup. Drops the extensions we do
+      # not use - see the script for why it matters to `alembic check`.
+      - ./docker/postgis-init:/docker-entrypoint-initdb.d/aeris:ro
+    healthcheck:
+      # `pg_isready` answers "is the socket accepting connections", which is what dependent services need.
+      # Whether the PostGIS *extension* is installed is a different question, and it is `aeris doctor`'s -
+      # see app/lib/database.py, which reports the PostGIS version rather than assuming it.
+      test: ["CMD-SHELL", "pg_isready -U aeris -d aeris"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgis_data:

@@ -34,6 +34,16 @@ dependencies = [
     # Structured JSON logs, so a run is greppable by run_id rather than by eye.
     "python-json-logger>=4.2",
 
+    # Persistence - Phase 0.2. The async ORM runs on asyncpg (verified: asyncpg 0.31 ships a
+    # cp314-win_amd64 wheel, so the 3.14 pin above survives contact with the driver). GeoAlchemy2 supplies the
+    # PostGIS geometry column type; Alembic owns every schema change. python-ulid generates the sortable,
+    # prefixed identifiers `api-contract.md` already puts on the wire - see app/db/identifiers.py.
+    "sqlalchemy[asyncio]>=2.0.52",
+    "asyncpg>=0.31",
+    "alembic>=1.19",
+    "geoalchemy2>=0.20",
+    "python-ulid>=4.0",
+
     # Raster and vector core - Phase 1.2 onwards. rasterio is the raster engine; the notebooks' rioxarray
     # convenience layer is deliberately dev-only, because the application reads windows, not datasets.
     "numpy>=2.5",
@@ -89,6 +99,18 @@ testpaths = ["tests"]
 # every test above `math/` is `async def`. Under strict mode each one would carry an identical marker, and a
 # forgotten marker fails as a silently skipped test rather than as an error.
 asyncio_mode = "auto"
+# One event loop for the whole session, not one per test. `app/lib/database.py` holds a process-wide
+# engine whose pooled asyncpg connections are bound to the loop that opened them; with a loop per test
+# the second test to touch the database inherits connections belonging to a closed loop and dies with
+# "Event loop is closed". A single session loop is also what production does - the CLI calls
+# asyncio.run() once - so the tests exercise the pool the way it is actually used.
+asyncio_default_test_loop_scope = "session"
+# Registered so that a typo in `-m` is an error rather than a silent "0 tests selected". `integration` marks
+# the tests that need provisioned infrastructure: they are the ones that demonstrate a Phase 0 gate, so they
+# are not skipped by default - they fail loudly when the dependency they prove is missing.
+markers = [
+    "integration: needs live infrastructure (PostGIS today). Run `docker compose up -d` first, or deselect with -m 'not integration'.",
+]
 
 [tool.ruff]
 line-length = 120

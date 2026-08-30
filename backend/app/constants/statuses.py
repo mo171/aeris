@@ -1,6 +1,7 @@
 """Every lifecycle state the frontend renders differently. Statuses are UI states, so they are the frontend's.
 
-what  : `RunStatus`, `InvestigationStatus`, `AssistantMessageStatus`, `MissionStatus`, `ModelHealth`.
+what  : `RunStatus`, `InvestigationStatus`, `TraceStepState`, `SceneProcessingState`,
+        `AssistantMessageStatus`, `MissionStatus`, `ModelHealth`.
 where : Read by the run loop, the stream events, the mission service and `GET /models/status`. Transcribed
         from the frontend's investigation, assistant, mission and model schemas.
 how   : Grouped in one module because they are one concern - "what state is this thing in, and what does the
@@ -35,6 +36,38 @@ class InvestigationStatus(StrEnum):
 
     DRAFT = "draft"
     RUNNING = "running"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class TraceStepState(StrEnum):
+    """The state of one S1-S20 step inside a run.
+
+    `SKIPPED` is not `COMPLETE`. Most runs do not execute all twenty stages - a single-image query never
+    co-registers - and the execution spine draws a skipped stage differently from one that ran. Collapsing
+    the two would make a pipeline that quietly did less look identical to one that did the work.
+
+    Every step is emitted at least twice: `RUNNING`, then `COMPLETE` with a `durationMs`. That transition is
+    the execution-trace UI (`api-contract.md` §3.1).
+    """
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class SceneProcessingState(StrEnum):
+    """How far a scene has got through ingest, from the catalogue's point of view.
+
+    Named for the scene rather than for the job, because it is what the imagery catalogue renders per row.
+    `READY` is the only state from which a scene may be analysed: everything else means the raster has not
+    been validated, and `architecture-context.md` §8 forbids a model reading an unvalidated input.
+    """
+
+    QUEUED = "queued"
+    PROCESSING = "processing"
     READY = "ready"
     FAILED = "failed"
 

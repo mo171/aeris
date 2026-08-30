@@ -40,23 +40,32 @@ async def test_secrets_are_masked_in_representation() -> None:
     assert settings.inngest_event_key.get_secret_value() == "local"
 
 
-async def test_log_level_is_normalised_to_upper_case(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_log_level_is_normalised_to_upper_case(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
     """A `.env` is typed by hand, so `info` and `INFO` must mean the same thing."""
     monkeypatch.setenv("LOG_LEVEL", "info")
-    monkeypatch.setenv("INNGEST_EVENT_KEY", "test")
-    monkeypatch.setenv("INNGEST_SIGNING_KEY", "test")
 
     assert Settings(_env_file=None).log_level == "INFO"
 
 
-async def test_invalid_enumerated_value_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`ENVIRONMENT=prod` is a typo, not a fourth environment. Fail rather than silently behave as local."""
-    monkeypatch.setenv("ENVIRONMENT", "prod")
-    monkeypatch.setenv("INNGEST_EVENT_KEY", "test")
-    monkeypatch.setenv("INNGEST_SIGNING_KEY", "test")
+async def test_invalid_enumerated_value_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """`ENVIRONMENT=prod` is a typo, not a fourth environment. Fail rather than silently behave as local.
 
-    with pytest.raises(ValidationError):
+    The error is asserted to name `environment`. Without that, this test passes the moment any *other*
+    required field is missing - it would be catching the wrong failure and would keep passing even if the
+    `Literal` on `environment` were removed.
+    """
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+
+    with pytest.raises(ValidationError) as raised:
         Settings(_env_file=None)
+
+    assert "environment" in str(raised.value).lower()
 
 
 async def test_env_example_documents_every_configurable_field() -> None:
@@ -72,3 +81,34 @@ async def test_env_example_documents_every_configurable_field() -> None:
         if f"{field_name.upper()}=" not in example_text
     ]
     assert not undocumented, f"missing from .env.example: {undocumented}"
+
+
+async def test_database_url_must_use_the_async_driver(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """A `postgresql://` DSN is valid to Pydantic and wrong for us.
+
+    Supabase hands out exactly that form, so this is the mistake most likely to be made. SQLAlchemy would
+    accept it and pick the blocking psycopg driver, which blocks the event loop on every query
+    (`code-standards.md` §7) - a performance failure with no error message attached to it.
+    """
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/aeris")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "asyncpg" in str(raised.value)
+
+
+async def test_database_password_is_masked_for_reporting(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """`aeris doctor` prints the DSN. The password must not survive that."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://aeris:hunter2@localhost:5432/aeris")
+
+    masked = Settings(_env_file=None).database_url_without_password
+
+    assert "hunter2" not in masked
+    assert "aeris@localhost" in masked or "***" in masked

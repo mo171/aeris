@@ -13,8 +13,13 @@
 //         re-check everything it touched, across every investigation, and no per-investigation view can
 //         produce that list. Filtering by model is therefore the primary control, not a refinement.
 //
-//         THE LOADING STATE IS PLAIN MARKUP, NOT PanelSkeleton — see ModelObservatoryScreen for the
-//         reproduction. That skeleton stops these pages hydrating at all.
+//         TWO SHAPES HERE ARE FORCED, NOT CHOSEN. This page stops hydrating entirely — server HTML stays,
+//         no query ever fires, no error is logged — if either of these is used:
+//           * PanelSkeleton as the loading state (see ModelObservatoryScreen, same symptom)
+//           * a local <FilterChip>/<FilterRow> component wrapping the filter markup
+//         Bisected on clean production builds: inlining the identical markup fixes it every time, and the
+//         hook, the service and the mock were each verified working in isolation. Root cause not found —
+//         read fcontext/memory.md before refactoring either back into a component.
 //
 //         Every row states its model, its confidence and how much evidence stands behind it — including
 //         zero, which is a claim resting on nothing and the single most important thing an audit can
@@ -23,26 +28,22 @@
 
 "use client";
 
-import { FileSearch, LoaderCircle } from "lucide-react";
+import { FileSearch } from "lucide-react";
 import Link from "next/link";
 
 import { GlassPanel } from "@/components/sharedUI/dumbComponent/GlassPanel";
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
-import { VirtualizedList } from "@/components/sharedUI/functionalComponent/dataDisplay/VirtualizedList";
 import { EmptyState } from "@/components/sharedUI/functionalComponent/feedback/EmptyState";
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { CONFIDENCE_BAND_ORDER, CONFIDENCE_BANDS } from "@/lib/constants/evidence-audit";
-import { MODEL_ORDER, SPECIALIST_MODELS, type ModelId } from "@/lib/constants/models";
+import { MODEL_ORDER, SPECIALIST_MODELS } from "@/lib/constants/models";
 import { buildRoute } from "@/lib/constants/routes";
 import { formatPercentage, formatRelativeTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
 import { useEvidenceAudit } from "../hooks/use-evidence-audit";
 import type { AuditedClaim } from "../types/evidence-audit.types";
-
-const ESTIMATED_ROW_HEIGHT = 84;
 
 export function EvidenceAuditScreen() {
   const audit = useEvidenceAudit();
@@ -66,46 +67,56 @@ export function EvidenceAuditScreen() {
           </p>
 
           <div className="flex flex-col gap-2 border-t border-border-soft px-3 py-2">
-            <Input
+            <input
               type="search"
               value={audit.search}
               onChange={(event) => audit.setSearch(event.target.value)}
               placeholder="Filter by claim wording, area or scene id"
               aria-label="Filter claims"
-              className="h-7 text-xs"
+              className="h-7 w-full rounded-lg border border-input bg-transparent px-2.5 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring"
             />
 
-            <FilterRow label="Model">
-              <FilterChip
-                isActive={audit.modelId === null}
-                onClick={() => audit.setModelId(null)}
-              >
-                Any
-              </FilterChip>
-              {MODEL_ORDER.map((modelId) => (
-                <FilterChip
-                  key={modelId}
-                  isActive={audit.modelId === modelId}
-                  onClick={() => audit.setModelId(toggle(audit.modelId, modelId))}
-                  title={SPECIALIST_MODELS[modelId].selectionRationale}
+            <div className="flex items-start gap-2">
+              <span className="w-16 shrink-0 pt-1 font-mono text-[9px] uppercase">Model</span>
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => audit.setModelId(null)}
+                  aria-pressed={audit.modelId === null}
+                  className="rounded-[3px] border px-1.5 py-0.5 font-mono text-[9px] uppercase"
                 >
-                  {SPECIALIST_MODELS[modelId].name}
-                </FilterChip>
-              ))}
-            </FilterRow>
+                  Any
+                </button>
+                {MODEL_ORDER.map((modelId) => (
+                  <button
+                    key={modelId}
+                    type="button"
+                    onClick={() => audit.setModelId(audit.modelId === modelId ? null : modelId)}
+                    aria-pressed={audit.modelId === modelId}
+                    className="rounded-[3px] border px-1.5 py-0.5 font-mono text-[9px] uppercase"
+                  >
+                    {SPECIALIST_MODELS[modelId].name}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-            <FilterRow label="Confidence">
-              {CONFIDENCE_BAND_ORDER.map((bandId) => (
-                <FilterChip
-                  key={bandId}
-                  isActive={audit.band === bandId}
-                  onClick={() => audit.setBand(bandId)}
-                  title={CONFIDENCE_BANDS[bandId].guidance}
-                >
-                  {CONFIDENCE_BANDS[bandId].label}
-                </FilterChip>
-              ))}
-            </FilterRow>
+            <div className="flex items-start gap-2">
+              <span className="w-16 shrink-0 pt-1 font-mono text-[9px] uppercase">Confidence</span>
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+                {CONFIDENCE_BAND_ORDER.map((bandId) => (
+                  <button
+                    key={bandId}
+                    type="button"
+                    onClick={() => audit.setBand(bandId)}
+                    aria-pressed={audit.band === bandId}
+                    className="rounded-[3px] border px-1.5 py-0.5 font-mono text-[9px] uppercase"
+                  >
+                    {CONFIDENCE_BANDS[bandId].label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* The guidance for the chosen band, so the filter teaches rather than only narrowing. */}
             {audit.band !== "all" ? (
@@ -141,24 +152,13 @@ export function EvidenceAuditScreen() {
               }
             />
           ) : (
-            <VirtualizedList
-              items={audit.claims}
-              estimateItemHeight={ESTIMATED_ROW_HEIGHT}
-              getItemKey={(claim) => claim.claimId}
-              renderItem={(claim) => <ClaimRow claim={claim} />}
-              onEndReached={audit.fetchNextPage}
-              className="p-2"
-              footer={
-                audit.isFetchingNextPage ? (
-                  <div className="flex items-center justify-center py-2">
-                    <LoaderCircle
-                      className="size-3 animate-spin text-aeris-teal"
-                      aria-hidden="true"
-                    />
-                  </div>
-                ) : null
-              }
-            />
+            <ul className="overflow-y-auto p-2">
+              {audit.claims.map((claim) => (
+                <li key={claim.claimId}>
+                  <ClaimRow claim={claim} />
+                </li>
+              ))}
+            </ul>
           )}
         </GlassPanel>
       </div>
@@ -222,49 +222,4 @@ function Confidence({ value }: { value: number | null }) {
       {formatPercentage(value)}
     </span>
   );
-}
-
-function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className="w-16 shrink-0 pt-1 font-mono text-[9px] tracking-wide text-muted-foreground/50 uppercase">
-        {label}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-wrap gap-1">{children}</div>
-    </div>
-  );
-}
-
-function FilterChip({
-  isActive,
-  onClick,
-  title,
-  children,
-}: {
-  isActive: boolean;
-  onClick: () => void;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={isActive}
-      title={title}
-      className={cn(
-        "rounded-[3px] border px-1.5 py-0.5 font-mono text-[9px] tracking-wide uppercase transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-        isActive
-          ? "border-aeris-teal/55 bg-aeris-teal/12 text-aeris-teal"
-          : "border-border-soft text-muted-foreground hover:border-aeris-teal/35 hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** Pressing the active model chip clears it, so the filter row needs no separate reset per model. */
-function toggle(current: ModelId | null, pressed: ModelId): ModelId | null {
-  return current === pressed ? null : pressed;
 }

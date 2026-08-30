@@ -5,6 +5,134 @@ cold: what was decided, why, what is still broken, and what not to relitigate.
 
 ---
 
+## Session — 2026-08-30 (0.2) · Persistence. Eight tables, and five bugs — two of which only the live database could find.
+
+**Phase 0.2 is done and the gate is demonstrated.** Against a live PostGIS 3.5.2 / Postgres 17.5:
+`alembic upgrade head` from base builds 8 tables, 7 GiST indexes and 24 check constraints; `alembic downgrade
+base` removes every one of them; `alembic check` reports **no changes**, which is the proof that the schema
+and the models agree; 25/25 tests pass, the 4 integration tests included.
+
+Measured for the record — a 1x1 degree box reads `ST_Area` = 1.0 in degrees at both the equator and 60 N,
+while on the spheroid it is 12,308.8 km2 and 6,122.9 km2. That factor of two is the whole reason for
+`architecture-context.md` §8 rule 3. PostGIS sits 0.44% below the spherical closed form at the equator and
+0.57% above it at 60 N; the test tolerance is 1%.
+
+### What was built
+
+| File | What it settles |
+|---|---|
+| `docker-compose.yml` | `postgis/postgis:17-3.5`, bound to **127.0.0.1:5433** |
+| `app/constants/geo.py` | Storage SRID, and the **two** sanctioned ways to measure an area |
+| `app/constants/investigations.py` | `WorkspaceMode` — was missing, needed by `investigations.mode` |
+| `app/constants/statuses.py` | `TraceStepState` and `SceneProcessingState` added |
+| `app/db/identifiers.py` | Prefixed ULIDs — `scn_`, `inv_`, `run_`, `stp_`, `ev_`, `clm_`, `msn_` |
+| `app/db/models/` | `base.py` + 7 modules → 8 tables |
+| `app/lib/database.py` | The one async engine, `get_session()`, `check_health()` |
+| `alembic.ini`, `migrations/env.py`, `0001_initial_schema` | Schema migrations |
+| `tests/conftest.py`, `tests/unit/test_identifiers.py`, `tests/integration/` | 21 unit + 4 integration |
+
+### Two bugs the live database found, after the offline checks were already green
+
+**Alembic silently rolled back every migration.** `migrations/env.py` gained a `_load_extension_owned_tables`
+query that runs a `SELECT` on the connection *before* `context.configure`. SQLAlchemy 2.0 begins a
+transaction on first execute; left open, Alembic's own transaction handling nests inside it and never commits
+the outer one. `alembic downgrade base` printed "Running downgrade", **exited 0, and changed nothing** — the
+version table still read `0001_initial_schema` and all eight tables were still there. Fixed with
+`connection.rollback()` immediately after the read.
+
+Two lessons worth more than the fix. **`alembic upgrade` reporting success is not evidence that anything
+was written** — check the tables. And **`uv run alembic ... | tail -2` discards alembic's exit code**,
+because the pipeline reports `tail`'s status; that is how the failure survived a `&&` chain and looked like
+a passing round trip.
+
+**The round-trip test asserted formatting, not geometry.** It compared `ST_AsText` output against the input
+string, and PostGIS normalises `77.0` to `77`. The geometry was never wrong. Now compares `ST_Equals`, SRID,
+vertex count and the four bounds.
+
+### Three bugs found before they could ship
+
+**`file_size_bytes` was `INTEGER`.** That caps at 2.147 GB, which a multi-band scene passes — so ingest
+would have failed on precisely the large acquisitions this system is for. Now `BIGINT`.
+
+**Constraint names were doubled in the migration** — `ck_claims_ck_claims_confidence_is_a_fraction_or_null`.
+The naming convention in `base.py` is `ck_%(table_name)s_%(constraint_name)s`, so a migration passing the
+*full* name gets it prefixed again. The models pass the bare name; the migration now does too. Left
+unfixed, the next `--autogenerate` would have proposed dropping and recreating every check constraint.
+
+**A config test was passing for the wrong reason.** `test_invalid_enumerated_value_is_rejected` asserts
+`pytest.raises(ValidationError)`; once `DATABASE_URL` became required, it caught *that* instead and would
+have kept passing even if the `Literal` on `environment` were deleted. Now it asserts the error names
+`environment`, and `tests/conftest.py::mandatory_environment` supplies required fields so a test can break
+exactly one thing. **This will recur** — every future required setting re-arms it. Add the field to
+`MANDATORY_ENVIRONMENT` in the same change.
+
+### Decisions worth not relitigating
+
+- **`wire_enum()` uses `values_callable`.** SQLAlchemy persists an enum member's `.name` by default, so
+  `EvidenceKind.CHANGE_MASK` would be stored as `CHANGE_MASK` while the frontend expects `change-mask`.
+  Pinned by `test_wire_enum_stores_values_not_member_names`.
+- **`native_enum=False`** — VARCHAR + CHECK, not a Postgres ENUM type. A PG enum cannot drop a value, so
+  every frontend vocabulary change would become a type migration.
+- **Prefixed ULIDs, not UUID4 and not a sequence.** Time-ordered, so the PK index appends instead of
+  fragmenting, and cursor pagination gets a stable total order without a second sort column. The prefix
+  makes "a run id passed where a scene id was expected" visible on sight.
+- **Areas are measured two ways, and `constants/geo.py` says which is which.** Vector geometry in the
+  database uses `::geography` (spheroidal, correct anywhere, no projection choice). Raster pixel counting in
+  Phase 1.4+ uses a *local* LAEA centred on the scene, because a spheroidal integral is unavailable for a
+  pixel grid and a global equal-area grid shears scene-scale data enough to bias which pixels a mask
+  contains.
+- **The role lives on `investigation_scenes`, not on `scenes`.** A partial unique index enforces one scene
+  per singular role, excluding `aux`.
+- **The investigations ↔ missions foreign keys are a real cycle**, broken with `use_alter`; the migration
+  adds both constraints after both tables exist.
+- **Geometry columns in the migration declare `spatial_index=False`**, though the models declare `True`.
+  It is a DDL-generation hint: left on, GeoAlchemy2 creates the GiST index through its own event *and* the
+  migration creates it explicitly. `migrations/env.py` excludes `idx_*` from autogenerate for the same
+  reason — GeoAlchemy2's prefix is `idx_`, ours is `ix_`.
+- **The first migration is hand-written.** `CREATE EXTENSION postgis` must precede any geometry column and
+  autogenerate cannot know that.
+- **`downgrade()` does not drop the extension.** It may predate this schema, and another schema in the same
+  database may hold geometry columns.
+
+### Port 5432 was already taken
+
+An existing Postgres is listening on this machine — the integration tests failed with
+`password authentication failed for user "aeris"` against a database that is not ours. The container is now
+on host port **5433**. Worth knowing before assuming a connection failure means the container is down.
+
+### A throwaway I did not keep
+
+I wrote a SQL differ to compare the migration's rendered DDL against DDL compiled from `Base.metadata`. It
+found the doubled constraint names and was then abandoned: **`alembic check` does this properly** and needs
+only a live database. Do not rebuild the differ.
+
+### Two things the live database changed in the setup
+
+**The image installs extensions we do not use.** `postgis/postgis` enables `postgis_topology`,
+`postgis_tiger_geocoder` and `fuzzystrmatch`, and puts `topology` and `tiger` on the `search_path` — so
+reflection saw about a hundred tables no model describes and `alembic check` reported six of them as
+"removed". `docker/postgis-init/20_trim_extensions.sql` drops all three on a fresh volume, and
+`migrations/env.py` additionally filters **extension-owned tables by querying `pg_depend`** rather than
+keeping a name list, because Supabase may install them where we cannot drop them.
+
+**The 15 enum CHECK constraints always read as "removed".** SQLAlchemy declares them through the column's
+`Enum` type rather than as table-level `CheckConstraint` objects, so autogenerate reflects them and finds no
+counterpart in the metadata. `env.py` now computes their names from the metadata and excludes them. Without
+this, `alembic check` reports the same 15 differences on an identical schema — and a check that always fails
+is a check nobody reads.
+
+**Tests share one event loop** (`asyncio_default_test_loop_scope = "session"`). The engine is a process-wide
+singleton whose pooled asyncpg connections belong to the loop that opened them; with a loop per test the
+second test to touch the database died with "Event loop is closed". One session loop also matches
+production, where the CLI calls `asyncio.run()` once.
+
+### Next session
+
+0.3 — Redis. Follow the same pattern: provision in compose, client in `app/lib/redis.py`, health probe,
+a row in `aeris doctor`, a test.
+
+---
+
 ## Session — 2026-08-30 (latest) · Phase 0.1 done. The first real code in `app/`.
 
 The documents stopped being the work. `app/` now contains code that runs, and the Phase 0.1 gate is
