@@ -15,18 +15,37 @@
 //         invisible is still capturing pointer events over the scene. The comparator handle survives,
 //         because the reveal is the thing being presented.
 //
+//         A LENS IS A FIFTH ZONE THAT BORROWS THE OTHER FOUR. The cross-modal reading contributes a
+//         section to the left panel and a verdict to the right, both as composed slots, and swaps the
+//         evidence the stage draws. It does not get a surface of its own — it used to, and the cost was
+//         that an operator reading "these two sensors disagree here" had no assistant to ask about it, no
+//         timeline to move the pair, and no draw tool to scope a question to the ground in question.
+
 //         Each zone has its own error boundary: a failure in the layer stack must cost the layer stack,
 //         not the answer and the trace as well.
 
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
 import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
 import { PanelSkeleton } from "@/components/sharedUI/functionalComponent/feedback/PanelSkeleton";
+import { AgreementSection } from "@/features/crossModal/components/AgreementSection";
+import { SensorsSection } from "@/features/crossModal/components/SensorsSection";
+import { useCrossModal } from "@/features/crossModal/hooks/use-cross-modal";
+import {
+  composeSensorLayers,
+  spotlightIdsForRow,
+} from "@/features/crossModal/lib/sensor-stage-layers";
+import type { AgreementRow } from "@/features/crossModal/types/cross-modal.types";
 import { ANALYSIS_OPERATIONS } from "@/lib/constants/analysis-operations";
+import {
+  AGREEMENT,
+  agreementQuestion,
+  CROSS_MODAL_OPERATION_ID,
+} from "@/lib/constants/cross-modal";
 import { INVESTIGATION_CAMERA } from "@/lib/constants/investigation";
 import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
 import { useGeoStageStore } from "@/store/geo-stage-store";
@@ -87,6 +106,16 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const scenePopout = useScenePopout({ investigationId, onAssignRole: assignSceneRole });
   const catalogue = useCatalogueSearch(investigationId);
   const referenceLayers = useReferenceLayers();
+  /**
+   * The cross-modal reading of this same investigation.
+   *
+   * Always called, never conditional — the hook gates its own query on the lens being open, so an
+   * investigation nobody cross-checks pays nothing for the capability being available.
+   */
+  const crossModal = useCrossModal(investigationId);
+
+  const [isSensorsExpanded, setIsSensorsExpanded] = useState(true);
+  const [isAgreementExpanded, setIsAgreementExpanded] = useState(true);
 
   const sceneSlots = useMemo(() => investigation?.sceneSlots ?? [], [investigation]);
   const acquisitions = useMemo(() => investigation?.acquisitions ?? [], [investigation]);
@@ -127,6 +156,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const setSpotlightClaimId = useInvestigationStore((state) => state.setSpotlightClaimId);
   const inspectedFeature = useInvestigationStore((state) => state.inspectedFeature);
   const setInspectedFeature = useInvestigationStore((state) => state.setInspectedFeature);
+  const setCrossModalLensActive = useInvestigationStore((state) => state.setCrossModalLensActive);
 
   /**
    * The clicked feature, its layer, and every claim that rests on it.
@@ -156,12 +186,36 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const toggleSoloLayer = useInvestigationStore((state) => state.toggleSoloLayer);
   const togglePlanStep = useInvestigationStore((state) => state.togglePlanStep);
 
+  /**
+   * The evidence the stage draws while the lens is open: both sensors' stacks, radar beneath optical.
+   *
+   * Null when the lens is closed, which hands the stage straight back to the run's own layers. Composed
+   * here and passed DOWN rather than pushed by a second binding hook — one writer per stage.
+   */
+  const sensorLayers = useMemo(
+    () =>
+      crossModal.isActive
+        ? composeSensorLayers({ result: crossModal.result, soloSensor: crossModal.soloSensor })
+        : null,
+    [crossModal.isActive, crossModal.result, crossModal.soloSensor],
+  );
+
+  const agreementSpotlightIds = useMemo(
+    () =>
+      crossModal.isActive
+        ? spotlightIdsForRow(crossModal.result, crossModal.selectedRowId)
+        : null,
+    [crossModal.isActive, crossModal.result, crossModal.selectedRowId],
+  );
+
   useSceneStageBinding({
     investigation,
     layers,
     baseLayers: timeline.layers,
     referenceLayers,
     comparatorOverride: timeline.comparatorOverride,
+    sensorLayers,
+    spotlightFeatureIds: agreementSpotlightIds,
     featureIdsForClaim,
     // The scene is lit for the moment the comparison observation was taken, so its shadows agree with its
     // pixels rather than with the operator's wall clock.
@@ -193,11 +247,21 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const handleRunOperation = useCallback(
     (operationId: string) => {
       const operation = ANALYSIS_OPERATIONS.find((candidate) => candidate.id === operationId);
-      if (operation) {
-        ask(operation.prompt, { operationId });
+      if (!operation) {
+        return;
       }
+
+      // A lens re-reads evidence that already exists. Dispatching an analysis run for one would put a
+      // trace step on the spine for work no model performed, which is the opposite of auditable.
+      // Cross-modal is the only lens today; a second would turn this into a lookup rather than a branch.
+      if (operation.kind === "lens") {
+        setCrossModalLensActive(!crossModal.isActive);
+        return;
+      }
+
+      ask(operation.prompt, { operationId });
     },
-    [ask],
+    [ask, crossModal.isActive, setCrossModalLensActive],
   );
 
   /** Turns the popover's window into the temporal query the archive is actually asked. */
@@ -269,6 +333,49 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
     [autonomous],
   );
 
+  /**
+   * Hands an agreement row's question to the assistant.
+   *
+   * The capability that was impossible while the cross-modal reading lived on its own route: the ledger
+   * could name a conflict and tell the operator to resolve it with a third observation, and there was no
+   * composer on that surface to act on the advice.
+   */
+  const handleAskAboutRow = useCallback(
+    (row: AgreementRow) => {
+      ask(
+        agreementQuestion({
+          stateLabel: AGREEMENT[row.state].label,
+          label: row.label,
+          reason: row.reason,
+        }),
+      );
+    },
+    [ask],
+  );
+
+  /** Frames every feature BOTH sensors contributed to a row, not just the half drawn on top. */
+  const handleFocusRow = useCallback(
+    (row: AgreementRow) => {
+      if (!crossModal.result) {
+        return;
+      }
+
+      const sensorLayersById = Object.fromEntries(
+        [...crossModal.result.optical.layers, ...(crossModal.result.radar?.layers ?? [])].map(
+          (layer) => [layer.id, layer],
+        ),
+      );
+      const featureIds = new Set([...row.opticalFeatureIds, ...row.radarFeatureIds]);
+      const bounds = unionOfFeatureBounds(sensorLayersById, featureIds);
+      if (bounds) {
+        useGeoStageStore.getState().handle?.camera.flyToBoundingBox(bounds, {
+          durationMs: INVESTIGATION_CAMERA.localFlightDurationSeconds * 1000,
+        });
+      }
+    },
+    [crossModal.result],
+  );
+
   if (error) {
     return (
       <div className="pointer-events-auto absolute inset-0 flex items-center justify-center p-6">
@@ -329,6 +436,27 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                   readiness={analysisReadiness}
                   onRunOperation={handleRunOperation}
                   activeOverlayIds={activeOverlayIds}
+                  activeLensIds={crossModal.isActive ? [CROSS_MODAL_OPERATION_ID] : []}
+                  sensorsSection={
+                    crossModal.isActive ? (
+                      <SensorsSection
+                        result={crossModal.result}
+                        isLoading={crossModal.isLoading}
+                        error={crossModal.error}
+                        soloSensor={crossModal.soloSensor}
+                        onToggleSolo={(sensor) =>
+                          crossModal.setSoloSensor(
+                            crossModal.soloSensor === sensor ? null : sensor,
+                          )
+                        }
+                        polarisation={crossModal.polarisation}
+                        onPolarisationChange={crossModal.setPolarisation}
+                        isExpanded={isSensorsExpanded}
+                        onToggleExpanded={() => setIsSensorsExpanded((current) => !current)}
+                        onClose={() => setCrossModalLensActive(false)}
+                      />
+                    ) : undefined
+                  }
                   sceneSlots={sceneSlots}
                   acquisitions={acquisitions}
                   roleBySceneId={roleBySceneId}
@@ -408,6 +536,22 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
             >
               <PanelErrorBoundary panelName="AERIS">
                 <AnswerPanel
+                  verdictSection={
+                    crossModal.isActive ? (
+                      <AgreementSection
+                        result={crossModal.result}
+                        isLoading={crossModal.isLoading}
+                        counts={crossModal.counts}
+                        rows={crossModal.rows}
+                        selectedRowId={crossModal.selectedRowId}
+                        onSelectRow={crossModal.selectRow}
+                        isExpanded={isAgreementExpanded}
+                        onToggleExpanded={() => setIsAgreementExpanded((current) => !current)}
+                        onAskAboutRow={handleAskAboutRow}
+                        onFocusRow={handleFocusRow}
+                      />
+                    ) : undefined
+                  }
                   runs={runs}
                   isRunning={isRunning}
                   claimsById={graph.claimsById}

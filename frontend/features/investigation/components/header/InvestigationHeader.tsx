@@ -14,7 +14,7 @@
 
 "use client";
 
-import { ArrowLeft, Check, Copy, FileText, Presentation } from "lucide-react";
+import { ArrowLeft, Check, Copy, FileText, Presentation, Radar } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { dispatchCommand } from "@/lib/command-bus";
 import { COMMAND_IDS } from "@/lib/constants/commands";
+import { CROSS_MODAL_OPERATION_ID } from "@/lib/constants/cross-modal";
 import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,9 @@ export function InvestigationHeader({
 }: InvestigationHeaderProps) {
   const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
   const [hasCopiedTraceId, setHasCopiedTraceId] = useState(false);
+
+  const hasRadarScene = investigation.sceneSlots.some((slot) => slot.role === "sar");
+  const isCrossModalOpen = useInvestigationStore((state) => state.crossModalLens.isActive);
 
   const copyTraceId = async () => {
     try {
@@ -96,6 +100,40 @@ export function InvestigationHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        {/*
+          The cross-modal reading, offered only where a radar scene is actually attached — without one
+          there is nothing to corroborate against.
+
+          A TOGGLE, NOT A LINK. It used to navigate to a separate surface, which cost the operator the
+          assistant, the timeline and the draw tools at exactly the moment a disagreement gave them
+          something to ask about. Now it changes how this workspace reads its own evidence, and pressing it
+          again puts everything back.
+        */}
+        {hasRadarScene ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Cross-modal agreement"
+                aria-pressed={isCrossModalOpen}
+                onClick={() =>
+                  void dispatchCommand(COMMAND_IDS.investigation.runOperation, {
+                    operationId: CROSS_MODAL_OPERATION_ID,
+                  })
+                }
+                className={cn(isCrossModalOpen && "text-aeris-teal")}
+              >
+                <Radar />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-56">
+              Hold the optical and radar analyses apart, and see where the two sensors agree
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

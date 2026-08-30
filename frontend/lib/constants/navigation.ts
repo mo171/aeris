@@ -1,18 +1,27 @@
-// lib/constants/navigation.ts — the seven AERIS surfaces, as data. Drives the nav rail and the palette.
+// lib/constants/navigation.ts — the six AERIS surfaces, as data. Drives the nav rail and the palette.
 //
 // what  : Declarative definition of every application surface: route, label, icon, description, availability.
 // where : Read by components/sharedUI/functionalComponent/appShell/NavigationRail.tsx and by the
 //         `nav.goto` command, which turns each entry into an agent-invocable command automatically.
 // how   : `isAvailable: false` marks surfaces not yet built. The rail renders them dimmed and
-//         non-interactive rather than linking to a 404 — a deliberate anti-glitch measure. Flipping the
-//         flag is the only change needed when a page ships.
+//         non-interactive rather than linking to a 404 — a deliberate anti-glitch measure.
+//
+//         SHIPPING A PAGE IS MORE THAN FLIPPING THE FLAG, and this comment used to claim otherwise. A
+//         surface needs its route, its INDEX route (the rail links to a place, not to a record), the flag,
+//         and an icon that is not a duplicate of another row's. Three of those four are invisible in the
+//         page's own diff, which is exactly how a finished page ends up still reading "Not built yet".
+//
+//         EVERY ROW HERE MUST BE A PLACE. Cross-modal was listed as a surface and was not one — it reads
+//         an investigation that already exists, so it needed an id the rail could not supply, and the
+//         index route papering over that was a symptom rather than a fix. It now lives in the
+//         Investigation Workspace as a lens, and the test this file applies is: could an operator arrive
+//         here with nothing open? If not, it is not a rail item.
 
 import {
   Cpu,
   FileSearch,
   GitCompareArrows,
   Globe,
-  Layers2,
   Radar,
   ScanSearch,
   type LucideIcon,
@@ -41,18 +50,11 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
   {
     id: "investigation",
     label: "Investigation",
-    description: "Analyse a scene with overlays, answers and execution traces",
+    description:
+      "Analyse a scene with overlays, answers, execution traces and cross-modal agreement",
     href: ROUTES.INVESTIGATION,
     icon: ScanSearch,
     isAvailable: true,
-  },
-  {
-    id: "cross-modal",
-    label: "Cross-Modal Lab",
-    description: "Optical and SAR side by side with joint reasoning",
-    href: ROUTES.CROSS_MODAL,
-    icon: Layers2,
-    isAvailable: false,
   },
   {
     id: "temporal",

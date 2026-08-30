@@ -90,6 +90,9 @@ const ARCHIVE_START = Date.UTC(2018, 1, 6, 5, 24);
 /** Zoom level a quicklook tile is taken at. 12 covers roughly a city and reads as a recognisable place. */
 const QUICKLOOK_ZOOM = 12;
 
+/** How often the archive carries a radar companion — every Nth optical pass. */
+const RADAR_COMPANION_EVERY = 4;
+
 const CHANGE_POLYGON_COUNT = 11;
 const DETECTION_BOX_COUNT = 18;
 const CLOUD_BLOB_COUNT = 3;
@@ -396,9 +399,12 @@ function generate(
  * being tasked. A perfectly even series would make the timeline look synthetic and would hide the
  * gap-handling the interface exists to do.
  *
- * Radar is interleaved rather than given its own cadence, so the operator blocked by cloud in the optical
- * lane has somewhere to drop to for roughly the same window — the move the two lanes exist to make
- * obvious.
+ * Radar is given its OWN cadence rather than replacing optical entries, because that is how the orbits
+ * actually work: Sentinel-1 flies an independent 6–12 day repeat, so near any optical date there is a
+ * radar pass within roughly a fortnight. Stealing every fourth optical slot instead — which this
+ * generator used to do — left radar passes hundreds of days from the nearest optical one, which made the
+ * Cross-Modal Lab refuse every pair it was ever offered and made the "drop to radar when cloud blocks
+ * you" move impossible to demonstrate.
  */
 function buildAcquisitions(
   investigationId: string,
@@ -406,15 +412,16 @@ function buildAcquisitions(
   area: (typeof MOCK_AREAS)[number],
 ): Acquisition[] {
   let capturedMs = ARCHIVE_START;
+  const acquisitions: Acquisition[] = [];
 
-  return Array.from({ length: ACQUISITION_COUNT }, (_, index) => {
+  const optical = Array.from({ length: ACQUISITION_COUNT }, (_, index) => {
     if (index > 0) {
       const interval = ACQUISITION_INTERVAL_DAYS[(index - 1) % ACQUISITION_INTERVAL_DAYS.length];
       // A few days of jitter on top, so no two archives land on the same calendar dates.
       capturedMs += (interval + Math.floor(randomFloat(random, -6, 6))) * 86_400_000;
     }
 
-    const isSar = index % 4 === 3;
+    const isSar = false;
     // Cloud is bimodal, not uniform: most optical passes over a place are usable and a minority are
     // written off entirely. A uniform spread produces an archive with no clear scenes at either end,
     // which is both unrealistic and useless for a demo — every pair would open degraded.
@@ -447,6 +454,35 @@ function buildAcquisitions(
       isAvailable: cloud === null || cloud < 40,
     };
   });
+
+  acquisitions.push(...optical);
+
+  // A radar companion within the revisit window of every few optical passes. Offset by a handful of days
+  // rather than landing on the same date, because two satellites do not overfly together — and the
+  // offset is exactly what the Lab's pair advisory exists to report.
+  optical.forEach((acquisition, index) => {
+    if (index % RADAR_COMPANION_EVERY !== 0) {
+      return;
+    }
+
+    const offsetDays = Math.round(randomFloat(random, 2, 9));
+    acquisitions.push({
+      ...acquisition,
+      id: `${acquisition.id}-sar`,
+      sceneId: `${acquisition.sceneId}-sar`,
+      capturedAt: new Date(new Date(acquisition.capturedAt).getTime() + offsetDays * 86_400_000).toISOString(),
+      modality: "sar" as const,
+      sensorPlatform: "Sentinel-1A",
+      groundSampleDistanceMeters: 20,
+      // Radar has no cloud reading at all. Null rather than zero — a different statement from "clear".
+      cloudCoverPercentage: null,
+      isAvailable: true,
+    });
+  });
+
+  return acquisitions.sort(
+    (left, right) => new Date(left.capturedAt).getTime() - new Date(right.capturedAt).getTime(),
+  );
 }
 
 function buildSceneLayers(
@@ -1201,6 +1237,31 @@ export function getMockEvidenceGraph(investigationId: string): EvidenceGraph | n
     evidence: [],
     layers: generated.layers.filter((layer) => layer.kind === "raster-tiles"),
     generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * The generated analysis products, independent of whether a run has streamed yet.
+ *
+ * `getMockEvidenceGraph` deliberately withholds these until a run delivers them, because in the
+ * workspace the arrival of evidence IS the analysis happening. The Cross-Modal Lab has the opposite
+ * premise — it opens on two analyses that already completed and reports on their agreement — so it needs
+ * the products directly rather than an empty graph that would make both sensors look silent.
+ */
+export function getMockAnalysisProducts(investigationId: string): {
+  layers: EvidenceLayer[];
+  evidence: EvidenceItem[];
+  claims: Claim[];
+} | null {
+  const generated = ensure(investigationId);
+  if (!generated) {
+    return null;
+  }
+
+  return {
+    layers: generated.layers,
+    evidence: generated.evidence,
+    claims: generated.claims,
   };
 }
 

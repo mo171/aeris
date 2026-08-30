@@ -33,12 +33,14 @@ interface LeftPanelTabsProps extends React.ComponentProps<typeof InputsPanel> {
   readiness: AnalysisReadiness;
   onRunOperation: (operationId: string) => void;
   activeOverlayIds: readonly string[];
+  activeLensIds: readonly string[];
 }
 
 export function LeftPanelTabs({
   readiness,
   onRunOperation,
   activeOverlayIds,
+  activeLensIds,
   ...inputsProps
 }: LeftPanelTabsProps) {
   const [tab, setTab] = useState<LeftPanelTab>("inputs");
@@ -83,6 +85,7 @@ export function LeftPanelTabs({
           readiness={readiness}
           onRunOperation={onRunOperation}
           activeOverlayIds={activeOverlayIds}
+          activeLensIds={activeLensIds}
         />
       </div>
     </div>

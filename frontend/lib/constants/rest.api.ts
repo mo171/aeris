@@ -48,6 +48,15 @@ export const REST_API = {
     plan: (investigationId: string) => `${API_VERSION_PREFIX}/investigations/${investigationId}/plan`,
     report: (investigationId: string) =>
       `${API_VERSION_PREFIX}/investigations/${investigationId}/report`,
+    /**
+     * The cross-modal verdict: two independent per-sensor runs and their agreement.
+     *
+     * A separate endpoint from `runs` rather than a mode of it, because the shape is genuinely different
+     * — two analyses and a comparison, not one analysis. Folding it into the run stream would force every
+     * temporal consumer to handle a dual-provenance claim it will never receive.
+     */
+    crossModal: (investigationId: string) =>
+      `${API_VERSION_PREFIX}/investigations/${investigationId}/cross-modal`,
   },
   regions: {
     suggestions: `${API_VERSION_PREFIX}/regions/suggestions`,

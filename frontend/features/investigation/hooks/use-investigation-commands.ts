@@ -123,7 +123,7 @@ export function useInvestigationCommands({
         id: COMMAND_IDS.investigation.runOperation,
         title: "Run a named analysis",
         description:
-          "Run one of the system's analyses directly — change detection, object detection, land-cover segmentation, NDVI, NDWI, NDBI, SAR backscatter or area statistics — rather than phrasing it as a question. Scoped to the drawn region if there is one.",
+          "Run one of the system's analyses directly — change detection, object detection, land-cover segmentation, NDVI, NDWI, NDBI, SAR backscatter or area statistics — rather than phrasing it as a question. Scoped to the drawn region if there is one. The cross-modal entry is a reading rather than a run: it toggles the optical-versus-radar agreement view over evidence that already exists, and dispatching it twice closes it again.",
         group: "investigation",
         keywords: [
           "change detection",
@@ -135,6 +135,9 @@ export function useInvestigationCommands({
           "spectral index",
           "sar",
           "statistics",
+          "cross-modal",
+          "agreement",
+          "corroborate",
         ],
         icon: Search,
         paramsSchema: z.object({
@@ -144,9 +147,21 @@ export function useInvestigationCommands({
         }),
         handler: ({ operationId }) => {
           const operation = ANALYSIS_OPERATIONS.find((candidate) => candidate.id === operationId);
-          if (operation) {
-            ask(operation.prompt, { operationId });
+          if (!operation) {
+            return;
           }
+
+          // A lens re-reads evidence that already exists, so it must not dispatch a run. The branch is
+          // duplicated from InvestigationScreen deliberately: this handler is the AGENT's entry point and
+          // has no component above it, and a lens that quietly ran an analysis when invoked by the agent
+          // would put a trace step on the spine for work no model performed.
+          if (operation.kind === "lens") {
+            const store = useInvestigationStore.getState();
+            store.setCrossModalLensActive(!store.crossModalLens.isActive);
+            return;
+          }
+
+          ask(operation.prompt, { operationId });
         },
         isPaletteVisible: false,
       }),

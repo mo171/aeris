@@ -31,6 +31,7 @@ import type {
   StageDrawTool,
   StageProjection,
 } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
+import type { Polarisation, SensorId } from "@/lib/constants/cross-modal";
 import { INVESTIGATION_LIMITS, SCENE_RELIEF } from "@/lib/constants/investigation";
 import type { BuildingStyleId } from "@/lib/constants/overlays";
 import { TIMELINE_PLAYBACK, TIMELINE_QUERY } from "@/lib/constants/timeline";
@@ -43,6 +44,37 @@ import type {
 import type { InsufficientEvidence } from "../types/evidence.types";
 import type { WorkspaceMode as InvestigationMode } from "../types/investigation.types";
 import type { LayerRenderMode } from "../types/layer.types";
+
+/**
+ * The cross-modal lens — a second READING of the evidence already in the workspace.
+ *
+ * It lives in this store rather than in a component because three separate subtrees act on it: the Toolbox
+ * row and the header button toggle it, the left panel renders the sensor cards from it, and the stage
+ * binding composes a different layer stack while it is on. It is also reachable from the command bus, and
+ * commands dispatch into stores rather than into a component's useState.
+ *
+ * `displacedBinding` is the load-bearing field. Turning the lens on forces the comparator to radar-left /
+ * optical-right; without remembering what it replaced, turning the lens OFF would leave the split wrong
+ * and the operator with no way to know why.
+ */
+export interface CrossModalLensState {
+  isActive: boolean;
+  /** Which sensor the stage is showing alone, or null for the split. Never re-runs anything. */
+  soloSensor: SensorId | null;
+  /** The agreement row under inspection. Drives the scene spotlight across both sensors' features. */
+  selectedRowId: string | null;
+  polarisation: Polarisation;
+  /** The comparator binding the lens displaced, restored when it closes. */
+  displacedBinding: InvestigationMode | null;
+}
+
+const CLOSED_CROSS_MODAL_LENS: CrossModalLensState = {
+  isActive: false,
+  soloSensor: null,
+  selectedRowId: null,
+  polarisation: "VV",
+  displacedBinding: null,
+};
 
 interface InvestigationState {
   investigationId: string | null;
@@ -65,6 +97,9 @@ interface InvestigationState {
   terrainExaggeration: number;
   isPlaybackRunning: boolean;
   isPresentMode: boolean;
+
+  /** Cross-modal reading of the same evidence. See CrossModalLensState. */
+  crossModalLens: CrossModalLensState;
 
   /**
    * Visibility and opacity for the reference catalogue — terrain shading, boundaries, roads.
@@ -160,6 +195,11 @@ interface InvestigationState {
   setPlaybackRunning: (isRunning: boolean) => void;
   togglePresentMode: () => void;
 
+  setCrossModalLensActive: (isActive: boolean) => void;
+  setCrossModalSoloSensor: (sensor: SensorId | null) => void;
+  selectAgreementRow: (rowId: string | null) => void;
+  setCrossModalPolarisation: (polarisation: Polarisation) => void;
+
   setReferenceLayerVisibility: (layerId: string, isVisible: boolean) => void;
   setReferenceLayerOpacity: (layerId: string, opacity: number) => void;
 
@@ -232,6 +272,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   isPlaybackRunning: false,
   isPresentMode: false,
 
+  crossModalLens: CLOSED_CROSS_MODAL_LENS,
+
   referenceLayerState: {},
   layerVisibilityOverrides: {},
   layerOpacityOverrides: {},
@@ -273,6 +315,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       terrainExaggeration: SCENE_RELIEF.defaultTerrainExaggeration,
       isPlaybackRunning: false,
       isPresentMode: false,
+      crossModalLens: CLOSED_CROSS_MODAL_LENS,
       referenceLayerState: {},
       layerVisibilityOverrides: {},
       layerOpacityOverrides: {},
@@ -314,6 +357,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       activeRegionId: null,
       activeDrawTool: null,
       isPresentMode: false,
+      crossModalLens: CLOSED_CROSS_MODAL_LENS,
     }),
 
   setComparatorBinding: (comparatorBinding) => set({ comparatorBinding }),
@@ -328,6 +372,47 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   setTerrainExaggeration: (terrainExaggeration) => set({ terrainExaggeration }),
   setPlaybackRunning: (isPlaybackRunning) => set({ isPlaybackRunning }),
   togglePresentMode: () => set((state) => ({ isPresentMode: !state.isPresentMode })),
+
+  // Turning the lens on takes the comparator with it and remembers what it took, so closing the lens puts
+  // the operator back exactly where they were rather than leaving a radar/optical split behind on a
+  // temporal investigation. Selection resets on close because a row id from one reading means nothing in
+  // the next — the same rule enterInvestigation follows for everything else view-scoped.
+  setCrossModalLensActive: (isActive) =>
+    set((state) => {
+      if (isActive === state.crossModalLens.isActive) {
+        return {};
+      }
+
+      if (isActive) {
+        return {
+          comparatorBinding: "crossModal" as InvestigationMode,
+          crossModalLens: {
+            ...state.crossModalLens,
+            isActive: true,
+            displacedBinding: state.comparatorBinding,
+          },
+        };
+      }
+
+      return {
+        comparatorBinding: state.crossModalLens.displacedBinding ?? state.comparatorBinding,
+        crossModalLens: CLOSED_CROSS_MODAL_LENS,
+      };
+    }),
+
+  setCrossModalSoloSensor: (soloSensor) =>
+    set((state) => ({ crossModalLens: { ...state.crossModalLens, soloSensor } })),
+
+  selectAgreementRow: (rowId) =>
+    set((state) => ({
+      crossModalLens: {
+        ...state.crossModalLens,
+        selectedRowId: state.crossModalLens.selectedRowId === rowId ? null : rowId,
+      },
+    })),
+
+  setCrossModalPolarisation: (polarisation) =>
+    set((state) => ({ crossModalLens: { ...state.crossModalLens, polarisation } })),
 
   setReferenceLayerVisibility: (layerId, isVisible) =>
     set((state) => ({

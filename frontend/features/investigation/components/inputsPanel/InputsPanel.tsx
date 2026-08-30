@@ -12,6 +12,11 @@
 //         Layers are presented as evidence rather than as a generic layer tree: every row states the model
 //         and version behind it. See EvidenceLayerRow for why that framing is load-bearing.
 //
+//         A LENS CONTRIBUTES ITS SECTION AS A SLOT. `sensorsSection` arrives as an already-composed
+//         element rather than as cross-modal data this component would have to understand. That keeps the
+//         dependency one-way — the workspace composes the lens, the lens knows nothing about this panel —
+//         and means a second reading of the evidence later costs a prop, not a rewrite of this file.
+//
 //         FINDINGS AND MASKS ARE SEPARATE SECTIONS, and the split is epistemic rather than cosmetic. A
 //         change mask asserts that something happened; a cloud mask asserts that nothing can be asserted.
 //         They were sharing one list, which put an obscuration and a conclusion on the same footing — the
@@ -46,6 +51,13 @@ import { RegionList } from "./RegionList";
 import { SceneSlotCard } from "./SceneSlotCard";
 
 interface InputsPanelProps {
+  /**
+   * A lens's own section, rendered above the inputs when one is open.
+   *
+   * Top of the panel deliberately: while the cross-modal lens is open, WHICH SENSOR SAW WHAT is the frame
+   * every row below has to be read through, so it cannot sit under four sections the operator scrolls past.
+   */
+  sensorsSection?: React.ReactNode;
   sceneSlots: InvestigationSceneSlot[];
   acquisitions: Acquisition[];
   roleBySceneId: Record<string, SceneRole>;
@@ -60,6 +72,7 @@ interface InputsPanelProps {
 }
 
 export function InputsPanel({
+  sensorsSection,
   sceneSlots,
   acquisitions,
   roleBySceneId,
@@ -107,8 +120,14 @@ export function InputsPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
+      {sensorsSection}
+
       <section
-        className={cn("flex flex-col", isInputsExpanded ? "min-h-0 flex-1" : "shrink-0")}
+        className={cn(
+          "flex flex-col",
+          sensorsSection ? "border-t border-border-soft pt-2" : undefined,
+          isInputsExpanded ? "min-h-0 flex-1" : "shrink-0",
+        )}
       >
         <SectionHeader
           title="Inputs"

@@ -1,6 +1,6 @@
 // lib/constants/routes.ts — every in-app URL, in one registry. No route string is ever written inline.
 //
-// what  : Canonical route paths for the seven AERIS application surfaces.
+// what  : Canonical route paths for the six AERIS application surfaces.
 // where : Consumed by lib/constants/navigation.ts, the command bus `nav.goto` command, and any <Link>.
 // how   : Only Mission Command exists today; the rest are declared now so navigation, command ids and
 //         analytics never have to be renamed when those pages land.
@@ -8,7 +8,6 @@
 export const ROUTES = {
   MISSION_COMMAND: "/",
   INVESTIGATION: "/investigation",
-  CROSS_MODAL: "/cross-modal",
   TEMPORAL: "/temporal",
   EVIDENCE: "/evidence",
   MODEL_OBSERVATORY: "/models",
@@ -28,3 +27,16 @@ export const buildRoute = {
   investigationDetail: (investigationId: string) =>
     `${ROUTES.INVESTIGATION}/${investigationId}` as const,
 } as const;
+
+/*
+ * THERE IS NO CROSS-MODAL ROUTE, deliberately.
+ *
+ * It had one — /cross-modal/<investigationId> — and the route itself was the mistake. A cross-modal
+ * verdict reads an EXISTING investigation: same evidence graph, same scenes, same area of interest, only a
+ * different reading of them. Giving that reading its own URL made the operator leave the workspace, and
+ * with it the assistant, the timeline and the draw tools — at exactly the moment a disagreement between
+ * two sensors gave them something to ask, re-pair, or scope a question to.
+ *
+ * It is now a lens inside the Investigation Workspace, reachable from the Toolbox, the command palette and
+ * the header. A rail names PLACES; cross-modal was never one.
+ */

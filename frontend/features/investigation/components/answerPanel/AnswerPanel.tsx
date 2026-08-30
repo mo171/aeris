@@ -17,6 +17,12 @@
 //         cannot return to has not been audited. Each row carries when it ran, how long it took and what
 //         confidence it reached, so the history reads as a record rather than as a list of old questions.
 //
+//         A LENS'S VERDICT SITS ABOVE THE RUNS, as a slot this component does not interpret. The two are
+//         different kinds of statement and both belong on screen: a verdict is a standing fact about the
+//         evidence, a run is an answer to a question somebody asked. Replacing the runs with it would take
+//         away the ability to ask about what the verdict just said, which is the entire reason the
+//         cross-modal reading lives inside the workspace rather than on a surface of its own.
+//
 //         A drawn region appears as a chip above the composer. The operator must be able to see that the
 //         next question is scoped before they ask it — discovering it afterwards, from a surprisingly
 //         narrow answer, is the kind of thing that destroys trust in a tool like this.
@@ -50,6 +56,8 @@ const STARTER_PROMPTS: readonly string[] = [
 ];
 
 interface AnswerPanelProps {
+  /** A lens's standing conclusion, rendered above the run history. See the note above. */
+  verdictSection?: React.ReactNode;
   runs: AnalysisRun[];
   isRunning: boolean;
   claimsById: Record<string, Claim>;
@@ -65,6 +73,7 @@ interface AnswerPanelProps {
 }
 
 export function AnswerPanel({
+  verdictSection,
   runs,
   isRunning,
   claimsById,
@@ -119,6 +128,8 @@ export function AnswerPanel({
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        {verdictSection ? <div className="mb-3">{verdictSection}</div> : null}
+
         {priorRuns.length > 0 ? (
           <ol className="mb-3 flex flex-col gap-0.5 border-b border-border-soft pb-2">
             {priorRuns.map((run) => (

@@ -38,6 +38,8 @@ export const QUERY_KEYS = {
     plan: (investigationId: string, fromClaimId: string) =>
       ["investigations", "plan", investigationId, fromClaimId] as const,
     report: (investigationId: string) => ["investigations", "report", investigationId] as const,
+    crossModal: (investigationId: string) =>
+      ["investigations", "cross-modal", investigationId] as const,
   },
   regions: {
     all: ["regions"] as const,

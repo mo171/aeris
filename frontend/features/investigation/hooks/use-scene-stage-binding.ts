@@ -18,6 +18,11 @@
 //         Layers are pushed as a whole list on every change, not diffed here. The stage does its own
 //         diffing against what it already holds, which keeps this hook declarative and means an operator
 //         toggling a layer never causes a rebuild of the ones around it.
+//
+//         THIS IS THE ONLY WRITER. The cross-modal lens supplies its layers through `sensorLayers` and its
+//         highlight through `spotlightFeatureIds` rather than owning a second binding hook of its own.
+//         Two hooks calling setLayers against one stage resolve by whichever effect ran last, which is a
+//         race, not a design — so a reading of the evidence composes INTO this hook instead of beside it.
 
 "use client";
 
@@ -54,8 +59,23 @@ interface SceneStageBindingOptions {
    * state on arrival and whenever the cross-modal binding is active.
    */
   comparatorOverride?: { left: string | null; right: string | null } | null;
+  /**
+   * Evidence layers supplied by a lens, replacing the run's own.
+   *
+   * Non-null only while the cross-modal lens is open, where the two sensors' stacks are composed by
+   * composeSensorLayers. Reference and base layers are untouched — a lens changes which evidence is drawn,
+   * never the ground it is drawn on.
+   */
+  sensorLayers?: readonly StageLayer[] | null;
   /** Resolves the claim under the pointer into the stage features that support it. */
   featureIdsForClaim: (claimId: string) => string[];
+  /**
+   * Features to spotlight instead of the ones behind the hovered claim.
+   *
+   * The cross-modal lens highlights by agreement ROW, which spans both sensors and therefore has no single
+   * claim behind it. Non-null wins over the claim spotlight; null hands control back.
+   */
+  spotlightFeatureIds?: readonly string[] | null;
   /**
    * Capture time of the observation currently on the right of the comparator.
    *
@@ -72,7 +92,9 @@ export function useSceneStageBinding({
   baseLayers,
   referenceLayers,
   comparatorOverride,
+  sensorLayers,
   featureIdsForClaim,
+  spotlightFeatureIds,
   illuminationTime,
 }: SceneStageBindingOptions): void {
   const stage = useGeoStageStore((state) => state.handle);
@@ -136,12 +158,16 @@ export function useSceneStageBinding({
 
     // A peeked artefact is forced visible for as long as the operator is holding that trace step open.
     // It is a temporary inspection, so it never becomes a persistent visibility override in the store.
-    const renderedLayers =
+    const withArtefact =
       artefactLayerId === null
         ? layers
         : layers.map((layer) =>
             layer.id === artefactLayerId ? { ...layer, isVisible: true } : layer,
           );
+
+    // A lens substitutes the EVIDENCE only. Everything the evidence is read against — relief, the
+    // operator's imagery, boundaries — keeps its place in the stack below.
+    const renderedLayers: readonly StageLayer[] = sensorLayers ?? withArtefact;
 
     // Draw order IS descriptor order, so this list is the stack from the ground up: relief, then the
     // operator's imagery, then annotation over it, then the evidence on top of everything.
@@ -152,7 +178,7 @@ export function useSceneStageBinding({
       ...(referenceLayers?.over ?? []),
       ...renderedLayers.filter((layer) => layer.kind !== "raster-tiles"),
     ]);
-  }, [artefactLayerId, baseLayers, layers, referenceLayers, stage]);
+  }, [artefactLayerId, baseLayers, layers, referenceLayers, sensorLayers, stage]);
 
   useEffect(() => {
     stage?.sceneLayers.setRenderMode(renderMode);
@@ -236,13 +262,20 @@ export function useSceneStageBinding({
       return;
     }
 
+    // An explicit feature list wins. The lens highlights by agreement row, which spans both sensors and so
+    // has no single claim behind it to resolve from.
+    if (spotlightFeatureIds) {
+      stage.sceneLayers.setSpotlight([...spotlightFeatureIds]);
+      return;
+    }
+
     if (spotlightClaimId === null) {
       stage.sceneLayers.setSpotlight(null);
       return;
     }
 
     stage.sceneLayers.setSpotlight(featureIdsForClaimRef.current(spotlightClaimId));
-  }, [spotlightClaimId, stage]);
+  }, [spotlightClaimId, spotlightFeatureIds, stage]);
 
   // ── Drawing and measurement ──────────────────────────────────────────────────────────────────────
   useEffect(() => {

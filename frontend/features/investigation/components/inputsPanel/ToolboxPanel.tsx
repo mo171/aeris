@@ -27,6 +27,11 @@
 //         the workspace can DO; overlays say what it can SHOW, which is a different question an operator
 //         cannot otherwise answer — the layer stack only ever lists what a run happened to produce.
 //
+//         A LENS ROW IS A TOGGLE, NOT A BUTTON. Cross-modal agreement re-reads evidence that already
+//         exists rather than dispatching a model, so it presses in and stays pressed while it is open.
+//         Rendering it as a one-shot Play control would promise a run that never happens and give the
+//         operator no way to see, from here, that the reading is currently on.
+//
 //         Operations that need arguments are shown but not run from here. A list cannot collect a layer id
 //         or a date, and a button that silently guesses one is worse than a button that explains it needs
 //         the scene. Those rows say where the argument comes from instead — which is also the honest
@@ -34,7 +39,7 @@
 
 "use client";
 
-import { Play, Sparkles, Terminal } from "lucide-react";
+import { Eye, Play, Sparkles, Terminal } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
@@ -75,9 +80,16 @@ interface ToolboxPanelProps {
   onRunOperation: (operationId: string) => void;
   /** Catalogue keys of the overlays currently drawn, so the browser can mark them. */
   activeOverlayIds: readonly string[];
+  /** Ids of the lens operations currently open, so their rows read as pressed rather than as buttons. */
+  activeLensIds: readonly string[];
 }
 
-export function ToolboxPanel({ readiness, onRunOperation, activeOverlayIds }: ToolboxPanelProps) {
+export function ToolboxPanel({
+  readiness,
+  onRunOperation,
+  activeOverlayIds,
+  activeLensIds,
+}: ToolboxPanelProps) {
   const commands = useRegisteredCommands();
   const [query, setQuery] = useState("");
 
@@ -149,22 +161,29 @@ export function ToolboxPanel({ readiness, onRunOperation, activeOverlayIds }: To
             {operations.map(({ operation, unmet }) => {
               const isRunnable = unmet.length === 0;
               const stage = getPipelineStage(operation.stageCode);
+              const isLens = operation.kind === "lens";
+              const isLensOpen = isLens && activeLensIds.includes(operation.id);
+              const ActionIcon = isLens ? Eye : Play;
 
               return (
                 <button
                   key={operation.id}
                   type="button"
                   disabled={!isRunnable}
+                  // Only a lens has an on/off state to announce. A run happens and is over.
+                  aria-pressed={isLens ? isLensOpen : undefined}
                   onClick={() => onRunOperation(operation.id)}
                   title={operation.description}
                   className={cn(
                     "group flex w-full items-start gap-2 rounded-md border px-2 py-1.5 text-left transition-colors duration-fast",
-                    isRunnable
-                      ? "border-aeris-teal/25 bg-aeris-teal/5 hover:border-aeris-teal/55 hover:bg-aeris-teal/10"
-                      : "cursor-default border-border-soft/60 bg-transparent",
+                    isLensOpen
+                      ? "border-aeris-teal/60 bg-aeris-teal/15"
+                      : isRunnable
+                        ? "border-aeris-teal/25 bg-aeris-teal/5 hover:border-aeris-teal/55 hover:bg-aeris-teal/10"
+                        : "cursor-default border-border-soft/60 bg-transparent",
                   )}
                 >
-                  <Play
+                  <ActionIcon
                     className={cn(
                       "mt-0.5 size-3.5 shrink-0",
                       isRunnable
@@ -185,6 +204,7 @@ export function ToolboxPanel({ readiness, onRunOperation, activeOverlayIds }: To
                         {operation.label}
                       </span>
                       <span className="shrink-0 font-mono text-[9px] text-muted-foreground/50">
+                        {isLensOpen ? "open · " : null}
                         {operation.stageCode} · {stage.label}
                       </span>
                     </span>

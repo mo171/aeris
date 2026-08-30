@@ -12,6 +12,7 @@ import type { ImageryScene } from "@/features/missionCommand/types/imagery.types
 import { REST_API } from "@/lib/constants/rest.api";
 
 import { MOCK_ASSISTANT_SUGGESTIONS } from "../data/assistant.data";
+import { getMockCrossModal } from "../data/cross-modal.data";
 import {
   attachMockScene,
   createMockInvestigation,
@@ -194,6 +195,16 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
       const graph = getMockEvidenceGraph(pathParameters[0]);
       return graph
         ? { status: 200, data: graph }
+        : { status: 404, data: { message: "Investigation not found" } };
+    },
+  },
+  {
+    method: "GET",
+    match: patternPath(/^\/api\/v1\/investigations\/([^/]+)\/cross-modal$/),
+    handle: ({ pathParameters }) => {
+      const result = getMockCrossModal(pathParameters[0]);
+      return result
+        ? { status: 200, data: result }
         : { status: 404, data: { message: "Investigation not found" } };
     },
   },
