@@ -1,6 +1,7 @@
 """Fixtures shared by the whole suite. Today: the mandatory environment a `Settings` can be built from.
 
-what  : `mandatory_environment`, which sets every variable `Settings` requires and has no default for.
+what  : `mandatory_environment`, which sets every variable `Settings` requires and has no default for, and
+        a session-scoped teardown that closes the infrastructure clients before the event loop goes.
 where : Used by any test that constructs `Settings(_env_file=None)` - that is, any test about configuration
         rather than about a running system.
 how   : `Settings` deliberately has required fields with no defaults, so that a clone with an incomplete
@@ -19,12 +20,18 @@ from collections.abc import AsyncIterator
 import pytest
 
 from app.lib.database import dispose_engine
+from app.lib.redis import close_client as close_redis_client
+from app.lib.storage import close_client as close_storage_client
 
 # Every field on `Settings` that is required and has no default. Adding one here is part of adding one there.
 MANDATORY_ENVIRONMENT: dict[str, str] = {
     "INNGEST_EVENT_KEY": "test",
     "INNGEST_SIGNING_KEY": "test",
     "DATABASE_URL": "postgresql+asyncpg://test:test@localhost:5432/test",
+    "REDIS_URL": "redis://localhost:6379/0",
+    "STORAGE_ENDPOINT_URL": "http://localhost:9000",
+    "STORAGE_ACCESS_KEY": "test",
+    "STORAGE_SECRET_KEY": "test",
 }
 
 
@@ -36,11 +43,16 @@ def mandatory_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-async def close_database_connections_at_end_of_session() -> AsyncIterator[None]:
-    """Dispose the engine's pool before the session's event loop closes.
+async def close_infrastructure_connections_at_end_of_session() -> AsyncIterator[None]:
+    """Close every pooled connection before the session's event loop closes.
 
-    Without this the pooled asyncpg connections are garbage-collected after the loop has gone, which prints
-    a wall of `Event loop is closed` noise on an otherwise green run and can mask a real teardown error.
+    Without this the pooled asyncpg, redis-py and aiohttp connections are garbage-collected after the loop has gone,
+    which prints a wall of `Event loop is closed` noise on an otherwise green run and can mask a real
+    teardown error. aioboto3's client is an async context manager held open in an `AsyncExitStack`, so
+    closing it is not optional tidiness - the stack has to be unwound on the loop that opened it. One fixture rather than one per client, because they share a single reason to exist and
+    the list grows with every sub-phase that adds a dependency.
     """
     yield
     await dispose_engine()
+    await close_redis_client()
+    await close_storage_client()

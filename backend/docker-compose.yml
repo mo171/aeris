@@ -1,7 +1,7 @@
 # The infrastructure a developer needs running before `aeris doctor` can go green.
 #
-# what  : One service per Phase 0 dependency. PostGIS today (0.2); Redis (0.3), MinIO (0.4) and the Inngest
-#         dev server (0.5) are added by the sub-phase that first needs them, following the Phase 0 setup
+# what  : One service per Phase 0 dependency. PostGIS (0.2), Redis (0.3) and MinIO (0.4) today; the Inngest
+#         dev server (0.5) is added by the sub-phase that first needs it, following the Phase 0 setup
 #         pattern rather than being stubbed in now.
 # where : `docker compose up -d` from `backend/`. Every integration test - the ones that demonstrate a Phase 0
 #         gate - runs against these containers. `aeris doctor` reports on exactly this set.
@@ -48,5 +48,90 @@ services:
       retries: 10
       start_period: 10s
 
+  redis:
+    # Pinned to a minor tag for the same reason as PostGIS above. Redis 8 is AGPLv3; 7.4 was the
+    # source-available RSAL/SSPL interval, so 8.x is also the licence-clean choice for a project that will be
+    # judged and published.
+    image: redis:8.2-alpine
+    container_name: aeris-redis
+    restart: unless-stopped
+    # Every flag here is load-bearing, so the configuration is on the command line rather than in a file that
+    # would have to be mounted and kept in sync.
+    #
+    #   --maxmemory-policy noeviction  Locks must never be evicted. Under `allkeys-*` Redis may drop any key
+    #                                  when memory fills, and under `volatile-*` it may drop any key with a
+    #                                  TTL - which every lock has, because the TTL is how a crashed holder
+    #                                  releases. Either would let Redis delete a *held* lock and leave two
+    #                                  processes believing they own the GPU. `noeviction` fails the write
+    #                                  instead, which the cache absorbs and the lock reports.
+    #                                  See app/constants/redis_keys.py.
+    #   --save "" / --appendonly no    No persistence, on purpose. Nothing in this instance may be worth
+    #                                  surviving a restart: a cache entry is reconstructible and a lock that
+    #                                  outlived the process holding it would be a bug. Anything that must
+    #                                  survive belongs in Postgres.
+    command:
+      - redis-server
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    ports:
+      # The default port, unlike PostGIS's 5433. Checked rather than assumed: nothing was listening on 6379
+      # on this machine, and the collision that forced Postgres onto a non-default port does not exist here.
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    # No volume. See the persistence note above - a named volume here would preserve exactly the state that
+    # is supposed to disappear.
+
+  minio:
+    # Pinned to a release tag, not `latest`. AGPLv3.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: aeris-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: aeris_local_development
+      MINIO_ROOT_PASSWORD: aeris_local_development_secret
+      # The load-bearing line. MinIO does **not** implement the S3 `PutBucketCors` API - it answers
+      # `NotImplemented`, measured against this exact release - so CORS cannot be set per bucket from
+      # application code the way it can on real S3. It is a server-wide setting instead, and this is it.
+      #
+      # It is set explicitly even though MinIO's default is `*`, because that default also sends
+      # `Access-Control-Allow-Credentials: true` while reflecting whatever `Origin` it was given: any page
+      # on the internet could read these objects from a browser. Restricting it locally means the setting is
+      # exercised in development rather than discovered in production.
+      #
+      # `${...}` reads backend/.env, the same file app/config.py reads as STORAGE_BROWSER_ORIGIN, so the
+      # allowed origin is stated once and `app/lib/storage.py` can prove the two agree.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${STORAGE_BROWSER_ORIGIN:-http://localhost:3000}
+    command: server /data --console-address ":9001"
+    ports:
+      # 9000 is the S3 API - what app/lib/storage.py and every presigned URL address.
+      - "127.0.0.1:9000:9000"
+      # 9001 is the web console. Bound because "you will make me verify everything": an upload that the
+      # tests say succeeded can be looked at. Without --console-address MinIO picks a random port each start.
+      - "127.0.0.1:9001:9001"
+    volumes:
+      # Unlike Redis, this one persists. A COG costs minutes of GDAL to rebuild and a raw scene costs a
+      # download; losing them to a `docker compose down` would make every restart an acquisition run.
+      - minio_data:/data
+    healthcheck:
+      # MinIO's own liveness endpoint, which reports whether the object layer is initialised - not merely
+      # whether the port is open. `curl` is present in this image; `wget` is not.
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
 volumes:
   postgis_data:
+  minio_data:

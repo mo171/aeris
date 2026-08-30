@@ -12,3 +12,23 @@ __pycache__
 
 # uv.lock is deliberately NOT ignored. It is what makes `uv sync` reproduce this environment on another
 # machine, which is the Phase 0.1 gate.
+
+# Local scratch. Anything written to verify a gate goes in the session scratchpad outside the repository,
+# not here - these entries exist for the times that rule is not followed.
+*.log
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Phase 1 output. Listed before it exists, because the first accidental commit of it is a multi-gigabyte one
+# that has to be rewritten out of history rather than deleted.
+#   runs/     the JSONL run journals and their rendered figures (roadmap 1.0, 1.2.1)
+#   data/     acquired scenes and training datasets (roadmap 1.1) - several are research-licensed and
+#             explicitly forbid redistribution, so committing one is a licence problem, not just a size one
+#   models/   downloaded and fine-tuned weights (roadmap 1.6)
+#   *.sqlite  the LangGraph checkpointer's local store (roadmap 1.0); Postgres takes over in Phase 2.5
+runs/
+data/
+models/
+*.sqlite
+*.sqlite3

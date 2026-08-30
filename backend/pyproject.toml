@@ -26,14 +26,11 @@ dependencies = [
     # Configuration and typed boundaries. config.py validates at import; every wire model is a Pydantic model.
     "pydantic>=2.13",
     "pydantic-settings>=2.15",
-
     # The Phase 1 adapter. Typer for the CLI, rich for the live S1-S20 trace the terminal renderer draws.
     "typer>=0.27",
     "rich>=14.0",
-
     # Structured JSON logs, so a run is greppable by run_id rather than by eye.
     "python-json-logger>=4.2",
-
     # Persistence - Phase 0.2. The async ORM runs on asyncpg (verified: asyncpg 0.31 ships a
     # cp314-win_amd64 wheel, so the 3.14 pin above survives contact with the driver). GeoAlchemy2 supplies the
     # PostGIS geometry column type; Alembic owns every schema change. python-ulid generates the sortable,
@@ -43,7 +40,6 @@ dependencies = [
     "alembic>=1.19",
     "geoalchemy2>=0.20",
     "python-ulid>=4.0",
-
     # Raster and vector core - Phase 1.2 onwards. rasterio is the raster engine; the notebooks' rioxarray
     # convenience layer is deliberately dev-only, because the application reads windows, not datasets.
     "numpy>=2.5",
@@ -53,15 +49,16 @@ dependencies = [
     "geopandas>=1.1",
     "scipy>=1.18",
     "scikit-image>=0.26",
-
     # Figure rendering - ADR-004. Matplotlib is used on the Agg backend only; never an interactive one.
     "matplotlib>=3.11",
     "pillow>=12.0",
-
     # Scene acquisition - Phase 1.1/1.2. `aeris dataset fetch` searches STAC and signs Planetary Computer
     # asset URLs, which is exactly what notebooks/01_remote_sensing already does by hand.
     "pystac-client>=0.9",
     "planetary-computer>=1.0",
+    "redis[hiredis]>=8.1.0",
+    "aioboto3>=15.5.0",
+    "aiohttp>=3.14.3",
 ]
 
 [dependency-groups]

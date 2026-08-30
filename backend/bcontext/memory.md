@@ -5,6 +5,267 @@ cold: what was decided, why, what is still broken, and what not to relitigate.
 
 ---
 
+## Session — 2026-08-31 (0.4) · Object storage. The CORS rule everyone gets wrong, measured rather than assumed.
+
+**Phase 0.4 is done and the gate is demonstrated.** Against a live MinIO `RELEASE.2025-09-07T16-13-09Z`: five
+buckets provisioned by application code; a file PUT through a presigned URL **with no credentials and no
+SDK** and read back byte-identical; CORS proven in a real browser. 12 new integration tests, **45/45 green**,
+ruff clean, `uv lock --check` clean.
+
+Checked by mutation, each intended test confirmed to catch its break (recorded at the foot of the test file):
+
+| Mutation | Caught by |
+|---|---|
+| CORS judged by status code, not the header | `test_an_unknown_origin_is_refused_...` |
+| `get_object` returns `b""` for a missing key | `test_a_missing_object_raises_...` |
+| `NotImplemented` treated as a hard failure | `test_the_provider_reports_which_cors_...` |
+
+### The finding. It corrects a claim this repository had written down twice.
+
+`roadmap.md` and `architecture-decisions.md` both justified CORS on `figures` with *"the browser loads these
+as `<img>` cross-origin"*. **That justification is wrong, and it is wrong in the direction that ships broken
+configurations.** A page was served at the configured origin and asked to load a real PNG from the `figures`
+bucket three ways. From the allowed origin `http://localhost:3000`:
+
+```
+plainImage:     loaded (64x64)
+corsFetch:      ok (185 bytes, image/png)
+canvasReadback: ok - read pixel rgba(16,185,129,255)
+```
+
+and from `http://127.0.0.1:3000` — a **different origin** to a browser, and not on the allow-list:
+
+```
+plainImage:     loaded (64x64)          <-- still loads
+corsFetch:      FAILED: Failed to fetch
+canvasReadback: FAILED to load with crossOrigin=anonymous
+```
+
+**A plain `<img>` loads in both cases.** Images are exempt from CORS unless the page reads their pixels back.
+So "the picture shows up" is not evidence of anything, and checking it that way is precisely how a broken
+configuration reaches production. What actually needs CORS is `fetch()` and
+`crossOrigin="anonymous"` → canvas → `getImageData` — which is Cesium's path for every tile, and the reason
+`api-contract.md` §8 rule 2 says the globe "silently renders nothing". Both documents are corrected.
+
+Second half of the same lesson, and why the health probe is written the way it is: **a disallowed origin
+still receives HTTP 200 and the object's bytes.** CORS is enforced by the browser; the server's only signal
+is the *absence* of `Access-Control-Allow-Origin`. A check written against the status code passes against a
+completely closed server. `check_cross_origin_access()` therefore asserts on the header and never on the
+status, and a test pins that so nobody simplifies it back.
+
+### MinIO does not implement `PutBucketCors`
+
+Measured, not assumed: it answers `NotImplemented`, and `GetBucketCors` answers `NoSuchCORSConfiguration`.
+Per-bucket CORS from application code is impossible there. It is a **server-wide** setting instead,
+`MINIO_API_CORS_ALLOW_ORIGIN`, which `docker-compose.yml` now sets.
+
+Real S3 *does* implement the API — and starts with **no** CORS at all. So neither provider is the special
+case, and `configure_cross_origin_access()` applies the rules where they are supported and returns
+`CrossOriginMechanism.SERVER_LEVEL` where they are not. Writing only the env var would have worked locally
+and silently failed on S3; writing only the API call would have crashed on MinIO.
+
+**MinIO's default is worse than no setting.** With `MINIO_API_CORS_ALLOW_ORIGIN` unset it reflects whatever
+`Origin` it was sent *and* sends `Access-Control-Allow-Credentials: true` — any page on the internet could
+read these objects from a browser. It is set explicitly even locally so the setting is exercised in
+development rather than discovered in production.
+
+### What was built
+
+| File | What it settles |
+|---|---|
+| `docker-compose.yml` | `minio:RELEASE.2025-09-07T16-13-09Z`, API on 9000, console on 9001, persistent volume |
+| `app/constants/storage.py` | The five roles, and `BROWSER_FACING_BUCKETS` — the two CORS is derived from |
+| `app/config.py` | Endpoint, credentials, prefix, addressing style, browser origin, presign lifetimes |
+| `app/lib/storage.py` | The one client, presigned PUT/GET, `ensure_buckets()`, both health probes |
+| `tests/integration/test_storage_round_trip.py` | The gate, the CORS pair, the refusals |
+
+### Decisions worth not relitigating
+
+- **`aioboto3`, against the S3 API — never MinIO's SDK.** MinIO is a local development choice; S3, R2 or
+  Supabase Storage is the deployed one. The only line that knows the difference is
+  `storage_addressing_style` (`path` for MinIO, which has no wildcard DNS and cannot serve `bucket.host/key`).
+- **Storage raises where the Redis cache degrades.** A cache miss costs a recomputation; a missing artefact
+  is a broken provenance chain. A caller that read absence as empty bytes would render a blank figure and
+  attach it to a claim — the confidently-wrong answer this product exists not to produce.
+- **Presigned URLs are signed against `storage_signing_endpoint`, not the internal one.** The signature
+  covers the host, so a URL signed for `http://minio:9000` **cannot** be repaired by substituting
+  `localhost` into it afterwards. They are the same today; they stop being the same the moment the backend
+  moves into the compose network. Pinned by a test.
+- **`AnyHttpUrl` adds a trailing slash and an `Origin` header never has one.** `http://localhost:3000/` vs
+  `http://localhost:3000` compared as strings is a CORS check that fails against a perfectly configured
+  server. `settings.storage_browser_origin_header` strips it, once.
+- **The content type is signed into the upload URL**, so `required_headers` is a commitment, not advice.
+  Sending a different one is a *signature* mismatch: an opaque 403 arriving at the end of a long upload,
+  naming nothing. Pinned by a test that uploads with the wrong type and asserts 403.
+- **An upload into `raw` is refused at ticket time** when the content type is not ingestible, rather than
+  after several gigabytes have been transferred and rasterio has failed on an unrecognised driver. Only
+  `raw` is guarded — the other four buckets hold things this backend wrote.
+- **`ensure_buckets()` is Python, not an `mc` command in an init container**, so the same code path
+  provisions a local MinIO and a real S3 account. Idempotent; `BucketAlreadyOwnedByYou` is swallowed because
+  two processes starting at once is normal.
+- **`require_healthy_storage()` deliberately does not check CORS.** A run writes figures server-side and
+  succeeds whether or not a browser could read them; failing the run would turn a display problem into a
+  lost analysis. It is an `aeris doctor` row instead.
+- **The MinIO volume persists, unlike Redis's.** A COG costs minutes of GDAL and a raw scene costs a
+  download; losing them to `docker compose down` would make every restart an acquisition run.
+- **Bucket names are `{prefix}-{role}`.** The role is a fixed vocabulary (constants); the prefix is
+  configuration, so one account can host several deployments. Five separate name settings kept in step with
+  a five-member enum would be the same decision written twice.
+
+### Smaller things
+
+- **`ruff` caught a real defect**, not a style one: nine `raise` sites inside `except` blocks with no
+  `from`, discarding the botocore cause. Fixed, and `_as_upstream_error` was made sync in the process — it
+  builds an exception from values already in memory and is only ever called from an `except` block, the same
+  §7 carve-out `_error_code` beside it uses. `raise _as_upstream_error(...) from error` now reads as a raise.
+- **`INGESTIBLE_CONTENT_TYPES` was declared and unread**, which this project treats as a defect in its own
+  right. It is now the refusal above rather than a claim nothing verified.
+- **Port 9001 is bound for MinIO's console** so an upload the tests say succeeded can be looked at. Without
+  `--console-address` MinIO picks a random port on every start.
+- **The compose file reads `STORAGE_BROWSER_ORIGIN` from `backend/.env`** — the same variable `config.py`
+  reads. The allowed origin is stated once, and `app/lib/storage.py` can then prove the two agree.
+- **`aiohttp` is declared explicitly** in `pyproject.toml` even though `aioboto3` already pulls it in. It is
+  imported directly by the CORS probe, and importing a transitive dependency is how a `uv lock` upgrade
+  becomes an unexplained `ImportError`.
+
+### Next session
+
+0.5 — Inngest, and it is deliberately the smallest sub-phase in Phase 0. Dev server in compose, event keys in
+config, connectivity proven, **no workflow logic**: Phase 1 durability comes from the LangGraph checkpointer
+and Inngest is not bound until Phase 2.5 (ADR-002). Record it as *deferred by design* rather than as
+unfinished. Then 0.6 — `aeris doctor` — which is now four `check_health()` functions away from existing,
+since every one of them already returns the dataclass its row will print.
+
+---
+
+## Session — 2026-08-31 (0.3) · Redis. One server, two namespaces, opposite failure policies.
+
+**Phase 0.3 is done and the gate is demonstrated.** Against a live Redis 8.2.9: a value round-trips through
+the cache and comes back carrying a TTL; a lock held by one holder makes a second wait and then refuses it
+with `CONFLICT`; a lock whose holder vanished is reacquired only after its TTL runs out. 6 new integration
+tests, 2 new config tests, **33/33 green**, ruff clean.
+
+Passing is not evidence on its own, so each load-bearing claim was re-checked by breaking the code beneath
+it and confirming that exactly the intended test caught it (recorded at the foot of the test file):
+
+| Mutation | Caught by |
+|---|---|
+| `clear_cache_namespace` calls `FLUSHDB` | `test_clearing_the_cache_does_not_touch_a_held_lock` |
+| `cache_set` omits the `ex=` expiry | `test_a_cached_value_round_trips_and_carries_an_expiry` |
+| `held_lock` proceeds when acquisition fails | `test_a_held_lock_blocks_a_second_acquirer` |
+
+### The idea the whole sub-phase turns on
+
+The roadmap said "two uses, kept separate: model-manager locks and short-lived cache." The separation is
+**not** about storage. It is that the two have *opposite failure policies*:
+
+- A **cache** miss costs a recomputation. Every cache function swallows `RedisError` and reads as a miss, so
+  a Redis outage degrades AERIS rather than stopping it.
+- A **lock** is exclusive access to the GPU's VRAM. Every lock function raises, because a caller that carried
+  on unlocked loads a second model into a card with room for one — and that surfaces stages later as a CUDA
+  out-of-memory error with nothing pointing back at Redis.
+
+Everything else in `app/lib/redis.py` follows from that sentence, and it is why the two live in one server
+under two key prefixes rather than in two servers or two logical databases.
+
+### The finding worth keeping: `maxmemory-policy` can silently break a lock
+
+**Under any `allkeys-*` policy Redis may evict any key when memory fills. Under any `volatile-*` policy it
+may evict any key that carries a TTL — and every lock carries one, because the TTL *is* how a crashed holder
+releases.** Either setting therefore lets Redis delete a lock a process is still holding, after which two
+processes both believe they own the GPU. No amount of correct code on our side detects it.
+
+So `noeviction` is required, and it is not a preference:
+
+- `docker-compose.yml` starts the server with `--maxmemory-policy noeviction --maxmemory 256mb`.
+- `constants/redis_keys.py` states it as `REQUIRED_MAXMEMORY_POLICY` — a constant, not a setting, because it
+  is an invariant of the design rather than something an environment may tune.
+- `check_health()` reads the **live** value and `require_healthy_redis()` refuses a run when it is wrong.
+- A test asserts it, so the other five tests cannot keep passing after the guarantee they rest on has gone.
+
+The consequence is that under memory pressure *writes fail* instead of keys disappearing. The cache absorbs
+that as a miss; the lock reports it. Which is also why **every cache entry must expire**: nothing here is
+evicted, so a cache key without a TTL is permanent, and enough of those fill the instance — and the first
+thing that then fails is a lock write. The TTL on a cache key is what stops the cache breaking the locks.
+
+An **unknown** policy is treated differently from a wrong one. Several managed providers disable `CONFIG GET`;
+`check_health` reports `maxmemory_policy=None` with a reason, and `require_healthy_redis` warns rather than
+refusing. Refusing would make AERIS unrunnable on every such provider, which is a bigger failure than the one
+being guarded against.
+
+### What was built
+
+| File | What it settles |
+|---|---|
+| `docker-compose.yml` | `redis:8.2-alpine` on **127.0.0.1:6379**, `noeviction`, no RDB, no AOF, no volume |
+| `app/constants/redis_keys.py` | `aeris:lock:*` / `aeris:cache:*`, and `REQUIRED_MAXMEMORY_POLICY` |
+| `app/config.py` | `REDIS_URL` (required, no default) + five tunables + `redis_url_without_password` |
+| `app/lib/redis.py` | The one pool, `held_lock()`, four cache functions, `check_health()` |
+| `tests/integration/test_redis_lock_and_cache.py` | The gate, the policy, and the asymmetry |
+| `tests/conftest.py` | `REDIS_URL` added to `MANDATORY_ENVIRONMENT`; teardown closes both clients |
+
+### Decisions worth not relitigating
+
+- **The lock is redis-py's `Lock`, not a hand-written recipe.** It already implements the correct one —
+  `SET key token NX PX ttl`, released by a Lua script that compares the token before deleting. The token
+  comparison is the easy part to omit and the expensive one: without it a holder whose TTL expired releases
+  the *next* holder's lock. `held_lock()` adds only the prefix, the timeouts, and "a failed acquisition
+  raises". Same reasoning as ADR-002 — do not rebuild what the library already does.
+- **A fresh `Lock` object per acquisition, which is why `held_lock` is a context manager.** redis-py keeps
+  the token in `threading.local()`, and every coroutine on one event loop shares a thread — so two concurrent
+  acquisitions through a *shared* `Lock` would share one token and the first release would delete the other's
+  key. Never cache a `Lock` object.
+- **Prefixes, not logical databases.** Redis Cluster and most managed providers expose only database 0, so
+  `SELECT` is not portable and a deployment relying on it would silently collapse the two namespaces.
+- **Never `FLUSHDB`.** It would free every lock a live process still believed it held. `clear_cache_namespace`
+  scans the cache prefix instead, and a test fails the moment someone reaches for the shorter version.
+- **Two distinct errors on the lock path.** Redis unreachable → `UpstreamUnavailableError` (503, retryable).
+  Redis answered and somebody else holds it → `ConflictError` (409, busy). The frontend branches on the code,
+  so the distinction is contract rather than wording.
+- **A release failure raises only when the body succeeded.** If the body already failed, re-raising from the
+  exit path would replace a more informative exception and would swallow `RunCancelledError` on the barge-in
+  path. On the success path, `LockNotOwnedError` means the critical section outlived its TTL and another
+  holder may have run concurrently — that must surface. A plain `RedisError` there only warns: the key
+  expires on its own, so the cost is a delay, not a correctness failure.
+- **One lock TTL answers two questions that pull opposite ways** — how long a crashed holder blocks everyone,
+  and how long a live holder may safely work. No value is right for both. It is sized for the second (120 s,
+  a model load onto an 8 GB card); a holder needing longer calls `extend()` rather than having the setting
+  raised, because raising it also lengthens every crash recovery.
+- **`asyncio.CancelledError` is caught nowhere in this module.** It derives from `BaseException`, so
+  `except RedisError` cannot absorb it — which is what barge-in needs.
+- **No persistence and no volume on the container.** A cache entry is reconstructible and a lock that
+  outlived the process holding it would be a bug. Anything that must survive a restart belongs in Postgres.
+
+### Smaller things
+
+- **Port 6379 was free**, checked rather than assumed. The 5432 collision that pushed Postgres to 5433 has no
+  counterpart here, so Redis is on its default port. Do not "fix" the inconsistency.
+- **`redis[hiredis]` installs clean on Python 3.14** — redis 8.1.0, hiredis 3.4.1, both with cp314 wheels.
+- **Redis 8 is AGPLv3.** 7.4 was the source-available RSAL/SSPL interval, so 8.x is also the licence-clean
+  choice for a project that will be judged and published.
+- **`.env.example` said "Inngest (Phase 0.3)"** — Inngest is 0.5. Corrected.
+- **`MANDATORY_ENVIRONMENT` grew again**, exactly as the 0.2 entry predicted it would. Every new required
+  setting re-arms `test_invalid_enumerated_value_is_rejected`; add the field there in the same change.
+- **`aeris doctor` does not exist yet** (it is 0.6), so the "a row in `aeris doctor`" step of the Phase 0
+  setup pattern is outstanding for both PostGIS and Redis. Both `check_health()` functions return the
+  dataclass that row will print, so 0.6 is rendering, not probing.
+
+### New convention, from this session onward
+
+**Every test file records its own successful run as a comment at the foot of the file** — the command, the
+date, the pass list and the environment it ran against. Product owner's request, and it makes a gate
+reviewable without re-running it. Where a claim was checked by mutation, the mutation table goes there too.
+
+### Next session
+
+0.4 — MinIO. Same pattern: provision in compose, client in `app/lib/storage.py`, health probe, a row in
+`aeris doctor`, a test. **Done — see the 0.4 entry above.** Buckets `raw`, `cog`, `artefacts`, `figures`, `reports`; presigned PUT/GET; **CORS
+configured on `figures`**, which the browser loads cross-origin as an `<img>` (`api-contract.md` §6). The
+frontend's memory names CORS as the most common first-day failure, so the gate is a real cross-origin load,
+not a `curl`.
+
+---
+
 ## Session — 2026-08-30 (0.2) · Persistence. Eight tables, and five bugs — two of which only the live database could find.
 
 **Phase 0.2 is done and the gate is demonstrated.** Against a live PostGIS 3.5.2 / Postgres 17.5:
@@ -129,7 +390,7 @@ production, where the CLI calls `asyncio.run()` once.
 ### Next session
 
 0.3 — Redis. Follow the same pattern: provision in compose, client in `app/lib/redis.py`, health probe,
-a row in `aeris doctor`, a test.
+a row in `aeris doctor`, a test. **Done — see the 0.3 entry above.**
 
 ---
 

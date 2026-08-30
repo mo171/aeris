@@ -22,7 +22,8 @@ how   : Instantiating `Settings()` at the bottom of this file means a missing or
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, field_validator
+from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -118,6 +119,87 @@ class Settings(BaseSettings):
             )
         return value
 
+    # --- Redis. Phase 0.3. --------------------------------------------------------------------------------
+    #
+    # One server, two unrelated uses kept apart by key prefix (`constants/redis_keys.py`): distributed locks
+    # around the GPU, and a short-lived cache. Locally that is the `redis` service in docker-compose.yml.
+    #
+    # Required with no default, for the same reason as `database_url`. There is deliberately no driver
+    # validator to match `require_async_driver`: redis-py is a single package exposing both a sync and an
+    # async surface from the same `redis://` URL, so there is no wrong-driver form here to reject.
+
+    redis_url: RedisDsn
+
+    # How long a cache entry lives when the call site does not name a TTL. Every cache write has one - see
+    # `app/lib/redis.py`. Five minutes is sized against the first things that will be cached (STAC search
+    # results, model status): long enough to absorb a burst of identical queries, short enough that a stale
+    # answer cannot outlive an operator's attention on it.
+    redis_cache_default_ttl_seconds: int = Field(default=300, ge=1, le=86_400)
+
+    # How long a lock is held before Redis expires it. This one number answers two questions that pull in
+    # opposite directions: how long a *crashed* holder blocks everyone else, and how long a *live* holder may
+    # safely work. No value is right for both. It is sized for the second - loading a quantised model onto an
+    # 8 GB card - and a holder needing longer must call `extend()` rather than have this raised, because
+    # raising it also lengthens every crash recovery.
+    redis_lock_timeout_seconds: float = Field(default=120.0, gt=0, le=3_600)
+
+    # How long an acquirer waits before giving up. Running out raises; it never proceeds unlocked.
+    redis_lock_blocking_timeout_seconds: float = Field(default=30.0, ge=0, le=3_600)
+
+    # Short, like the database's. A stalled connect during a run must surface as an error the trace can show
+    # rather than as a stage that appears to hang.
+    redis_connect_timeout_seconds: int = Field(default=5, ge=1, le=120)
+
+    redis_max_connections: int = Field(default=20, ge=1, le=200)
+
+    # --- Object storage. Phase 0.4. -----------------------------------------------------------------------
+    #
+    # Written against the **S3 API**, not against MinIO. Locally that is the `minio` service in
+    # docker-compose.yml; deployed it is S3, R2 or Supabase Storage with no code change. The one place the
+    # difference shows is `storage_addressing_style` below.
+
+    storage_endpoint_url: AnyHttpUrl
+    storage_access_key: SecretStr
+    storage_secret_key: SecretStr
+
+    # The endpoint a **browser** can reach, which is not always the one this process uses. A presigned URL's
+    # signature covers the host, so a URL signed for `http://minio:9000` cannot be repaired by substituting
+    # the hostname afterwards - it has to be signed against the public endpoint in the first place. Today the
+    # two are the same and this is a no-op; the moment the backend moves into the compose network it is the
+    # difference between working upload tickets and a signature error the browser reports as CORS.
+    storage_public_endpoint_url: AnyHttpUrl | None = None
+
+    # Signed into every request even though MinIO ignores it: SigV4 has no valid empty region.
+    storage_region: str = "us-east-1"
+
+    # Bucket names are `{prefix}-{role}` over the five roles in `constants/storage.py`, so one S3 account can
+    # host several deployments. Constrained to what S3 accepts in a bucket name - lower case, digits and
+    # hyphens - because the failure otherwise arrives as a signature error rather than a naming one.
+    storage_bucket_prefix: str = Field(default="aeris", pattern=r"^[a-z0-9][a-z0-9-]{1,20}[a-z0-9]$")
+
+    # `path` for MinIO, which has no wildcard DNS and cannot serve `bucket.host/key`. Real S3 prefers
+    # `virtual`; `auto` lets botocore decide. Wrong here, every request 404s or fails to resolve.
+    storage_addressing_style: Literal["path", "virtual", "auto"] = "path"
+
+    # The origin the browser loads the interface from. Read twice: `docker-compose.yml` passes it to MinIO as
+    # `MINIO_API_CORS_ALLOW_ORIGIN`, and `app/lib/storage.py` probes with it to prove CORS actually works.
+    # Phase 2.0's FastAPI CORS middleware will read the same value, so the answer to "which origin is
+    # allowed" is given once.
+    storage_browser_origin: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
+
+    # A download link an operator may sit on before clicking. An hour, not a day: the URL grants access to
+    # the object to anyone holding it, and it cannot be revoked before it expires.
+    storage_presigned_get_expiry_seconds: int = Field(default=3_600, ge=60, le=604_800)
+
+    # Longer, because this one has to cover the upload itself. A multi-gigabyte scene on a domestic
+    # connection takes real time, and an expiry that lapses mid-transfer fails at the end of the upload -
+    # the most expensive moment to fail.
+    storage_presigned_put_expiry_seconds: int = Field(default=21_600, ge=60, le=604_800)
+
+    storage_connect_timeout_seconds: int = Field(default=10, ge=1, le=120)
+    # Generous: this bounds a single read against object storage, and scene reads are large.
+    storage_read_timeout_seconds: int = Field(default=60, ge=1, le=600)
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalise_log_level(cls, raw_value: object) -> object:
@@ -137,6 +219,59 @@ class Settings(BaseSettings):
         and passwordless DSNs right, and getting either wrong prints a credential.
         """
         return make_url(str(self.database_url)).render_as_string(hide_password=True)
+
+    @property
+    def redis_url_without_password(self) -> str:
+        """The Redis URL with the password replaced, for `aeris doctor` and for logs.
+
+        Rebuilt from the parsed components rather than by substituting the password out of the string. The
+        `.password` Pydantic exposes is the *encoded* form as it appears in the URL, but a hand-rolled
+        replacement still has to get a passwordless URL and a password containing `@` or `:` right, and
+        getting either wrong prints a credential. `Url.build` is the parser's own inverse.
+        """
+        url = self.redis_url
+        if url.password is None:
+            return str(url)
+        return str(
+            Url.build(
+                scheme=url.scheme,
+                username=url.username,
+                password="***",
+                host=url.host or "",
+                port=url.port,
+                path=(url.path or "").lstrip("/") or None,
+            )
+        )
+
+    @property
+    def storage_endpoint(self) -> str:
+        """The endpoint this process talks to, without the trailing slash `AnyHttpUrl` adds.
+
+        `AnyHttpUrl` normalises `http://localhost:9000` to `http://localhost:9000/`, and handing that to
+        botocore produces request paths with a doubled slash - which S3 treats as a key beginning with `/`
+        and MinIO signs differently from what the client signed. Stripped once, here, rather than at each of
+        the three places that pass an endpoint to a client.
+        """
+        return str(self.storage_endpoint_url).rstrip("/")
+
+    @property
+    def storage_signing_endpoint(self) -> str:
+        """The endpoint presigned URLs are signed against - the browser-facing one when it differs.
+
+        A single property rather than a branch at each call site, because getting it wrong produces a URL
+        that is valid, well-formed, correctly signed, and unreachable from the only place it is ever used.
+        """
+        return str(self.storage_public_endpoint_url or self.storage_endpoint_url).rstrip("/")
+
+    @property
+    def storage_browser_origin_header(self) -> str:
+        """The browser origin in the form a browser actually sends it: **no trailing slash.**
+
+        `AnyHttpUrl` stores `http://localhost:3000/`; the `Origin` header is `http://localhost:3000`, and an
+        `Access-Control-Allow-Origin` response is compared against it as an exact string. Without this the
+        CORS check fails on a deployment whose CORS is configured perfectly, which is a long afternoon.
+        """
+        return str(self.storage_browser_origin).rstrip("/")
 
     @property
     def is_production(self) -> bool:

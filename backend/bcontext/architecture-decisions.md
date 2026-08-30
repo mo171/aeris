@@ -299,7 +299,10 @@ reproduce the image byte-for-byte.
   vocabulary with the frontend's legends.
 - New roadmap sub-phase **1.2.1**, deliberately placed after the tile engine and before 1.4/1.5/1.6/1.7 so
   each of those emits figures as it lands. Later sub-phases add figure *kinds*, not rendering code.
-- MinIO gains a `figures` bucket (0.4), with CORS, since the browser loads these as images.
+- MinIO gains a `figures` bucket (0.4), with CORS. Not because the browser loads these as images — a
+  plain `<img>` needs no CORS at all, measured in Phase 0.4 — but because anything that reads a figure's
+  *pixels* does: `fetch()`, and `crossOrigin="anonymous"` → canvas → `getImageData`, which is the path
+  Cesium takes. Checking that the picture appears is exactly how a broken CORS configuration ships.
 - `Matplotlib` must never be imported with an interactive backend anywhere in `app/`. `Agg` is set once, at
   import of the rendering package.
 - Invariant 19 and scientific boundary 13 in `architecture-context.md` are the checkable form of this ADR.

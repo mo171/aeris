@@ -101,6 +101,38 @@ async def test_database_url_must_use_the_async_driver(
     assert "asyncpg" in str(raised.value)
 
 
+async def test_redis_password_is_masked_for_reporting(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Same requirement as the database URL, and a harder one to get right by hand.
+
+    The password is asserted with a percent-encoded character in it on purpose. `RedisDsn.password` returns
+    the encoded form, so masking by substituting that value out of the string works here and would fail for
+    a password that had to be encoded differently - which is exactly why `Settings` rebuilds the URL through
+    `Url.build` instead.
+    """
+    monkeypatch.setenv("REDIS_URL", "rediss://default:hunter%402@redis.example.com:6380/0")
+
+    masked = Settings(_env_file=None).redis_url_without_password
+
+    assert "hunter" not in masked
+    assert "***" in masked
+    # The parts an operator needs in order to recognise which server this is must survive the masking.
+    assert "rediss://" in masked
+    assert "redis.example.com:6380" in masked
+
+
+async def test_a_redis_url_without_a_password_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """The local URL has no credentials, and masking must not invent a `:***@` that was never there."""
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+
+    assert Settings(_env_file=None).redis_url_without_password == "redis://localhost:6379/0"
+
+
 async def test_database_password_is_masked_for_reporting(
     monkeypatch: pytest.MonkeyPatch,
     mandatory_environment: None,
@@ -112,3 +144,14 @@ async def test_database_password_is_masked_for_reporting(
 
     assert "hunter2" not in masked
     assert "aeris@localhost" in masked or "***" in masked
+
+
+# --- Recorded run ----------------------------------------------------------------------------------------
+#
+# $ uv run pytest tests/unit/test_config.py -q                               2026-08-31
+#
+#   .........                                                                [100%]
+#   9 passed in 0.09s
+#
+# Nine, not seven: `test_redis_password_is_masked_for_reporting` and
+# `test_a_redis_url_without_a_password_is_left_alone` were added with the Phase 0.3 Redis settings.
