@@ -19,6 +19,7 @@ __pycache__
 .coverage
 htmlcov/
 .mypy_cache/
+runs
 
 # Phase 1 output. Listed before it exists, because the first accidental commit of it is a multi-gigabyte one
 # that has to be rewritten out of history rather than deleted.
