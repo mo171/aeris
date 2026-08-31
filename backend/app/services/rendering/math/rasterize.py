@@ -177,7 +177,7 @@ def draw_discrete_legend(
         current_x = width // 2 - total_entries_width // 2
         y_pos = COLOURBAR_MARGIN + 18
         
-        for (color_hex, text), e_width in zip(entries, entry_widths):
+        for (color_hex, text), e_width in zip(entries, entry_widths, strict=True):
             color_hex = color_hex.lstrip("#")
             r = int(color_hex[0:2], 16)
             g = int(color_hex[2:4], 16)

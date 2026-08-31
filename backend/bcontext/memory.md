@@ -1,3 +1,78 @@
+## Session — 2026-09-01 (1.3) · Preprocessing. **Four defects, none visible to a passing suite.**
+
+Phase 1.3 arrived already written — services, math kernels and a first pass of tests, all green. The job
+was the testing, and the testing found that green meant very little: **four defects in the maths, every one
+of them producing a plausible raster rather than an error, and every one of them sitting under a test that
+passed.** 41 tests now (25 unit, 16 integration), **337 green** with 60 deselected, ruff and lock clean.
+
+### What was wrong
+
+1. **Layover and shadow were swapped.** The slope was measured *away* from the sensor and then tested as
+   though it were measured *towards* it. The test in place asserted that both masks were non-empty and
+   differed from each other — which stays true when the sign flips. This is the §8 rule 7 distinction,
+   inverted, and it is invisible in a figure because both cases put a plausible mask on plausible ground.
+2. **The terrain correction was a gain.** `cos(slope)/cos(incidence)` multiplies *flat* ground by 1.22 at a
+   35° incidence. A correction that is not the identity where there is nothing to correct biases every
+   value in the scene by a constant nobody declared. Now `cos(θ)/cos(θ_local)`, exactly 1 on the flat.
+3. **Speckle was filtered as additive noise** while the docstring said multiplicative. Measured: two
+   regions of one scene, identical speckle statistics, differing only in brightness — 25× smoothing on the
+   dark half against 1.4× on the bright. Water and shadow get flattened, vegetation keeps its speckle, and
+   a change detector reads that variance collapse as a finding. Now Lee (1980) on the coefficient of
+   variation, which is scale-free.
+4. **Registration filled nodata with zero.** A hard zero block is a strong feature; tiles touching the
+   margin locked onto it and returned a shift of exactly **(0, 0)** — which reads as *perfect* registration
+   rather than as a failure. 1.3% nodata was enough to report 1.02 px on a pair aligned to 0.00 px.
+
+### The measurement discipline, twice over
+
+I got #4 wrong twice on the way. First I called a 0.97 px residual a defect; then I decided my own test
+construction was at fault and said so; then measuring both constructions against both fills showed the
+code was at fault after all — mean-fill gives 0.0000 px on *both* constructions, zero-fill ~1.0 px on both.
+**Only the last of those three positions came from a measurement**, which is the whole lesson.
+
+Then the regression test I wrote for it *survived its own mutation*: the NaN band was 24 rows deep against
+a 64-row tile, so the affected tiles fell below the 0.8 validity floor and were skipped — no tile in the
+test ever contained a nodata edge. Narrowing it fixed the construction and still did not catch the bug,
+because no synthetic texture reproduces the failure (white noise locks through the artefact, smoothed noise
+never locks at all). Pinned instead on the property the fix delivers — the filled tile is continuous.
+
+### Mutation: 16 applied, 14 caught, 1 equivalent, 1 pending
+
+Three survived the first pass and **all three were real gaps**, not equivalent mutations: nothing covered
+the Lee filter beside a nodata margin; the median-vs-mean choice is only observable in the reported
+*translation*, not in the residual; and the nodata fill needed the direct pin above.
+
+### The gate, on real data
+
+`aeris preprocess coregister` / `sar` / `relief`. The bad pair's **4.0000 px** is hand-checkable — half the
+tiles at +4 and half at −4 about a median of 0. The flat local scene reports **0.00% obscured, and that is
+correct**: Mumbai has 91 m of relief and layover needs a slope steeper than the incidence angle. So the
+distinction is demonstrated where it exists — **Khumbu, 4461 m of relief, windowed 1477×1663 out of a
+27577×21415 scene rather than downloaded**: radar *could not see* 8.55%, radar *saw nothing* 0.02%, and
+reversing the orbit swaps which slopes fold and which hide. That last one is what proves it is geometry
+rather than a property of the ground.
+
+### Decisions worth not relitigating
+
+- **`calibration_factor=None` is a first-class input**, not a missing argument. Every RTC product is
+  already linear power; calibrating it again returns the square of the truth and opens cleanly.
+- **The SAR figure uses a fixed dB domain**, for the reason every NDVI is drawn over [-1, 1] (1.2.1). A
+  radar time series exists to be compared, and per-date percentiles make a flooded field look like a calm one.
+- **`scenes.Polarisation` is upper case and is deliberately not `BandRole`.** One addresses a band in a
+  file, the other is a value on the wire. This discharges `polarisationSchema`, which had sat in
+  `FRONTEND_ONLY_VOCABULARIES` reading "Phase 1.3 — the SAR branch" since 0.7.
+- **`obscuredFraction` counts *unjudged* pixels as unread**, not as clear. The frontend's own wording is
+  "could not read at all", and a pixel the detector could not judge has not been shown to anyone.
+- **The DEM is read as a window, never as a tile.** Whole-tile reads over HTTP were slow enough that the
+  first run of the gate never returned.
+
+### Next — Phase 1.4
+
+Spectral indices and geospatial statistics, S12 and S15 measurement. 1.3 hands it the thing rule 1 is
+about: `apply_optical_mask` exists and must run *before* any index formula, not after.
+
+---
+
 ## Session — 2026-08-31 (1.2.1) · The rendering primitive. **A figure redraws byte-identically from its spec.**
 
 `services/rendering/` built, `figure-ready` on the wire, and the gate passed: three figures from the

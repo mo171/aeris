@@ -35,6 +35,7 @@ from app.cli import dataset as dataset_command
 from app.cli import doctor as doctor_command
 from app.cli import figures as figures_command
 from app.cli import ingest as ingest_command
+from app.cli import preprocess as preprocess_command
 from app.cli import run as run_command
 from app.config import settings
 from app.constants.datasets import DatasetId
@@ -366,6 +367,41 @@ def figures(
     # Non-zero when the reproduction claim fails. `api-contract.md` §6 rule 2 is a property of the system,
     # so it belongs in an exit code a script can gate on rather than in prose an operator has to read.
     if not reproducible:
+        raise typer.Exit(code=1)
+
+
+preprocess_app = typer.Typer(
+    name="preprocess",
+    help="Cloud masking, co-registration and the SAR branch. Stages S7-S10.",
+    no_args_is_help=True,
+)
+app.add_typer(preprocess_app)
+
+
+@preprocess_app.command("coregister")
+def preprocess_coregister(
+    scene_directory: Path = typer.Argument(..., help="A scene directory holding s2_B04.tif."),
+) -> None:
+    """Measure a known-good and a known-bad pair, and refuse the bad one. Half the Phase 1.3 gate."""
+    if not asyncio.run(
+        _run_dataset(preprocess_command.execute_coregister(scene_directory, console))
+    ):
+        raise typer.Exit(code=1)
+
+
+@preprocess_app.command("sar")
+def preprocess_sar_command(
+    scene_directory: Path = typer.Argument(..., help="A scene directory holding s1_vv.tif."),
+) -> None:
+    """Calibrate, speckle-filter and terrain-correct a radar scene, keeping the visibility masks."""
+    if not asyncio.run(_run_dataset(preprocess_command.execute_sar(scene_directory, console))):
+        raise typer.Exit(code=1)
+
+
+@preprocess_app.command("relief")
+def preprocess_relief() -> None:
+    """Run the SAR branch over terrain steep enough to blind a radar. The rest of the Phase 1.3 gate."""
+    if not asyncio.run(_run_dataset(preprocess_command.execute_relief(console))):
         raise typer.Exit(code=1)
 
 

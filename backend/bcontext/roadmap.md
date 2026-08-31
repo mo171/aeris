@@ -306,7 +306,7 @@ whole transfer. `_download_to` now retries three times with backoff — measured
 resets while fetching B02/B03 for this gate. Each attempt restarts rather than resuming with a `Range`
 header, because resuming without checking the `ETag` risks stitching a scene from two versions of a file.
 
-## 1.3 — Preprocessing · S7–S10 and the SAR branch
+## 1.3 — Preprocessing · S7–S10 and the SAR branch — **done (2026-09-01)**
 
 **Research:** PDF pp.12–14 and §15.1. Notebooks `04_sar_fundamentals`, `05_preprocessing` — already started.
 
@@ -329,6 +329,45 @@ Two rules that carry the correctness of everything downstream:
 **Gate** — residual measured on a known-good and a known-bad pair; the bad pair is refused with a stated
 reason. Layover/shadow masks are what let the system distinguish "radar saw nothing" from "radar could not
 see", and that distinction is demonstrated.
+
+**Result — the gate passed**, `aeris preprocess coregister` and `aeris preprocess sar`, both on the real
+Sentinel-1 / Sentinel-2 scene in `notebooks/01_remote_sensing/data` and the real Copernicus DEM over the
+same ground.
+
+    known-good  one rigid translation of (2.5, -1.25)   residual 0.0000 px   accepted
+    known-bad   opposite translations in each half      residual 4.0000 px   REFUSED
+    real pair   s2_B04 against s2_B08                   residual 0.1436 px   accepted
+
+**Three defects were found in the maths, all by measurement rather than review, and none visible to the
+tests that were passing over them.**
+
+1. **Layover and shadow were swapped.** The slope was measured *away* from the sensor and then tested as
+   though it were measured *towards* it, so a foreslope was reported as shadow and a backslope as layover.
+   The test in place asserted only that both masks were non-empty and differed — which stays true when the
+   sign flips. This is precisely the §8 rule 7 distinction, inverted.
+2. **The terrain correction was a gain.** `cos(slope)/cos(incidence)` multiplies flat ground by 1.22 at a
+   35° incidence. It is now `cos(θ)/cos(θ_local)`, which is exactly 1 where there is nothing to correct.
+3. **Speckle was filtered as additive noise.** Measured on two regions of one scene with identical speckle
+   statistics differing only in brightness: 25× smoothing on the dark half, 1.4× on the bright half. A
+   change detector reads that variance collapse over water as a finding. Now Lee (1980) on the coefficient
+   of variation, which is scale-free.
+
+**And one in registration.** Invalid pixels were filled with zero, so tiles touching the nodata margin
+locked onto that artificial edge and returned a shift of exactly (0, 0) — which reads as *perfect*
+registration rather than as a failure. 1.3% nodata was enough to report 1.02 px on a pair aligned to
+0.00 px, refusing good data. Filled with the tile mean.
+
+**`polarisationSchema` is discharged.** It had sat in `FRONTEND_ONLY_VOCABULARIES` reading "Phase 1.3 —
+the SAR branch" since Phase 0.7; `scenes.Polarisation` now mirrors it and the exact-match test enforces it.
+Upper case `VV`/`VH`, deliberately not `BandRole`'s lower-case members — one addresses a band in a file,
+the other is a value on the wire.
+
+**Both branches report `obscuredFraction`**, the number `sensorRunSchema` already declares: cloud, shadow
+and *unjudged* pixels for optical; layover and shadow for radar.
+
+**The backscatter figure uses a fixed dB domain, not per-scene percentiles** — the same argument that puts
+every NDVI on [-1, 1] in 1.2.1. A radar time series exists to be compared, and a per-date stretch makes a
+flooded field and a calm one look alike.
 
 ## 1.4 — Spectral indices and geospatial statistics · S12, S15 measurement
 

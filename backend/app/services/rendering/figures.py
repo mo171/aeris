@@ -37,12 +37,14 @@ from app.constants.color_ramps import (
     ColorRampId,
 )
 from app.constants.figure_kinds import FigureKind, LegendKind
+from app.constants.preprocessing import SAR_BACKSCATTER_DECIBEL_DOMAIN
+from app.constants.raster import SENTINEL2_BANDS, SpectralBand
+from app.constants.scenes import Polarisation
 from app.constants.storage import Bucket
 from app.db.identifiers import IdentifierPrefix, new_identifier
 from app.lib import storage
 from app.lib.exceptions import InvalidRequestError
 from app.schemas.events.figure import FigureLegend, FigureReadyEvent, LegendEntry, RenderSpec
-from app.constants.raster import SENTINEL2_BANDS, SpectralBand
 from app.services.rendering.math.color_ramps import blend_over, colourise, hex_colour_at
 from app.services.rendering.math.rasterize import ImageFormat, draw_colourbar, draw_discrete_legend, encode_image
 from app.services.rendering.math.stretch import StretchBounds, StretchMethod, apply_stretch, compute_stretch
@@ -144,6 +146,75 @@ async def render_index_map(
     )
 
 
+async def render_sar_backscatter(
+    backscatter_decibels: np.ndarray,
+    *,
+    run_id: str,
+    trace_step_id: str,
+    title: str,
+    polarisation: Polarisation,
+    mask_applied: bool,
+    scene_ids: list[str] | None = None,
+    crs: str | None = None,
+    caption: str | None = None,
+    claim_ids: list[str] | None = None,
+    is_primary: bool = False,
+    domain: tuple[float, float] = SAR_BACKSCATTER_DECIBEL_DOMAIN,
+) -> RenderedFigure:
+    """Render terrain-corrected SAR backscatter in dB over a fixed, comparable domain.
+
+    **Fixed rather than percentile, for the reason an index map is drawn over [-1, 1].** A radar time
+    series exists to be compared across dates; stretching each date to its own percentiles makes a calm
+    scene and a flooded one look equally varied, which hides exactly the change being looked for. Grey
+    rather than a colour ramp because radar has no colour, and colouring it invents an interpretation the
+    sensor never made.
+
+    `mask_applied` is the radar reading of §8 rule 13's "whether the mask was applied": for optical it is
+    cloud and shadow, here it is layover and shadow. The caller states it, because this function is handed
+    an array and cannot see what was done to it upstream.
+    """
+    bounds = await asyncio.to_thread(
+        compute_stretch, backscatter_decibels, method=StretchMethod.FIXED, fixed_domain=domain
+    )
+    specification = RenderSpec(
+        scene_ids=scene_ids or [],
+        bands=[polarisation.value],
+        stretch=bounds.as_render_spec(),
+        color_ramp=ColorRampId.SAR_GRAYSCALE,
+        resampling="none",
+        crs=crs,
+        mask_applied=mask_applied,
+    )
+    legend = FigureLegend(
+        kind=LegendKind.CONTINUOUS,
+        label=f"{polarisation.value} backscatter (dB)",
+        color_ramp=ColorRampId.SAR_GRAYSCALE,
+        domain=[bounds.minimum, bounds.maximum],
+        entries=None,
+    )
+    rgba = await asyncio.to_thread(
+        _compose_index_map,
+        backscatter_decibels,
+        ColorRampId.SAR_GRAYSCALE,
+        bounds,
+        legend.label,
+        (bounds.minimum, bounds.maximum),
+    )
+    return await _publish(
+        rgba,
+        run_id=run_id,
+        kind=FigureKind.SAR_BACKSCATTER,
+        title=title,
+        caption=caption,
+        trace_step_id=trace_step_id,
+        claim_ids=claim_ids or [],
+        legend=legend,
+        specification=specification,
+        is_primary=is_primary,
+        lossy=False,
+    )
+
+
 def _compose_index_map(
     index: np.ndarray,
     ramp: ColorRampId,
@@ -189,7 +260,7 @@ async def render_rgb_composite(
     colors = ["#c0392b", "#27ae60", "#2980b9"]
     
     legend_entries = []
-    for band_id, color in zip(used_bands, colors):
+    for band_id, color in zip(used_bands, colors, strict=True):
         try:
             # Look up the human-readable role (e.g., "red" -> "Red")
             role_str = SENTINEL2_BANDS[SpectralBand(band_id)][0].value
@@ -316,16 +387,17 @@ async def render_mask_overlay(
         ],
     )
 
-    base_rgba = await asyncio.to_thread(_compose_mask_overlay, mask, base_rgba, ramp)
+    overlay_rgba = await asyncio.to_thread(_compose_mask_overlay, mask, base_rgba, ramp)
     
     entries = [(e.color, e.label) for e in legend.entries] if legend.entries else None
     if entries and legend.label:
-        final_rgba = await asyncio.to_thread(draw_discrete_legend, base_rgba, entries=entries, label=legend.label)
+        final_rgba = await asyncio.to_thread(draw_discrete_legend, overlay_rgba, entries=entries, label=legend.label)
     else:
-        final_rgba = base_rgba
+        final_rgba = overlay_rgba
 
     return await _publish(
         final_rgba,
+        base_rgba=overlay_rgba,
         run_id=run_id,
         kind=FigureKind.MASK_OVERLAY,
         title=title,

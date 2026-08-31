@@ -58,6 +58,12 @@ SHARED_VOCABULARIES: Final[dict[str, tuple[str, str]]] = {
         "features/investigation/schemas/investigation.schema.ts",
         "acquisitionModalitySchema",
     ),
+    # Discharged in Phase 1.3. It sat in `FRONTEND_ONLY_VOCABULARIES` reading "Phase 1.3 - the SAR
+    # branch" until the SAR branch existed to meet it, which is exactly what that map is for.
+    "scenes.Polarisation": (
+        "features/crossModal/schemas/cross-modal.schema.ts",
+        "polarisationSchema",
+    ),
     "scenes.SceneRole": ("features/investigation/schemas/investigation.schema.ts", "sceneRoleSchema"),
     "scenes.TemporalRole": ("features/missionCommand/schemas/imagery.schema.ts", "temporalRoleSchema"),
     "stages.PipelineStage": ("features/investigation/schemas/analysis.schema.ts", "pipelineStageCodeSchema"),
@@ -162,7 +168,6 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
 FRONTEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     "agreementStateSchema": "Phase 1.11 - the cross-modal agreement ledger.",
     "fusionRefusalIdSchema": "Phase 1.11 - the stated reasons fusion refuses.",
-    "polarisationSchema": "Phase 1.3 - the SAR branch.",
     "sensorIdSchema": "Phase 1.11 - names a sensor within a cross-modal comparison.",
     "comparatorSideSchema": "Interface state. The backend has no opinion on which pane a layer is drawn in.",
     "reportExportFormatSchema": "Phase 1.12 - JSON and GeoJSON; PDF is deferred to Phase 2.",

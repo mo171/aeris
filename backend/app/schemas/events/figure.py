@@ -100,8 +100,10 @@ class RenderSpec(StreamEvent):
     # a change to a contract nobody parses yet rather than a breaking one.
     decimation: int = Field(default=1, ge=1)
 
-    # Whether the cloud and shadow mask had been applied before the array was rendered (§8 rule 1). Index
-    # values over cloud are not meaningful, so a figure drawn without the mask shows the atmosphere.
+    # Whether the mask of ground the sensor could not read had been applied before the array was rendered
+    # (§8 rule 1). For optical that is cloud and shadow - index values over cloud are not meaningful, so a
+    # figure drawn without the mask shows the atmosphere. For radar it is layover and shadow, which is the
+    # same claim about the same question: does this picture show ground the sensor actually saw?
     mask_applied: bool
 
 

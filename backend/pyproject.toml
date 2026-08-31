@@ -63,6 +63,8 @@ dependencies = [
     "langgraph>=1.2.11",
     "langgraph-checkpoint-sqlite>=3.1.1",
     "rio-cogeo>=7.0.2",
+    # Phase 1.3 cloud probability model. The service uses its documented ten-band Sentinel-2 interface.
+    "s2cloudless>=1.7.3",
 ]
 
 [dependency-groups]

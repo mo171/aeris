@@ -40,6 +40,7 @@ backend/
 │   │   ├── doctor.py                    # `aeris doctor` - the dependency table (Phase 0.6) DONE
 │   │   ├── dataset.py                   # `aeris dataset list|show|fetch|search`  DONE (1.1)
 │   │   ├── ingest.py                    # `aeris ingest inspect|scene|index`  DONE (1.2)
+│   │   ├── preprocess.py                # `aeris preprocess coregister|sar`  DONE (1.3)
 │   │   ├── analyse.py                   # `aeris analyse --scene --query`
 │   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
 │   │   │                                 #   points it at the three real graphs; the flags do not change.
@@ -154,17 +155,25 @@ backend/
 │   │   │   `validation.py` decides, and a third module between them had nothing left to do.
 │   │   │   `resampling.py` arrives with 1.3, which is the first phase that actually resamples.
 │   │   │
-│   │   ├── preprocessing/               # S7-S10 and the SAR branch
-│   │   │   ├── cloud_masking.py
-│   │   │   ├── reprojection.py
+│   │   ├── preprocessing/               # S7-S10 and the SAR branch.  DONE (1.3)
+│   │   │   ├── cloud_masking.py         # s2cloudless -> threshold -> projected shadow. Reports
+│   │   │   │                            #   obscuredFraction, counting UNJUDGED pixels as unread.
+│   │   │   ├── reprojection.py          # S8/S10. Resampling follows the data type, never the dtype.
 │   │   │   ├── coregistration.py        # runs it, reports the residual, REFUSES above tolerance
-│   │   │   ├── sar_calibration.py       # order is fixed: calibrate -> speckle -> terrain
+│   │   │   ├── elevation.py             # Copernicus DEM GLO-30, windowed, on the scene's own grid.
+│   │   │   │                            #   Terrain correction without a DEM is not terrain correction.
+│   │   │   ├── sar_calibration.py       # order is fixed: calibrate -> speckle -> terrain. Calibration
+│   │   │   │                            #   is SKIPPABLE (`None`): an RTC product calibrated twice is
+│   │   │   │                            #   the square of the truth and opens cleanly.
 │   │   │   └── math/
 │   │   │       ├── cloud_probability.py
-│   │   │       ├── registration_residual.py  # phase correlation / tie points -> residual in pixels
+│   │   │       ├── registration_residual.py  # phase correlation -> residual in pixels. Nodata is filled
+│   │   │       │                             #   with the tile MEAN; zero-fill is an edge it locks onto.
 │   │   │       ├── grid_alignment.py
-│   │   │       ├── speckle_filters.py
-│   │   │       └── terrain_flattening.py     # layover + shadow masks retained, not discarded
+│   │   │       ├── speckle_filters.py        # Lee (1980) on the coefficient of variation. Speckle is
+│   │   │       │                             #   multiplicative, and that IS the formula.
+│   │   │       └── terrain_flattening.py     # layover + shadow retained. The sign convention is the
+│   │   │                                     #   whole file - it was inverted once and looked fine.
 │   │   │
 │   │   ├── spectral/                    # S12 - the reference example of rule 3
 │   │   │   ├── indices.py               # async. Picks the index, maps bands per sensor, masks, returns a result.
