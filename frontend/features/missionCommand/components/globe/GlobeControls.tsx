@@ -18,8 +18,8 @@
 
 "use client";
 
-import { Minus, Orbit, Plus, RotateCcw } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Building2, Images, Minus, Orbit, Plus, RotateCcw, Slash } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { GlowDot, type GlowDotTone } from "@/components/sharedUI/dumbComponent/GlowDot";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 
 import { useMissionCommandStore } from "../../store/mission-command-store";
 import type { MissionStatus } from "../../types/mission.types";
+import type { StageBuildingMode } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 
 const MARKER_LEGEND: readonly { status: MissionStatus; label: string; tone: GlowDotTone }[] = [
   { status: "alert", label: "Alert", tone: "red" },
@@ -37,16 +38,56 @@ const MARKER_LEGEND: readonly { status: MissionStatus; label: string; tone: Glow
   { status: "archived", label: "Archived", tone: "neutral" },
 ];
 
+const BUILDING_MODES: readonly {
+  id: StageBuildingMode;
+  label: string;
+  icon: typeof Building2;
+  hint: string;
+}[] = [
+    { id: "none", label: "Flat", icon: Slash, hint: "No buildings — imagery draped on terrain only" },
+    {
+      id: "massing",
+      label: "Massing",
+      icon: Building2,
+      hint: "OpenStreetMap footprints extruded to real heights. Free, and your imagery stays visible underneath.",
+    },
+    {
+      id: "photorealistic",
+      label: "Photoreal",
+      icon: Images,
+      hint: "Google photogrammetry — textured 3D. Metered per tile, and it replaces the ground.",
+    },
+  ];
+
 export function GlobeControls() {
   const globeViewer = useMissionCommandStore((state) => state.globeViewer);
-  const [isAutoRotating, setIsAutoRotating] = useState(true);
+  const isAutoRotating = useMissionCommandStore((state) => state.isAutoRotating);
+  const setIsAutoRotating = useMissionCommandStore((state) => state.setIsAutoRotating);
+  const [buildingMode, setBuildingMode] = useState<StageBuildingMode>("none");
 
   const isGlobeReady = globeViewer !== null;
+
+  useEffect(() => {
+    if (globeViewer) {
+      setBuildingMode(globeViewer.getBuildingMode());
+
+      // Apply the persisted auto-rotation state when the globe initializes
+      const persistedAutoRotate = useMissionCommandStore.getState().isAutoRotating;
+      if (globeViewer.isAutoRotating() !== persistedAutoRotate) {
+        globeViewer.setAutoRotate(persistedAutoRotate);
+      }
+    }
+  }, [globeViewer]);
 
   const handleAutoRotateToggle = () => {
     const next = !isAutoRotating;
     setIsAutoRotating(next);
     globeViewer?.setAutoRotate(next);
+  };
+
+  const handleBuildingModeSelect = (mode: StageBuildingMode) => {
+    setBuildingMode(mode);
+    globeViewer?.setBuildingMode(mode);
   };
 
   return (
@@ -94,6 +135,43 @@ export function GlobeControls() {
         <GlobeControlButton label="Reset view" onClick={() => globeViewer?.resetView()}>
           <RotateCcw />
         </GlobeControlButton>
+
+        <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+
+        {BUILDING_MODES.map(({ id, label, icon: Icon, hint }) => {
+          const isPhotorealUnavailable =
+            id === "photorealistic" && globeViewer && !globeViewer.isPhotorealisticAvailable();
+          const unavailableReason = isPhotorealUnavailable
+            ? "Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to enable photorealistic tiles"
+            : null;
+
+          return (
+            <Tooltip key={id}>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`${label} buildings`}
+                  aria-pressed={buildingMode === id}
+                  disabled={Boolean(isPhotorealUnavailable || !globeViewer)}
+                  onClick={() => handleBuildingModeSelect(id)}
+                  className={cn(
+                    "h-7 gap-1 px-1.5 font-mono text-[10px] tracking-wide",
+                    buildingMode === id ? "bg-aeris-teal/15 text-aeris-teal hover:bg-aeris-teal/25 hover:text-aeris-teal" : "text-muted-foreground",
+                    isPhotorealUnavailable && "text-muted-foreground/35",
+                  )}
+                >
+                  <Icon className="size-3" />
+                  {label}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-64">
+                {unavailableReason ?? hint}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
       </div>
     </div>
   );
@@ -117,7 +195,9 @@ function GlobeControlButton({ label, onClick, isActive, children }: GlobeControl
           aria-label={label}
           aria-pressed={isActive}
           onClick={onClick}
-          className={cn(isActive && "text-aeris-teal")}
+          className={cn(
+            isActive && "bg-aeris-teal/15 text-aeris-teal hover:bg-aeris-teal/25 hover:text-aeris-teal",
+          )}
         >
           {children}
         </Button>

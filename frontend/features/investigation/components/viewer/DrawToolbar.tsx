@@ -106,7 +106,9 @@ function ToolButton({ id, isActive, onSelect, icon, tone = "teal" }: ToolButtonP
           aria-pressed={isActive}
           onClick={() => onSelect(id)}
           className={cn(
-            isActive && (tone === "amber" ? "bg-aeris-amber/15 text-aeris-amber" : "bg-aeris-teal/15 text-aeris-teal"),
+            isActive && (tone === "amber" 
+              ? "bg-aeris-amber/15 text-aeris-amber hover:bg-aeris-amber/25 hover:text-aeris-amber" 
+              : "bg-aeris-teal/15 text-aeris-teal hover:bg-aeris-teal/25 hover:text-aeris-teal"),
           )}
         >
           {icon}

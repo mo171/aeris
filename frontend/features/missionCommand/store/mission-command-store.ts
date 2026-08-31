@@ -12,6 +12,7 @@
 //         and have no meaning to the backend.
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 import type { AssistantPanelControls } from "../types/assistant.types";
 import type { GlobeViewerHandle } from "../types/globe.types";
@@ -55,6 +56,9 @@ interface MissionCommandState {
   setGlobeViewer: (viewer: GlobeViewerHandle | null) => void;
   setAssistantControls: (controls: AssistantPanelControls | null) => void;
 
+  isAutoRotating: boolean;
+  setIsAutoRotating: (isAutoRotating: boolean) => void;
+
   toggleSceneSelection: (sceneId: string) => void;
   clearSceneSelection: () => void;
   setCatalogSearchTerm: (searchTerm: string) => void;
@@ -66,15 +70,20 @@ interface MissionCommandState {
   clearCompletedUploadTasks: () => void;
 }
 
-export const useMissionCommandStore = create<MissionCommandState>((set) => ({
+export const useMissionCommandStore = create<MissionCommandState>()(
+  persist(
+    (set) => ({
   selectedSceneIds: [],
   catalogSearchTerm: "",
   focusedMissionId: null,
   uploadTasks: [],
   isCatalogSectionExpanded: true,
   isMissionSectionExpanded: true,
+  isAutoRotating: true,
   globeViewer: null,
   assistantControls: null,
+
+  setIsAutoRotating: (isAutoRotating) => set({ isAutoRotating }),
 
   toggleCatalogSection: () =>
     set((state) => ({ isCatalogSectionExpanded: !state.isCatalogSectionExpanded })),
@@ -116,4 +125,16 @@ export const useMissionCommandStore = create<MissionCommandState>((set) => ({
     set((state) => ({
       uploadTasks: state.uploadTasks.filter((task) => task.state !== "complete"),
     })),
-}));
+  }),
+  {
+    name: "mission-command-storage",
+    partialize: (state) => ({
+      isAutoRotating: state.isAutoRotating,
+      isCatalogSectionExpanded: state.isCatalogSectionExpanded,
+      isMissionSectionExpanded: state.isMissionSectionExpanded,
+      selectedSceneIds: state.selectedSceneIds,
+      focusedMissionId: state.focusedMissionId,
+      catalogSearchTerm: state.catalogSearchTerm,
+    }),
+  },
+));
