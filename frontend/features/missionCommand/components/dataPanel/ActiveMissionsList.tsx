@@ -9,7 +9,8 @@
 
 "use client";
 
-import { LoaderCircle, Radar } from "lucide-react";
+import { LoaderCircle, Radar, FileSearch } from "lucide-react";
+import Link from "next/link";
 import { memo, useCallback } from "react";
 
 import { Chip, type ChipTone } from "@/components/sharedUI/dumbComponent/Chip";
@@ -20,6 +21,7 @@ import { EmptyState } from "@/components/sharedUI/functionalComponent/feedback/E
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
 import { PanelSkeleton } from "@/components/sharedUI/functionalComponent/feedback/PanelSkeleton";
 import { formatRelativeTime } from "@/lib/formatters";
+import { buildRoute } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils";
 
 import { useActiveMissions } from "../../hooks/use-active-missions";
@@ -129,19 +131,26 @@ interface MissionRowProps {
 
 const MissionRow = memo(function MissionRow({ mission, isFocused, onSelect }: MissionRowProps) {
   return (
-    <div className="px-2 pb-1.5">
-      <button
-        type="button"
+    <div className="px-2 pb-1.5 group">
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onSelect(mission)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect(mission);
+          }
+        }}
         aria-pressed={isFocused}
         className={cn(
-          "w-full rounded-md border px-2.5 py-2 text-left transition-colors duration-fast",
+          "relative w-full rounded-md border px-2.5 py-2 text-left transition-colors duration-fast cursor-default",
           isFocused
             ? "border-aeris-teal/55 bg-aeris-teal/[0.08]"
             : "border-border-soft bg-surface-2/40 hover:border-border hover:bg-surface-3/50",
         )}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pr-6">
           <GlowDot tone={STATUS_TONE[mission.status]} isPulsing={mission.status === "alert"} />
           <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
             {mission.name}
@@ -161,14 +170,26 @@ const MissionRow = memo(function MissionRow({ mission, isFocused, onSelect }: Mi
           <Chip>{mission.sceneCount} scenes</Chip>
         </div>
 
-        <p className="mt-1 truncate font-mono text-[9px] tracking-wide text-muted-foreground/75 uppercase">
-          {mission.nextRunAt
-            ? `Next run ${formatRelativeTime(mission.nextRunAt)}`
-            : mission.lastRunAt
-              ? `Last run ${formatRelativeTime(mission.lastRunAt)}`
-              : "Not yet run"}
-        </p>
-      </button>
+        <div className="mt-1 flex items-center justify-between">
+          <p className="truncate font-mono text-[9px] tracking-wide text-muted-foreground/75 uppercase">
+            {mission.nextRunAt
+              ? `Next run ${formatRelativeTime(mission.nextRunAt)}`
+              : mission.lastRunAt
+                ? `Last run ${formatRelativeTime(mission.lastRunAt)}`
+                : "Not yet run"}
+          </p>
+          
+          <Link
+            href={buildRoute.evidenceAudit(mission.name)}
+            onClick={(e) => e.stopPropagation()}
+            title="Audit this mission's evidence"
+            className="flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-surface-4 focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <span className="font-mono text-[9px] uppercase tracking-wide text-aeris-teal">Audit</span>
+            <FileSearch className="size-3 text-aeris-teal" />
+          </Link>
+        </div>
+      </div>
     </div>
   );
 });

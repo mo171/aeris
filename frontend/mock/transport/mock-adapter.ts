@@ -130,7 +130,8 @@ function buildResponse(
   result: MockResponse,
 ): Promise<AxiosResponse> {
   const response: AxiosResponse = {
-    data: result.data,
+    // Simulate the network boundary by stringifying and parsing, ensuring Dates become ISO strings
+    data: result.data ? JSON.parse(JSON.stringify(result.data)) : result.data,
     status: result.status,
     statusText: result.status >= 400 ? "Error" : "OK",
     headers: new AxiosHeaders({ "content-type": "application/json" }),

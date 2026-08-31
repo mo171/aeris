@@ -13,7 +13,10 @@ import type { ModelId } from "@/lib/constants/models";
 import type {
   auditedClaimPageSchema,
   auditedClaimSchema,
+  auditEvidenceItemSchema,
 } from "../schemas/evidence-audit.schema";
+
+export type AuditEvidenceItem = z.infer<typeof auditEvidenceItemSchema>;
 
 export type AuditedClaim = z.infer<typeof auditedClaimSchema>;
 export type AuditedClaimPage = z.infer<typeof auditedClaimPageSchema>;

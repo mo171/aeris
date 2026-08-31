@@ -28,6 +28,7 @@ import { GlassPanel } from "@/components/sharedUI/dumbComponent/GlassPanel";
 import { GlowDot, type GlowDotTone } from "@/components/sharedUI/dumbComponent/GlowDot";
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
 import { ErrorState } from "@/components/sharedUI/functionalComponent/feedback/ErrorState";
+import { PanelSkeleton } from "@/components/sharedUI/functionalComponent/feedback/PanelSkeleton";
 import { useModelStatus } from "@/features/missionCommand/hooks/use-model-status";
 import type { ModelHealth, ModelStatus } from "@/features/missionCommand/types/model.types";
 import {
@@ -86,11 +87,7 @@ export function ModelObservatoryScreen() {
             <ErrorState error={error} onRetry={refetch} />
           </GlassPanel>
         ) : isLoading ? (
-          <GlassPanel className="px-3 py-4">
-            <p className="font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
-              Checking the fleet…
-            </p>
-          </GlassPanel>
+          <PanelSkeleton rowCount={3} rowHeight={180} />
         ) : (
           <ul className="flex flex-col gap-2">
             {MODEL_ORDER.map((modelId) => (

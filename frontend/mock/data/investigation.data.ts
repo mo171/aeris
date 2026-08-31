@@ -152,7 +152,7 @@ const SESSION_STORAGE_KEY = "aeris.mock.investigations";
  * reports "no evidence yet" with nothing anywhere saying why. It costs a session's history to discard
  * the cache; it costs an afternoon to debug a schema change against data that predates it.
  */
-const SESSION_STORAGE_VERSION = 2;
+const SESSION_STORAGE_VERSION = 3;
 
 const investigationsById = new Map<string, GeneratedInvestigation>(loadPersisted());
 
@@ -1025,7 +1025,7 @@ function buildAnalysisProducts(
   const claims: Claim[] = [
     {
       id: `${investigationId}-claim-primary`,
-      runId: "",
+      runId: `${investigationId}-run-initial`,
       text: "Built-up area increased across the area of interest.",
       kind: "quantitative",
       confidence: 0.91,
@@ -1064,7 +1064,7 @@ function buildAnalysisProducts(
     },
     {
       id: `${investigationId}-claim-spatial`,
-      runId: "",
+      runId: `${investigationId}-run-initial`,
       text: "The change is concentrated in the north-eastern quadrant rather than distributed evenly.",
       kind: "spatial",
       confidence: 0.88,
@@ -1080,7 +1080,7 @@ function buildAnalysisProducts(
   if (hasSar) {
     claims.push({
       id: `${investigationId}-claim-crossmodal`,
-      runId: "",
+      runId: `${investigationId}-run-initial`,
       text: "Radar backscatter over the same regions is consistent with new built structures, so both sensors support the finding.",
       kind: "categorical",
       confidence: 0.84,

@@ -14,9 +14,19 @@
 
 import { z } from "zod";
 
-import { claimKindSchema } from "@/features/investigation/schemas/evidence.schema";
+import { claimKindSchema, claimMetricSchema, evidenceKindSchema } from "@/features/investigation/schemas/evidence.schema";
+import { investigationStatusSchema } from "@/features/investigation/schemas/investigation.schema";
 import { modelIdSchema } from "@/features/missionCommand/schemas/model.schema";
 import { createCursorPageSchema, isoTimestampSchema } from "@/lib/schemas/geo.schema";
+
+export const auditEvidenceItemSchema = z.object({
+  id: z.string().min(1),
+  kind: evidenceKindSchema,
+  title: z.string().min(1),
+  areaHectares: z.number().nonnegative().nullable(),
+  magnitude: z.number().min(0).max(1),
+  confidence: z.number().min(0).max(1).nullable(),
+});
 
 export const auditedClaimSchema = z.object({
   claimId: z.string().min(1),
@@ -37,6 +47,14 @@ export const auditedClaimSchema = z.object({
 
   /** How many evidence records support it. Zero is a claim standing on nothing, and must be visible. */
   evidenceCount: z.number().int().nonnegative(),
+  /** The full evidence items so they can be examined without loading the workspace graph. */
+  evidenceItems: z.array(auditEvidenceItemSchema),
+  /** The quantitative proof backing the claim. */
+  metrics: z.array(claimMetricSchema),
+  /** True for the headline claim of a run, false for supporting detail. */
+  isPrimary: z.boolean(),
+  investigationStatus: investigationStatusSchema,
+  
   /** The acquisitions it was computed from, so a scene found faulty can be traced to what it touched. */
   sourceSceneIds: z.array(z.string()),
   producedAt: isoTimestampSchema,

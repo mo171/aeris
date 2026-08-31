@@ -70,19 +70,35 @@ function collectAuditedClaims(): AuditedClaim[] {
         }
       }
 
+      const evidenceItems = claim.evidenceIds
+        .map((id) => evidenceById.get(id))
+        .filter((item): item is NonNullable<typeof item> => item != null)
+        .map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          title: item.title,
+          areaHectares: item.areaHectares,
+          magnitude: item.magnitude,
+          confidence: item.confidence,
+        }));
+
       rows.push({
         claimId: claim.id,
         runId: claim.runId,
         text: claim.text,
         kind: claim.kind,
         confidence: claim.confidence,
+        metrics: claim.metrics,
+        isPrimary: claim.isPrimary,
+        evidenceCount: claim.evidenceIds.length,
+        evidenceItems,
         modelId: claim.modelId as ModelId,
         modelVersion: claim.modelVersion,
         traceStepId: claim.traceStepId,
         investigationId: investigation.id,
         investigationName: investigation.name,
+        investigationStatus: investigation.status,
         areaOfInterestName: investigation.areaOfInterestName,
-        evidenceCount: claim.evidenceIds.length,
         sourceSceneIds: [...sourceSceneIds],
         producedAt: investigation.updatedAt,
       });
