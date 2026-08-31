@@ -3,8 +3,8 @@
 what  : The Typer application, the commands registered on it, and the translation from a result object into
         a process exit code.
 where : The console script entry point declared in `pyproject.toml`. Phase 1 adds `dataset`, `ingest`,
-        `analyse`, `investigate` and `voice` here as they are built; Phase 2 adds `app/routes/` beside this
-        file and this one keeps working unchanged (`folder-archtecture.md` rule 1).
+        `analyse` and `voice` here as they are built; Phase 2 adds `app/routes/` beside this file and this
+        one keeps working unchanged (`folder-archtecture.md` rule 1).
 how   : **A Typer command callback is sync, and that is the `code-standards.md` §7 exception, not a
         violation of it.** Typer calls it synchronously, so declaring it `async def` would hand Typer a
         coroutine object where it expects a return. The callback therefore does exactly two things: start
@@ -29,7 +29,11 @@ from rich.console import Console
 from rich.markup import escape
 
 from app.cli import doctor as doctor_command
+from app.cli import run as run_command
 from app.config import settings
+from app.constants.intents import Intent
+from app.constants.pipeline import GraphName
+from app.constants.statuses import RunStatus
 from app.lib import database, inngest, redis, storage
 from app.lib.logger import configure_logging
 
@@ -86,6 +90,79 @@ async def _close_connections() -> None:
         inngest.reset_client(),
         return_exceptions=True,
     )
+
+
+@app.command()
+def run(
+    query: str = typer.Argument("", help="The question to run. Not needed with --replay or --resume."),
+    replay: str = typer.Option(
+        "", "--replay", help="Re-render a finished run from its journal. Computes nothing, needs nothing."
+    ),
+    resume: str = typer.Option(
+        "", "--resume", help="Continue a run that stopped partway, from its last checkpoint."
+    ),
+    intent: Intent = typer.Option(
+        Intent.SCENE_VQA, "--intent", help="What kind of question this is. Phase 1.8 classifies it instead."
+    ),
+    graph: GraphName = typer.Option(GraphName.PROBE, "--graph", help="Which pipeline graph to run."),
+    pause_seconds: float = typer.Option(
+        0.0, "--pause", help="Seconds the probe graph's last stage pretends to work for. For testing stop."
+    ),
+) -> None:
+    """Start, resume or replay a pipeline run, drawing its live S1-S20 trace."""
+    # Mutually exclusive rather than silently preferring one: an operator who typed both meant something,
+    # and guessing which half to honour is how a replay quietly becomes a second execution.
+    if replay and resume:
+        console.print("[red]--replay and --resume do different things; pass one.[/red]")
+        raise typer.Exit(code=2)
+    if not (replay or resume or query):
+        console.print("[red]Nothing to do. Pass a query, --replay <run_id> or --resume <run_id>.[/red]")
+        raise typer.Exit(code=2)
+
+    status = asyncio.run(
+        _run_pipeline(
+            query=query,
+            replay=replay,
+            resume=resume,
+            intent=intent,
+            graph_name=graph,
+            pause_seconds=pause_seconds,
+        )
+    )
+
+    # The exit code is the contract, as it is for `doctor`. `complete` is the only success: a cancelled run
+    # is a run that did not answer, and a script that treated it as one would carry on with no result.
+    if status is not RunStatus.COMPLETE:
+        raise typer.Exit(code=1)
+
+
+async def _run_pipeline(
+    *,
+    query: str,
+    replay: str,
+    resume: str,
+    intent: Intent,
+    graph_name: GraphName,
+    pause_seconds: float,
+) -> RunStatus:
+    """Everything `run` does, inside one event loop."""
+    await configure_logging()
+    try:
+        if replay:
+            return await run_command.execute_replay(run_id=replay, console=console)
+        if resume:
+            return await run_command.execute_resume(
+                run_id=resume, intent=intent, graph_name=graph_name, console=console
+            )
+        return await run_command.execute_run(
+            query=query,
+            intent=intent,
+            graph_name=graph_name,
+            console=console,
+            pause_seconds=pause_seconds,
+        )
+    finally:
+        await _close_connections()
 
 
 @app.command()

@@ -234,6 +234,48 @@ class Settings(BaseSettings):
     # Generous: this bounds a single read against object storage, and scene reads are large.
     storage_read_timeout_seconds: int = Field(default=60, ge=1, le=600)
 
+    # --- The pipeline spine. Phase 1.0. --------------------------------------------------------------------
+    #
+    # Two SQLite files, deliberately not one. LangGraph's checkpointer and its long-term store each own
+    # their own schema, and their lifetimes are opposite: checkpoints are per-run scratch that is safe to
+    # delete once a run is finished, while long-term memory is the thing that must never be deleted by
+    # accident (`product-truth.md` §1.6). Sharing a file makes "clear the checkpoints" a command that can
+    # destroy the operator's memories, and no amount of care at the call site makes that safe again.
+    #
+    # Relative paths are resolved against `BACKEND_ROOT_DIRECTORY`, not the working directory, so a run
+    # started from `backend/` and one started from the repository root write to the same database. Both
+    # defaults are under `data/`, which `.gitignore` already excludes.
+
+    pipeline_checkpoint_database_path: Path = Path("data/checkpoints.sqlite")
+    pipeline_memory_database_path: Path = Path("data/memory.sqlite")
+
+    # Where `runs/<run_id>.jsonl` is written. One file per run, appended as events are emitted, so a run
+    # that is killed halfway still leaves a readable and replayable journal.
+    pipeline_journal_directory: Path = Path("runs")
+
+    # When LangGraph persists a checkpoint. Measured rather than assumed - see the recorded run in
+    # `tests/integration/test_pipeline_durability.py`:
+    #
+    #   exit   -> a hard-killed process leaves ZERO checkpoints. Everything is recomputed.
+    #   async  -> the checkpoint is written in the background, so a kill inside the write window loses it.
+    #   sync   -> the checkpoint is committed before the next node starts.
+    #
+    # `sync` because of what a node costs here. A pipeline stage is model inference measured in minutes; a
+    # SQLite commit is sub-millisecond. Trading a microsecond of latency per stage against re-running S13 is
+    # not a close decision, and `async` only narrows that window rather than closing it.
+    pipeline_durability: Literal["sync", "async", "exit"] = "sync"
+
+    # LangGraph raises `GraphRecursionError` past this many supersteps. It is the guard against a cyclic
+    # graph that never terminates - a real risk once 1.9 lets an agent route back into planning. The default
+    # of 25 is LangGraph's; 60 is sized for the 20-stage pipeline plus the branching a cross-modal run adds.
+    pipeline_recursion_limit: int = Field(default=60, ge=1, le=1_000)
+
+    # How long a run is given after it is asked to stop before it is cancelled outright. An abandoned run
+    # stops at its next node boundary (`product-truth.md` §1.3); this bounds the case where the current node
+    # never reaches one - a stalled network read, a model that hangs. Short, because the operator has
+    # already said stop.
+    pipeline_abandon_grace_seconds: float = Field(default=10.0, gt=0, le=300)
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalise_log_level(cls, raw_value: object) -> object:
@@ -306,6 +348,41 @@ class Settings(BaseSettings):
         CORS check fails on a deployment whose CORS is configured perfectly, which is a long afternoon.
         """
         return str(self.storage_browser_origin).rstrip("/")
+
+    @property
+    def checkpoint_database_path(self) -> Path:
+        """The checkpoint database as an absolute path, with its parent directory guaranteed to exist.
+
+        Resolved here rather than at the call site because three things open it - the CLI, the tests, and
+        Phase 2's Inngest functions - and a relative path means they disagree the moment one of them is
+        launched from a different directory. Creating the parent is done here for the same reason: the
+        alternative is every caller remembering, and the one that forgets fails with `unable to open
+        database file`, which names neither the path nor the reason.
+        """
+        return self._resolved_directory_for(self.pipeline_checkpoint_database_path)
+
+    @property
+    def memory_database_path(self) -> Path:
+        """The long-term memory database, resolved and with its parent created. Never the same file as the
+        checkpoints - see the reasoning on the settings above."""
+        return self._resolved_directory_for(self.pipeline_memory_database_path)
+
+    @property
+    def journal_directory(self) -> Path:
+        """Where run journals are written, resolved and created."""
+        directory = self._absolute(self.pipeline_journal_directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def _absolute(self, path: Path) -> Path:
+        """Interpret a configured path relative to `backend/`, never to the working directory."""
+        return path if path.is_absolute() else BACKEND_ROOT_DIRECTORY / path
+
+    def _resolved_directory_for(self, path: Path) -> Path:
+        """Absolute path to a file, with its parent directory created."""
+        resolved = self._absolute(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return resolved
 
     @property
     def inngest_is_production(self) -> bool:

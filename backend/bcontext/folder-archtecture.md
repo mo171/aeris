@@ -41,12 +41,13 @@ backend/
 │   │   ├── dataset.py                   # `aeris dataset list|fetch`
 │   │   ├── ingest.py                    # `aeris ingest <path>`
 │   │   ├── analyse.py                   # `aeris analyse --scene --query`
-│   │   ├── investigate.py               # `aeris investigate` - the full graph, with --resume and --replay
+│   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
+│   │   │                                 #   points it at the three real graphs; the flags do not change.
 │   │   ├── voice.py                     # `aeris voice` - the spoken loop
 │   │   └── renderers/                   # Consumers of the LangGraph stream. Not a protocol - just consumers.
-│   │       ├── trace_renderer.py        # draws the live S1-S20 trace in the terminal
+│   │       ├── trace_renderer.py        # draws the live S1-S20 trace in the terminal  DONE (1.0)
 │   │       ├── figure_writer.py         # writes figure-ready images to runs/<run_id>/figures/ and prints the path
-│   │       └── journal_writer.py        # appends runs/<run_id>.jsonl, replayable through the frontend's Zod
+│   │       └── journal_writer.py        # appends runs/<run_id>.jsonl, replayable through the frontend's Zod  DONE (1.0)
 │   │
 │   ├── routes/                          # (Phase 2) Declaration only. No logic, no database, no model.
 │   │   ├── investigation.py
@@ -98,7 +99,11 @@ backend/
 │   │   │   └── fanout.py                # One run's stream -> many consumers (trace, journal, speech)
 │   │   │
 │   │   ├── pipeline/                    # LangGraph only. Nothing here orchestrates by hand.
-│   │   │   ├── state.py                 # The TypedDict state schemas carried between nodes
+│   │   │   ├── state.py                 # The TypedDict state carried between nodes. DATA ONLY - never a
+│   │   │   │                             #   Python object, or the checkpoint depends on our module layout
+│   │   │   ├── node.py                   # @pipeline_node - mints the step id, emits the trace step twice,
+│   │   │   │                             #   times it, checks abandonment in and out. NOT StepRunner:
+│   │   │   │                             #   no retry, no executor, no protocol (ADR-002)
 │   │   │   ├── checkpointer.py          # Selects SQLite (P1) / Postgres (P2) checkpointer from config
 │   │   │   ├── stream.py                # Thin helpers that write event models via get_stream_writer()
 │   │   │   ├── cancellation.py          # Node-boundary cancellation. EXPLICIT abandonment only, never

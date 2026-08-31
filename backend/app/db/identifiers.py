@@ -45,7 +45,13 @@ class IdentifierPrefix(StrEnum):
     # Not persisted as tables yet, and listed because the wire already names them: a layer id and a figure
     # id appear in `layer-ready` and `figure-ready` events, and an utterance id in `speech`. Declaring them
     # here keeps one vocabulary rather than letting each producer invent a prefix.
+    #
+    # `SESSION` is the odd one - it never reaches the wire and never becomes a row. It is the LangGraph
+    # thread id (`product-truth.md` §1.6), and it is generated here rather than by `uuid4()` in
+    # `sessions/session.py` so that a thread id in a checkpoint table is self-describing and sorts by when
+    # the operator opened it.
     LAYER = "lyr"
+    SESSION = "ses"
     FIGURE = "fig"
     REPORT = "rpt"
     UTTERANCE = "utt"

@@ -1,3 +1,140 @@
+## Session — 2026-08-31 (1.0) · The LangGraph spine. **Phase 1 has started.**
+
+`aeris run` starts, resumes and replays a real pipeline run with a live S1–S20 trace. **142 tests green**
+(45 new), ruff clean, `uv lock --check` clean. LangGraph 1.2.11 and `langgraph-checkpoint-sqlite` 3.1.1 are
+the only new dependencies.
+
+Built: `schemas/events/` · `services/pipeline/` (state, checkpointer, memory_store, stream, cancellation,
+`node.py`, `graphs/probe.py`) · `services/sessions/` (session, run_handle, fanout) · `cli/renderers/` ·
+`cli/run.py`.
+
+### The structural decision, and why it had to be 1.0
+
+`services/sessions/run_handle.py` runs the graph as a **detached task**. Starting a run returns a handle
+immediately; a background task consumes `astream()` and fans the events out. The obvious alternative —
+`async for event in graph.astream(...)` in the caller — is one line, and everything AERIS is supposed to be
+dies at it: the agent cannot narrate because it is inside the loop, cannot answer a mid-run question because
+there is nowhere for one to arrive, and cannot be spoken over without cancelling the analysis.
+
+**Two tasks, not one**, and that is what makes abandonment safe. The outer task is never hard-cancelled, so
+it is always alive to emit the terminal event. A single task would produce, on the hard-cancel path, a run
+that just stops — no `run-error`, no journal entry saying why, and a trace whose last row spins forever.
+
+The gate is `test_a_run_survives_being_interrupted`, written as the operator's actual behaviour — ask
+something long, then ask something else while it works — rather than as an assertion about a flag. It fails
+on the inline design because there would be no line on which to ask the second question. **Verified by
+mutation**: adding `await handle.wait()` to `Session.start` fails it.
+
+### Three things measured rather than assumed
+
+**`durability="sync"`.** A graceful `asyncio` cancellation cannot tell the three modes apart — LangGraph
+flushes pending writes on the way out, so `exit` looked identical to `sync`, and my first assumption about it
+was wrong. Under a **hard kill** (`TerminateProcess`; no `finally`, no atexit):
+
+```
+exit   -> checkpoints=0   writes=0     the whole run is recomputed
+async  -> checkpoints=3   writes=4
+sync   -> checkpoints=3   writes=4
+```
+
+`exit` disqualified. `async` versus `sync` is a race window this test does not measure the width of; `sync`
+closes it rather than narrowing it, and a stage here is inference in minutes against a sub-millisecond commit.
+
+**A checkpoint holds data, never Python objects.** Putting `Intent` (a `StrEnum`) into the state made
+LangGraph write `app.constants.intents.Intent` into the checkpoint — it warns that it will refuse this in a
+future version. The real cost is worse than the warning: **rename that module and every in-flight run becomes
+unresumable.** The state now carries `intent: str`, and the rule is recorded in `state.py` for every key
+added after this one.
+
+**`aiosqlite` at DEBUG produced 76 KB of output for a run whose own trace is four rows.** Same class of
+problem as botocore in 0.6, and worse in shape: aiosqlite logs every statement *and* its completion, and the
+checkpointer writes after every node — so the flood scales with the length of the pipeline rather than being
+a one-off at startup. `THIRD_PARTY_LOG_LEVELS` gained aiosqlite, langgraph, langchain_core, langsmith.
+
+### The mutation pass found a real gap, which is the point of doing it
+
+Eight mutations, seven caught immediately. The one that survived: **deleting the node-boundary cancellation
+check changed nothing.** All twenty tests stayed green.
+
+The reason is that three mechanisms stop an abandoned run — the decorator's entry check, its exit check, and
+the node's own loop — and every end-to-end test was satisfied by whichever fired first. Three guards, one
+observable behaviour, **none individually tested**. That is precisely how a guard quietly stops working.
+
+Splitting them produced three new tests and one genuine finding: the exit check matters for exactly one case,
+**the last stage**, where there is no next node whose entry check would catch it. Without it, a run the
+operator was told was cancelled emits `run-complete` — the handle and the permanent record disagreeing,
+which is the worst kind of bug to find later. Each mechanism now has the only test that catches it:
+
+| Mutation | Caught by |
+|---|---|
+| entry check deleted | `test_a_node_does_not_start_when_the_run_is_already_abandoned` |
+| exit check deleted | `test_a_run_abandoned_during_its_final_stage_does_not_report_success` |
+| node stops checking its own loop | `test_abandoning_a_long_stage_does_not_wait_for_it_to_finish` — 29.8 s vs 13.0 s, the run waited out the whole 10 s stage |
+
+Also caught: the inline-await design, a fresh step id per emission, a dropped `running` emission,
+`serialise_event` without `by_alias`, session-close abandoning its runs, a failing consumer killing the run,
+and a declined confidence coerced to `0.0`. Every mutated file was restored and **byte-compared**.
+
+One process note worth keeping: I first wrote two mutation results into a test comment **without having run
+them**. They were run afterwards and both behaved as claimed — but a recorded result nobody executed is
+exactly the thing these comments exist to replace.
+
+### Decisions worth not relitigating
+
+- **`pipeline_node` is a decorator, not `StepRunner`.** ADR-002 deleted a protocol that owned retries, an
+  executor, an event sink and a context object. This is `functools.wraps` around one async function: it
+  chooses nothing, dispatches nothing, retries nothing. What it buys is that "emit the step twice, keyed on
+  one id" and "check the boundary" are structural rather than remembered in the fourteenth node.
+- **Two SQLite files, not one.** Checkpoints are per-run scratch; long-term memory is what the operator
+  taught the system. Opposite lifetimes — sharing a file makes "clear the checkpoints" a command that can
+  destroy the second.
+- **The thread id *is* the run id.** A checkpoint lineage belongs to one execution, so a session's runs must
+  not share a thread or the second resumes into the first one's state. It also makes `--resume` a direct
+  lookup with no mapping table.
+- **Fan-out is sequential await, journal first, no queues.** Queues buy surviving a slow consumer at the
+  price of a bound, a drop policy and silent loss. The consumers are a file append and a terminal draw
+  against a producer whose steps are minutes. Phase 2.3 adds a network consumer and can revisit it then,
+  with a reason rather than an anticipation.
+- **A consumer that raises is detached, never fatal.** A broken terminal must not lose a ten-minute analysis.
+- **Closing a session waits for its runs; it does not kill them.** Leaving is not the same statement as
+  stopping — the §1.3 rule, one level up.
+- **Five of seven analysis events modelled.** `layer-ready` and `claim` carry payloads no subsystem builds
+  yet; they are recorded in `EVENT_TYPES_NOT_YET_EMITTED` with the phase that will, and a test fails if that
+  list stops matching. Same discipline as 0.7's `FRONTEND_ONLY_VOCABULARIES`.
+- **Notebooks excluded from ruff.** They are a research record and their imports are in narrative order.
+  It also makes `ruff check .` a usable gate rather than one that must remember which directories count.
+
+### What Phase 0 caught, unprompted
+
+Adding three `StrEnum`s failed `test_every_backend_enum_is_classified` immediately, and six new settings
+failed `test_env_example_documents_every_configurable_field`. Both are Phase 0 tests doing exactly what they
+were written for, in the next phase, without anyone remembering they existed.
+
+### One hazard found by accident, recorded rather than fixed
+
+Demonstrating the resume gate from the CLI produced a journal with its tail duplicated. Diagnosed rather
+than assumed: the two `S20 completed` steps carried **different `stp_` ids and near-identical durations**,
+which means two processes wrote them. `kill -9` in Git Bash had reached the `uv` wrapper rather than the
+Python process, and the orphan finished its stage half a minute later and appended to the same file.
+
+**The application was correct; my demonstration was not.** Repeating it against the real process id gives a
+clean 12-line journal, S1 not re-run, resume completing from the checkpoint.
+
+What it exposed is genuine though: **nothing stops two processes appending to one run journal.** In Phase 1
+that needs an orphan to happen at all, so it is left open and recorded in `journal_writer.py`. Phase 2.5
+makes it real - several Inngest workers, any of which could be handed the same run - and the fix belongs
+there, where the Redis lock from 0.3 already exists.
+
+Worth keeping as a method note: the fastest way to a wrong conclusion here would have been to "fix" the
+duplication in the fan-out. The step ids said it was two writers, not one writer emitting twice.
+
+### Next — Phase 1.1
+
+Datasets. PDF pp.21–24 and the learning roadmap; `notebooks/02_data_exploration/`. The spine is in place, so
+1.1 onwards adds nodes to it rather than changing it, and `aeris run --graph` is the seam 1.10 extends.
+
+---
+
 ## Session - 2026-08-31 (revision) - **The harness correction.** Barge-in must not kill the run.
 
 A concept revision before Phase 1.0, and it turned up **one thing the documents had backwards and one they

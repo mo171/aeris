@@ -15,11 +15,13 @@ how   : `Settings` deliberately has required fields with no defaults, so that a 
         validation failure use this fixture and then break exactly one thing.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
+from app.config import settings
 from app.lib.database import dispose_engine
 from app.lib.redis import close_client as close_redis_client
 from app.lib.storage import close_client as close_storage_client
@@ -63,3 +65,21 @@ async def close_infrastructure_connections_at_end_of_session() -> AsyncIterator[
     await dispose_engine()
     await close_redis_client()
     await close_storage_client()
+
+
+@pytest.fixture
+def isolated_pipeline_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """Point the checkpointer, the memory store and the journal directory at a fresh temporary directory.
+
+    Without this, every pipeline test shares `backend/data/checkpoints.sqlite` and `backend/runs/` with
+    every other test *and with the developer's own runs*. Two costs, and the second is the one that bites:
+    a test asserting "this thread has no checkpoint" passes until someone runs `aeris run` with a colliding
+    id, and a test that counts journals is wrong the moment the directory is not empty.
+
+    The three settings are patched rather than the properties that read them, because the properties also
+    create the parent directories - which is behaviour the tests should exercise rather than bypass.
+    """
+    monkeypatch.setattr(settings, "pipeline_checkpoint_database_path", tmp_path / "checkpoints.sqlite")
+    monkeypatch.setattr(settings, "pipeline_memory_database_path", tmp_path / "memory.sqlite")
+    monkeypatch.setattr(settings, "pipeline_journal_directory", tmp_path / "runs")
+    yield tmp_path

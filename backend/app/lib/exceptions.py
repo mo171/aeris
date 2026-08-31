@@ -85,11 +85,15 @@ class UpstreamUnavailableError(AerisError):
 
 
 class RunCancelledError(AerisError):
-    """The operator stopped the run, including by barge-in.
+    """The operator explicitly abandoned the run.
+
+    **Not barge-in.** Speaking over AERIS stops the utterance and leaves the run running (`product-truth.md`
+    §1.3, corrected 2026-08-31); an earlier version of this docstring said otherwise. This is raised only
+    when the operator asks for the run itself to stop.
 
     499 is nginx's "client closed request" and is the honest status here: nothing failed. The run status the
-    frontend renders is `cancelled`, not `failed`, so an intentional interruption is never shown as an
-    incident to investigate.
+    frontend renders is `cancelled`, not `failed`, so an intentional stop is never shown as an incident to
+    investigate.
     """
 
     code = ErrorCode.RUN_CANCELLED

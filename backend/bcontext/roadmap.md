@@ -78,7 +78,7 @@ safely against a database they care about. It reports the missing revision and n
 No routes. No controllers. No WebSockets. At the end of Phase 1 you can hold a spoken conversation with
 AERIS in a terminal and it runs real analyses over real imagery and speaks real answers back.
 
-## 1.0 — CLI skeleton and the LangGraph spine
+## 1.0 — CLI skeleton and the LangGraph spine — **done (2026-08-31)**
 
 **Research:** LangGraph's `StateGraph`, checkpointers, `interrupt()` and `stream_mode="custom"`. Read the
 docs before writing, because most of this sub-phase is *configuring* a library rather than building one.
@@ -123,6 +123,22 @@ loop. See ADR-002 and `folder-archtecture.md` → "Folders that were deliberatel
   journal it would have produced undisturbed. This is the gate that proves §1.3, and it fails on any design
   that awaits the run inline.
 - The JSONL journal validates against the vendored contracts (0.7) — Phase 2 wire compatibility, proven now.
+
+**Result** — `aeris run`, `--resume` and `--replay` all work; 45 new tests, **142 green**, ruff and
+`uv lock --check` clean. Built: `schemas/events/` (5 of 7 analysis events, the other two recorded with the
+phase that owes them), `services/pipeline/` (state, checkpointer, memory store, stream, cancellation, the
+`pipeline_node` decorator, `graphs/probe.py`), `services/sessions/` (session, run handle, fan-out),
+`cli/renderers/` and `cli/run.py`.
+
+Three things were **measured rather than assumed**, and each is recorded where it is relied on:
+
+- `durability="sync"`. A hard-killed process leaves **zero** checkpoints under `exit`; a graceful
+  cancellation cannot tell the modes apart, which is why the test kills a real process.
+- **A checkpoint must hold data, never Python objects.** Putting an `Intent` in the state wrote our module
+  path into the checkpoint; LangGraph warns that it will refuse this in a future version, and a rename
+  would have made every in-flight run unresumable.
+- Three separate mechanisms stop an abandoned run, and the first mutation pass showed **none of them was
+  individually tested** — deleting one left every test green. Each now has its own test.
 
 ## 1.1 — Datasets
 

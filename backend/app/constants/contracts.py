@@ -107,6 +107,18 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
         "Authored copy in `frontend/lib/constants/models.ts`, deliberately not on the wire - the payload "
         "carries the id and the live numbers only (`model.schema.ts`)."
     ),
+    "events.AnalysisEventType": (
+        "The frontend spells these as string literals inside a discriminated union "
+        "(`analysisStreamEventSchema`), not as an exported enum, so there is nothing here to pair against "
+        "automatically. **Checked directly instead** - `tests/contracts/test_stream_events.py` reads the "
+        "union's discriminators out of the vendored contract and asserts this enum equals them, which is a "
+        "stronger check than the pairing this map performs."
+    ),
+    "events.AssistantEventType": "Same as AnalysisEventType: a union discriminator, checked directly.",
+    "pipeline.GraphName": (
+        "Internal. Which StateGraph runs is a backend routing decision; the frontend asks a question and "
+        "reads an intent (`analysisIntentSchema`), and never names a graph."
+    ),
     "redis_keys.KeyNamespace": "Internal. A Redis key prefix never crosses the boundary.",
     "storage.Bucket": "Internal. A bucket role never crosses the boundary; the frontend sees signed URLs.",
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",

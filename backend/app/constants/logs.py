@@ -61,4 +61,15 @@ THIRD_PARTY_LOG_LEVELS: Final[dict[str, str]] = {
     # Alembic announces its migration context at INFO on every schema check, which `aeris doctor` performs
     # on every run.
     "alembic": "WARNING",
+    # Added in Phase 1.0, and measured the same way. `aeris run` with LOG_LEVEL=DEBUG produced **76 KB** of
+    # output for a run whose own trace is four rows. aiosqlite logs every statement it executes *and* the
+    # completion of each one, including the checkpointer's schema DDL in full - and the checkpointer writes
+    # after every node, so the flood scales with the length of the pipeline rather than being a one-off at
+    # startup.
+    "aiosqlite": "WARNING",
+    # LangGraph and LangChain narrate node entry, channel writes and checkpoint puts at DEBUG. Ours to hear
+    # from when something is wrong, silenced at the level where they describe every superstep.
+    "langgraph": "INFO",
+    "langchain_core": "INFO",
+    "langsmith": "WARNING",
 }
