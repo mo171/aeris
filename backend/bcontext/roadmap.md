@@ -140,7 +140,7 @@ Three things were **measured rather than assumed**, and each is recorded where i
 - Three separate mechanisms stop an abandoned run, and the first mutation pass showed **none of them was
   individually tested** — deleting one left every test green. Each now has its own test.
 
-## 1.1 — Datasets
+## 1.1 — Datasets — **done (2026-08-31)**
 
 **Research:** PDF pp.21–24 (Table 5, the dataset catalogue) and p.45–47 (learning roadmap).
 Notebook: `notebooks/02_data_exploration/`.
@@ -163,6 +163,32 @@ interface; one notebook per dataset that loads it, plots a sample and records it
 **Gate** — `aeris dataset list` reports every dataset with its on-disk location, size, licence and
 redistribution status. Every one loads through a single loader. **Licences are recorded before any training
 begins**, not after; most are research-licensed and several forbid redistribution.
+
+**Result** — 18 datasets catalogued from PDF Table 5, one loader over six declared layout shapes,
+`aeris dataset list|show|fetch|search`, and a **real Sentinel-2 scene fetched from Planetary Computer**.
+126 new tests, **268 green**.
+
+The load-bearing decision is that `Licence.UNVERIFIED` **denies everything** rather than defaulting to
+permissive — an unknown licence and a permissive one must never look alike in a table. Two of the eighteen
+licences are verified (Copernicus Sentinel-1/2); the other sixteen carry the URL where their terms live, and
+`require_trainable()` refuses training on any of them. That is the gate's "before, not after" expressed as
+something that raises rather than something that warns.
+
+Measured rather than assumed:
+
+- One Sentinel-2 10 m band is **~245 MB** as a COG, not the ~100 MB published figures suggest. The record
+  said "~200 MB per scene subset"; two bands came to 489 MB. `--asset` exists because of this.
+- **Forgetting the L2A reflectance offset moves the vegetated fraction from 75.1% to 61.4%** on a real
+  scene — 13.7 points, mean |ΔNDVI| 0.185, and both maps look like NDVI maps.
+  (`notebooks/02_data_exploration/01_sentinel2_l2a.ipynb`)
+- `Availability.PARTIAL` was added after a test showed the model was wrong: "train downloaded, test not" was
+  being reported as *malformed*, which sends an operator to inspect an archive when they need to finish a
+  download. `require_trainable()` is per-split for the same reason.
+
+**Not done, and deliberately**: the other seventeen datasets are not downloaded (SEN12MS alone is ~430 GB),
+and label parsing belongs to the phase with a model to feed — 1.6 for boxes and masks, 1.7 for questions.
+1.1 owes acquisition, licensing, cataloguing and **enumeration**, and enumeration is what verifies a
+download is complete.
 
 ## 1.2 — Raster engine · S1–S6, S11 · plus tiles
 

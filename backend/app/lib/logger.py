@@ -30,9 +30,11 @@ from typing import Final
 
 from app.config import settings
 from app.constants.logs import (
+    APPLICATION_LOGGER_NAME,
     CONSOLE_LOG_FORMAT,
     JSON_FIELD_RENAMES,
     JSON_LOG_FORMAT,
+    THIRD_PARTY_LOG_FLOOR,
     THIRD_PARTY_LOG_LEVELS,
 )
 
@@ -55,7 +57,15 @@ async def configure_logging() -> None:
     # is how one log line becomes three.
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
-    root_logger.setLevel(settings.log_level)
+    # **The root logger sits at the third-party floor; only our own tree is raised to `LOG_LEVEL`.**
+    # The inverse - root at `LOG_LEVEL`, noisy libraries pinned down one at a time - is what this used to
+    # do, and it failed open: every dependency added since was as loud as DEBUG allowed until a human read
+    # the output and added it to a list. That happened in 0.6, in 1.0 and again in 1.1. Now a new
+    # dependency is quiet on the day it arrives, and `THIRD_PARTY_LOG_LEVELS` is the short allow-list of
+    # the ones worth hearing more from.
+    root_logger.setLevel(THIRD_PARTY_LOG_FLOOR)
+    logging.getLogger(APPLICATION_LOGGER_NAME).setLevel(settings.log_level)
+    logging.getLogger(_ROOT_LOGGER_NAME).setLevel(settings.log_level)
 
     for logger_name, level in THIRD_PARTY_LOG_LEVELS.items():
         logging.getLogger(logger_name).setLevel(level)

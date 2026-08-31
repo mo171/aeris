@@ -23,14 +23,18 @@ how   : **A Typer command callback is sync, and that is the `code-standards.md` 
 """
 
 import asyncio
+from collections.abc import Coroutine
+from datetime import date
 
 import typer
 from rich.console import Console
 from rich.markup import escape
 
+from app.cli import dataset as dataset_command
 from app.cli import doctor as doctor_command
 from app.cli import run as run_command
 from app.config import settings
+from app.constants.datasets import DatasetId
 from app.constants.intents import Intent
 from app.constants.pipeline import GraphName
 from app.constants.statuses import RunStatus
@@ -161,6 +165,139 @@ async def _run_pipeline(
             console=console,
             pause_seconds=pause_seconds,
         )
+    finally:
+        await _close_connections()
+
+
+dataset_app = typer.Typer(
+    name="dataset",
+    help="Acquire, licence-check and catalogue the datasets the later phases need.",
+    no_args_is_help=True,
+)
+app.add_typer(dataset_app)
+
+
+@dataset_app.command("list")
+def dataset_list() -> None:
+    """Every dataset with its location, size, licence and redistribution status. The Phase 1.1 gate."""
+    every_licence_checked = asyncio.run(_run_dataset(dataset_command.render_catalogue(console)))
+
+    # Non-zero when a dataset is on disk whose terms nobody has read. The exit code is the contract, as it
+    # is for `doctor`: this is what a CI step or a pre-training script actually branches on, and a warning
+    # printed into a log is not something a script can act on.
+    if not every_licence_checked:
+        raise typer.Exit(code=1)
+
+
+@dataset_app.command("show")
+def dataset_show(
+    dataset_id: DatasetId = typer.Argument(..., help="Which dataset."),
+) -> None:
+    """Everything known about one dataset, including its quirks and expected layout."""
+    asyncio.run(_run_dataset(dataset_command.render_dataset(dataset_id, console)))
+
+
+@dataset_app.command("fetch")
+def dataset_fetch(
+    dataset_id: DatasetId = typer.Argument(..., help="Which dataset."),
+    bbox: str = typer.Option("", "--bbox", help="west,south,east,north in EPSG:4326. Imagery only."),
+    from_date: str = typer.Option("", "--from", help="Start date, YYYY-MM-DD. Imagery only."),
+    to_date: str = typer.Option("", "--to", help="End date, YYYY-MM-DD. Imagery only."),
+    max_cloud: float = typer.Option(
+        -1.0, "--max-cloud", help="Maximum cloud cover percentage. Optical only; Sentinel-1 has none."
+    ),
+    limit: int = typer.Option(10, "--limit", help="How many scenes to consider."),
+    assets: str = typer.Option(
+        "",
+        "--asset",
+        help=(
+            "Comma-separated asset names to fetch, e.g. B04,B08 for NDVI. Defaults to the 10 m bands plus "
+            "the scene classification layer; a full L2A scene is over a gigabyte."
+        ),
+    ),
+) -> None:
+    """Acquire a dataset: STAC for imagery, a direct download where one exists, instructions otherwise."""
+    acquired = asyncio.run(
+        _run_dataset(
+            dataset_command.execute_fetch(
+                dataset_id,
+                bounding_box=_parse_bounding_box(bbox),
+                start=_parse_date(from_date, "--from"),
+                end=_parse_date(to_date, "--to"),
+                maximum_cloud_percentage=None if max_cloud < 0 else max_cloud,
+                limit=limit,
+                asset_names=tuple(name.strip() for name in assets.split(",") if name.strip()) or None,
+                console=console,
+            )
+        )
+    )
+    if not acquired:
+        raise typer.Exit(code=1)
+
+
+@dataset_app.command("search")
+def dataset_search(
+    dataset_id: DatasetId = typer.Argument(..., help="Sentinel-2 or Sentinel-1."),
+    bbox: str = typer.Option(..., "--bbox", help="west,south,east,north in EPSG:4326."),
+    from_date: str = typer.Option(..., "--from", help="Start date, YYYY-MM-DD."),
+    to_date: str = typer.Option(..., "--to", help="End date, YYYY-MM-DD."),
+    max_cloud: float = typer.Option(-1.0, "--max-cloud", help="Maximum cloud cover percentage."),
+    limit: int = typer.Option(10, "--limit", help="How many scenes to list."),
+) -> None:
+    """List the scenes available over an area and date range, without downloading any."""
+    asyncio.run(
+        _run_dataset(
+            dataset_command.execute_search(
+                dataset_id,
+                bounding_box=_parse_bounding_box(bbox) or (0.0, 0.0, 0.0, 0.0),
+                start=_parse_date(from_date, "--from") or date.today(),
+                end=_parse_date(to_date, "--to") or date.today(),
+                maximum_cloud_percentage=None if max_cloud < 0 else max_cloud,
+                limit=limit,
+                console=console,
+            )
+        )
+    )
+
+
+def _parse_bounding_box(raw: str) -> tuple[float, float, float, float] | None:
+    """`west,south,east,north` as four floats, or `None` when not given.
+
+    Validated here rather than at the STAC call because a transposed box is still a valid box - usually
+    somewhere in the ocean - so it comes back as "no scenes found" rather than as an error. Checking the
+    ordering at the argument is the only place it is cheap.
+    """
+    if not raw:
+        return None
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise typer.BadParameter("--bbox takes four numbers: west,south,east,north")
+    try:
+        west, south, east, north = (float(part) for part in parts)
+    except ValueError as error:
+        raise typer.BadParameter(f"--bbox must be four numbers: {error}") from error
+    if west >= east or south >= north:
+        raise typer.BadParameter(
+            f"--bbox must be west,south,east,north with west<east and south<north. "
+            f"Got west={west} east={east} south={south} north={north} - the coordinates look transposed."
+        )
+    return (west, south, east, north)
+
+
+def _parse_date(raw: str, flag: str) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as error:
+        raise typer.BadParameter(f"{flag} must be YYYY-MM-DD: {error}") from error
+
+
+async def _run_dataset[T](work: Coroutine[object, object, T]) -> T:
+    """Configure logging, do the work, and close whatever it opened."""
+    await configure_logging()
+    try:
+        return await work
     finally:
         await _close_connections()
 

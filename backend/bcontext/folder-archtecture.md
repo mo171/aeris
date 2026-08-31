@@ -38,7 +38,7 @@ backend/
 │   ├── cli/                             # PHASE 1 ADAPTER. Sibling to routes/, never imported by it.
 │   │   ├── main.py                      # Typer app. The only place asyncio.run() is called.
 │   │   ├── doctor.py                    # `aeris doctor` - the dependency table (Phase 0.6) DONE
-│   │   ├── dataset.py                   # `aeris dataset list|fetch`
+│   │   ├── dataset.py                   # `aeris dataset list|show|fetch|search`  DONE (1.1)
 │   │   ├── ingest.py                    # `aeris ingest <path>`
 │   │   ├── analyse.py                   # `aeris analyse --scene --query`
 │   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
@@ -90,6 +90,11 @@ backend/
 │   │       └── ui_command.py            # ui-command    (NEW - api-contract.md §4)
 │   │
 │   ├── services/
+│   │   │
+│   │   ├── datasets/                    # Phase 1.1. Acquisition, licensing, enumeration. DONE
+│   │   │   ├── catalogue.py             # what is ON DISK + require_trainable() - the licence gate
+│   │   │   ├── loader.py                # THE single loader. Reads DatasetLayout, no branch per dataset
+│   │   │   └── acquisition.py           # STAC search/fetch, archive download, manual instructions
 │   │   │
 │   │   ├── sessions/                    # The harness. A session = one thread id + its running tasks.
 │   │   │   ├── session.py               # Opens/closes a session; owns the thread id and memory namespace

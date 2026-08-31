@@ -7,10 +7,17 @@ where : Read only by `app/lib/logger.py`. Here rather than there because these a
 how   : `JSON_FIELD_RENAMES` turns the standard library's `levelname` and `name` into `level` and `logger`,
         because a log line is read by whoever is filtering it at three in the morning.
 
-        `THIRD_PARTY_LOG_LEVELS` is the noise floor. With `LOG_LEVEL=DEBUG` set locally - which is the point of
-        local - matplotlib's font manager and rasterio's GDAL bridge emit thousands of lines per run and bury
-        our own trace. Each entry here is a library that has actually been observed drowning a run, not a
-        precaution.
+        `THIRD_PARTY_LOG_FLOOR` is the design that matters here, and it replaced a hand-maintained list.
+
+        The original `THIRD_PARTY_LOG_LEVELS` was a deny-list: name a noisy library, pin its level. It
+        **failed open** - a library nobody had listed yet was as loud as `LOG_LEVEL` allowed. That was not a
+        theory. It had to be extended in Phase 0.6 (botocore: 142 KB above a twenty-line table), in 1.0
+        (aiosqlite: 76 KB for a four-row trace) and again in 1.1 (pystac-client printing every request
+        header). Three phases, three floods, each found by a human reading unreadable output.
+
+        So the rule is inverted: **everything that is not ours sits at `WARNING` unless it is named below.**
+        A new dependency is quiet on the day it is added, and the list is now the small set of libraries we
+        deliberately want to hear *more* from - an allow-list, not a deny-list.
 """
 
 from typing import Final
@@ -28,48 +35,28 @@ JSON_FIELD_RENAMES: Final[dict[str, str]] = {
 # timestamp and source location columns, so the format string is the message alone.
 CONSOLE_LOG_FORMAT: Final[str] = "%(message)s"
 
+# Everything not under `app.` is held here unless named below. A floor, not a suggestion:
+# `app/lib/logger.py` applies it to the root logger and raises only our own tree to `LOG_LEVEL`.
+THIRD_PARTY_LOG_FLOOR: Final[str] = "WARNING"
+
+# The logger our own code lives under - every module calls `logging.getLogger(__name__)`, and every module
+# is under `app.`. Raised to `LOG_LEVEL`; everything else stays at the floor.
+APPLICATION_LOGGER_NAME: Final[str] = "app"
+
+# Libraries we deliberately want to hear MORE from than the floor allows, each with the reason. Adding a
+# dependency requires no entry here; one that is genuinely worth hearing from gets one.
 THIRD_PARTY_LOG_LEVELS: Final[dict[str, str]] = {
-    "matplotlib": "WARNING",
-    "matplotlib.font_manager": "WARNING",
-    "PIL": "INFO",
-    "rasterio": "INFO",
-    "rasterio._env": "WARNING",
-    "fiona": "INFO",
-    "urllib3": "WARNING",
-    "asyncio": "INFO",
-    # Added in Phase 0.6, and measured rather than assumed: the first run of `aeris doctor` with
-    # LOG_LEVEL=DEBUG produced **142 KB** of botocore hook-registration chatter above a table that is
-    # twenty lines long. botocore logs its entire event-name remapping at DEBUG on client construction.
-    "botocore": "WARNING",
-    "boto3": "WARNING",
-    "aiobotocore": "WARNING",
-    "s3transfer": "WARNING",
-    # The Inngest SDK's transport, and aiohttp's. Both log a line per request at DEBUG, which turns a
-    # health probe into a paragraph.
-    "httpx": "WARNING",
-    "httpcore": "WARNING",
-    "aiohttp": "WARNING",
-    # Ours to hear from - it reports real send failures - but not at DEBUG, where it narrates every retry.
+    # Reports real event-send failures, which are ours to act on.
     "inngest": "INFO",
     # The Inngest SDK logs through a logger we hand it (`app/lib/inngest.py`), so the entry above does not
-    # reach it. This is that injected child logger, kept separate so the SDK's chatter can be silenced
-    # without also silencing our own messages about Inngest.
+    # reach it. Kept separate so the SDK's chatter can be silenced without silencing our own Inngest lines.
     "app.lib.inngest.sdk": "INFO",
-    # redis-py narrates protocol negotiation at DEBUG - including a `MAINT_NOTIFICATIONS` probe that fails
-    # by design against any server older than its newest feature.
-    "redis": "INFO",
-    # Alembic announces its migration context at INFO on every schema check, which `aeris doctor` performs
-    # on every run.
-    "alembic": "WARNING",
-    # Added in Phase 1.0, and measured the same way. `aeris run` with LOG_LEVEL=DEBUG produced **76 KB** of
-    # output for a run whose own trace is four rows. aiosqlite logs every statement it executes *and* the
-    # completion of each one, including the checkpointer's schema DDL in full - and the checkpointer writes
-    # after every node, so the flood scales with the length of the pipeline rather than being a one-off at
-    # startup.
-    "aiosqlite": "WARNING",
-    # LangGraph and LangChain narrate node entry, channel writes and checkpoint puts at DEBUG. Ours to hear
-    # from when something is wrong, silenced at the level where they describe every superstep.
+    # GDAL's warnings arrive through these, and a complaint about a malformed GeoTIFF is something Phase
+    # 1.2 onwards genuinely needs to see rather than discover as a wrong number.
+    "rasterio": "INFO",
+    "fiona": "INFO",
+    "PIL": "INFO",
+    # LangGraph and LangChain narrate every superstep at DEBUG; INFO is where they say something useful.
     "langgraph": "INFO",
     "langchain_core": "INFO",
-    "langsmith": "WARNING",
 }

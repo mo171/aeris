@@ -119,6 +119,21 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
         "Internal. Which StateGraph runs is a backend routing decision; the frontend asks a question and "
         "reads an intent (`analysisIntentSchema`), and never names a graph."
     ),
+    "datasets.DatasetId": (
+        "Internal, and checked to be so: no frontend schema shares a value with it. Which benchmarks the "
+        "backend trains on is not something the interface has an opinion about - it sees model ids "
+        "(`modelIdSchema`), which is the vocabulary that *is* shared. Phase 1.6 links the two: a model "
+        "record names the datasets it was trained on, and that provenance may yet reach the wire."
+    ),
+    "datasets.DatasetSplit": "Internal. A train/test split is a training-time concept and never a payload.",
+    "datasets.LayoutKind": "Internal. How an archive is arranged on our disk.",
+    "licences.Licence": (
+        "Internal today. A candidate for the wire later, not now: `api-contract.md` §6 has reports "
+        "carrying attribution, and Phase 1.12 is where a licence would first need to be shown to an "
+        "operator rather than merely enforced."
+    ),
+    "licences.Redistribution": "Internal, with the same note as `Licence`.",
+    "licences.CommercialUse": "Internal, with the same note as `Licence`.",
     "redis_keys.KeyNamespace": "Internal. A Redis key prefix never crosses the boundary.",
     "storage.Bucket": "Internal. A bucket role never crosses the boundary; the frontend sees signed URLs.",
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",

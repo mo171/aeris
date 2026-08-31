@@ -83,3 +83,17 @@ def isolated_pipeline_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(settings, "pipeline_memory_database_path", tmp_path / "memory.sqlite")
     monkeypatch.setattr(settings, "pipeline_journal_directory", tmp_path / "runs")
     yield tmp_path
+
+
+@pytest.fixture
+def isolated_dataset_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the datasets root at an empty temporary directory.
+
+    Without it, a dataset test reports whatever the developer happens to have downloaded - so a test
+    asserting "absent" passes on CI and fails on the machine that actually has the data, which is the worst
+    possible distribution of outcomes.
+    """
+    root = tmp_path / "datasets"
+    root.mkdir()
+    monkeypatch.setattr(settings, "datasets_directory", root)
+    return root

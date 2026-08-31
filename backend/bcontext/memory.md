@@ -1,3 +1,100 @@
+## Session — 2026-08-31 (1.1) · Datasets, licences, and one loader. **A real scene is on disk.**
+
+18 datasets catalogued from the PDF's Table 5, one loader over six declared layout shapes,
+`aeris dataset list|show|fetch|search`, and a **real Sentinel-2 L2A scene fetched from Planetary Computer**
+over Ghaziabad. 126 new tests, **268 green**, ruff and `uv lock --check` clean.
+
+### The decision the whole phase rests on
+
+The roadmap's gate is about *sequence*: "licences are recorded before any training begins, not after". A rule
+about sequence needs something that refuses at the right moment, so:
+
+**`Licence.UNVERIFIED` denies everything** — `training_permitted=False`, redistribution and commercial use
+forbidden. An unknown licence is **not** a permissive one, and the two must never look alike in a table.
+Recording a guess as though it were a fact is worse than recording nothing, because the guess is what
+somebody relies on six months later when deciding whether a demo can be published.
+
+Two of the eighteen are verified — Copernicus Sentinel-1 and Sentinel-2, which are genuinely open and
+unambiguous. **The other sixteen are not**, and that is the honest state of a catalogue assembled from
+published papers rather than from reading sixteen licence pages. Each carries the URL where its terms live,
+`aeris dataset list` prints `UNVERIFIED` in red rather than leaving the cell blank, and `require_trainable()`
+raises. Phase 1.6 cannot start a training run past it.
+
+Mutation-checked, and this is the one that matters: giving `UNVERIFIED` `training_permitted=True` fails
+`test_an_unverified_licence_permits_nothing` — without which every other test keeps passing while the gate
+silently stops existing. Marking LEVIR-CD `licence_verified=True` without changing its licence fails **three**
+tests; that is the human version of the same failure and deserves the redundancy.
+
+### Three things measured, each of which changed something
+
+**A Sentinel-2 10 m band is ~245 MB as a COG**, not the ~100 MB published figures suggest. The record said
+"~200 MB per scene subset"; two bands came to 489 MB in 7m18s. The record now says so, and `--asset` exists
+because of it — B04 and B08 alone are enough for NDVI.
+
+**Forgetting the L2A reflectance offset moves the vegetated fraction from 75.1% to 61.4%** on a real scene —
+13.7 percentage points, mean |ΔNDVI| 0.185. Both maps look like NDVI maps. That is the whole danger: there is
+no error, only a different answer, and the difference is largest exactly where vegetation is sparse and the
+decision is marginal. Measured in `notebooks/02_data_exploration/01_sentinel2_l2a.ipynb` and recorded back
+into the dataset record's `quirks`.
+
+**`Availability.PARTIAL` was added because a test showed the model was wrong.** "Train downloaded, test not"
+was being reported as `MALFORMED`, which sends an operator to check how an archive unpacked when what they
+need to do is finish downloading. The four states exist to prescribe different actions, so conflating two
+removes the reason to have either. `require_trainable()` became **per-split** for the same reason: an absent
+test split must never be quietly satisfied by a present train split, or an evaluation runs on training data
+and produces a number that looks excellent and means nothing.
+
+### Logging: the deny-list was the wrong shape, and three phases proved it
+
+`THIRD_PARTY_LOG_LEVELS` was a deny-list — name a noisy library, pin its level. It **failed open**, and had
+to be extended in 0.6 (botocore, 142 KB over a twenty-line table), 1.0 (aiosqlite, 76 KB for a four-row
+trace) and 1.1 again (pystac-client printing every request header). Three phases, three floods, each found by
+a human reading unreadable output.
+
+Inverted: the **root logger sits at `WARNING`** and only `app` is raised to `LOG_LEVEL`. A new dependency is
+quiet on the day it arrives, and the list is now a short allow-list of libraries worth hearing more from.
+The pystac flood went from unreadable to 1.2 KB.
+
+### Decisions worth not relitigating
+
+- **The loader enumerates; it does not parse labels.** A LEVIR-CD mask, a DOTA oriented box and an RSVQA
+  question have nothing in common, and a loader returning all three returns `Any` — which is a loader that
+  has stopped promising anything. 1.1 owes acquisition, licensing, cataloguing and enumeration; parsing
+  belongs to the phase with a model to feed (1.6, 1.7). Enumeration is not a placeholder: it is what proves
+  a download is complete.
+- **Six layout shapes cover the whole of Table 5.** That is the useful finding — these datasets differ
+  enormously in content and barely at all in structure, which is what makes one loader honest rather than
+  aspirational. It reads a `DatasetLayout` declaration; there is no branch per dataset.
+- **A mismatched pair raises, never skips.** 637 images in `A`, 636 in `B`, and a run that trains on 636
+  pairs and reports a number nobody can reproduce — with nothing anywhere saying a file was missing.
+- **Three acquisition routes, and `manual` prints instructions rather than pretending.** Roughly half of
+  Table 5 is behind a registration form or a hosted drive. A `fetch` that silently did nothing for those
+  would be worse than one that refuses; the plan names the URL, the licence page and the target directory.
+- **Filtering Sentinel-1 by cloud is refused.** SAR carries no cloud property, so the filter matches nothing
+  and returns an empty list — which reads as "no radar over this area", a conclusion an operator would act
+  on rather than a bug they would report. Same rule as `api-contract.md` §1 rule 3.
+- **Planetary Computer assets must be signed.** An unsigned href 404s, which reads as "no such scene" rather
+  than "not signed". Pinned by a test so it can never fail silently.
+- **STAC tests run against the live catalogue, not a fixture.** What can break here is the *catalogue's*
+  behaviour — a renamed collection, a property that stopped existing — and a recorded response would keep
+  passing through every one of those. They skip without network.
+
+### What Phase 0 caught again, unprompted
+
+Six new `StrEnum`s failed `test_every_backend_enum_is_classified`; five new settings failed
+`test_env_example_documents_every_configurable_field`. Both were verified against the frontend contracts
+before being declared backend-only — no dataset or licence vocabulary shares a value with any frontend
+schema, which was checked rather than assumed.
+
+### Next — Phase 1.2
+
+The raster engine: S1–S6 and S11, plus tiles. The Sentinel-2 scene is on disk and loads through the same
+loader everything else will, so 1.2 starts with real pixels rather than a fixture. The NDVI notebook already
+demonstrates the two things 1.2 has to get right — the reflectance offset, and reading windows rather than
+whole 10980×10980 bands.
+
+---
+
 ## Session — 2026-08-31 (1.0) · The LangGraph spine. **Phase 1 has started.**
 
 `aeris run` starts, resumes and replays a real pipeline run with a live S1–S20 trace. **142 tests green**

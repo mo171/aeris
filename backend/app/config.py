@@ -276,6 +276,32 @@ class Settings(BaseSettings):
     # already said stop.
     pipeline_abandon_grace_seconds: float = Field(default=10.0, gt=0, le=300)
 
+    # --- Datasets. Phase 1.1. ------------------------------------------------------------------------------
+    #
+    # Where the benchmark datasets and the acquired Sentinel scenes live. One directory per `DatasetId`,
+    # which is what lets `aeris dataset list` report presence and size without a manifest that could
+    # disagree with the disk.
+    #
+    # Configurable rather than fixed because these are large - SEN12MS alone is ~430 GB - and the machine
+    # that has room for them is often not the machine the repository is checked out on. An external drive
+    # or a network mount is the normal answer, and it is a `.env` line rather than a symlink nobody
+    # remembers making.
+
+    datasets_directory: Path = Path("data/datasets")
+
+    # How long to wait for a STAC search before giving up. The catalogue is a remote service and Phase 1.2
+    # onwards calls it during a run, so a stall has to surface as an error the trace can show rather than
+    # as a stage that appears to hang.
+    stac_search_timeout_seconds: int = Field(default=60, ge=5, le=600)
+
+    # Sentinel scenes are hundreds of megabytes per band. Generous, and separate from the STAC search
+    # timeout because they fail for different reasons and want different answers.
+    dataset_download_timeout_seconds: int = Field(default=1_800, ge=30, le=21_600)
+
+    # The Planetary Computer STAC endpoint. Configurable because the same code works against any STAC API -
+    # Element84's Earth Search, a self-hosted catalogue - and swapping is a URL, not a code change.
+    stac_api_url: AnyHttpUrl = AnyHttpUrl("https://planetarycomputer.microsoft.com/api/stac/v1")
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalise_log_level(cls, raw_value: object) -> object:
@@ -383,6 +409,18 @@ class Settings(BaseSettings):
         resolved = self._absolute(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         return resolved
+
+    @property
+    def dataset_root(self) -> Path:
+        """The datasets directory as an absolute path, created if it does not exist.
+
+        Resolved from `BACKEND_ROOT_DIRECTORY` like every other configured path, so `aeris dataset list`
+        reports the same location whichever directory it was launched from - which matters more here than
+        elsewhere, because the answer it gives is "is this 430 GB download already on the machine".
+        """
+        directory = self._absolute(self.datasets_directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     @property
     def inngest_is_production(self) -> bool:
