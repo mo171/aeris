@@ -234,7 +234,7 @@ pair every browser rejects, so the permissive-looking default is the broken one.
 S12 trace step) is 1.4. What 1.2 has is the raster path the gate names — read, scale, divide, write a COG,
 upload, serve.
 
-## 1.2.1 — Visual products · the figures the backend sends
+## 1.2.1 — Visual products · the figures the backend sends — **done (2026-08-31)**
 
 **Requirement:** `product-truth.md` §1.5. **Wire:** `api-contract.md` §6. **Invariant:** `architecture-context.md`
 §8 rule 13 and invariant 19.
@@ -274,6 +274,37 @@ byte-identical**, and a figure emitted with a null `traceStepId` fails a test.
 
 Later sub-phases add figure *kinds*, not rendering code: 1.3 the SAR backscatter dB figure, 1.5 the
 T1 | T2 | change-mask comparison, 1.6 the detection overlay with boxes and labels.
+
+**Result — the gate passed.** `aeris figures <scene> --level L2A` renders all three from the four-band
+Sentinel-2 subset in `notebooks/01_remote_sensing/data`, and the index map **redraws byte-identically from
+its recorded `renderSpec`** (1,478,754 bytes). 37 new tests, **353 green**.
+
+    rgb-composite   1066×1120  2518 KB   legend categorical  ramp true-color
+    index-map       1066×1176  1444 KB   legend continuous   ramp index-vegetation  domain [-1, 1]
+    mask-overlay    1066×1120  2554 KB   legend binary       ramp mask-amber        resampling nearest
+    vegetated: 17.1% of the scene   ·   3 figures in MinIO and under runs/<run_id>/figures/
+
+**Matplotlib is used for its colormaps and nothing else** — no figure, no `Agg` canvas, no `savefig`.
+Composition is NumPy and Pillow, because byte-identical reproduction is a *requirement* here (§6 rule 2)
+and a matplotlib figure's bytes depend on font metrics, DPI and backend version. The colourbar is drawn by
+hand for the same reason.
+
+**Two additions to the contract, both because rule 2 demands completeness.** `renderSpec.stretch` carries
+its `method` (a percentile stretch is data-dependent and a fixed one is not — only one redraws on other
+data), and `renderSpec.decimation` was added outright: a figure is drawn from a decimated read, and two
+decimations of one scene produce visibly different images. `figure-ready` is agreed and not yet on the
+frontend, so extending it now costs nothing.
+
+**The contract suite gained a direction.** `figure-ready` in `AnalysisEventType` broke the exact-match
+union test, because the frontend does not parse it yet. Rather than weakening the check to a subset,
+`EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` records the three agreed-but-unimplemented events (§4, §5, §6)
+by name with a reason, plus a staleness test that fails when the frontend ships one — at which point the
+equality check starts enforcing it.
+
+**Also fixed here, found by using it**: a 245 MB scene download had no retry, and a remote reset lost the
+whole transfer. `_download_to` now retries three times with backoff — measured, after three consecutive
+resets while fetching B02/B03 for this gate. Each attempt restarts rather than resuming with a `Range`
+header, because resuming without checking the `ETag` risks stitching a scene from two versions of a file.
 
 ## 1.3 — Preprocessing · S7–S10 and the SAR branch
 

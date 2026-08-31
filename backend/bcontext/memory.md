@@ -1,3 +1,108 @@
+## Session — 2026-08-31 (1.2.1) · The rendering primitive. **A figure redraws byte-identically from its spec.**
+
+`services/rendering/` built, `figure-ready` on the wire, and the gate passed: three figures from the
+four-band Sentinel-2 subset, each with a machine-readable legend, a non-null `traceStepId` and a complete
+`renderSpec` — and the index map **redraws byte-identically from that spec**. 37 new tests, **353 green**,
+ruff and `uv lock --check` clean.
+
+    rgb-composite   1066×1120  2518 KB   legend categorical  ramp true-color
+    index-map       1066×1176  1444 KB   legend continuous   ramp index-vegetation  domain [-1, 1]
+    mask-overlay    1066×1120  2554 KB   legend binary       ramp mask-amber        resampling nearest
+    vegetated: 17.1%   ·   byte-identical re-render: 1,478,754 bytes   ·   3 in MinIO and on disk
+
+### The decision the whole sub-phase turns on
+
+**Matplotlib is used for its colormaps and nothing else** — no figure, no `Agg` canvas, no `savefig`.
+Composition is NumPy and Pillow.
+
+The reason is `api-contract.md` §6 rule 2: re-rendering from a recorded spec must be byte-identical,
+because a figure the VLM reasoned over is part of the evidence chain. A matplotlib figure's bytes depend on
+font metrics, DPI, backend version and a `Software` tag; an RGBA array encoded by Pillow with pinned
+parameters depends on none of those. The colourbar is drawn by hand for the same reason — Pillow's bundled
+bitmap font, never a system font, because a system font is present on one machine and absent on another.
+
+The colour data is still matplotlib's, and that is worth not reimplementing: hand-picking control points
+for a diverging ramp is how a product ends up with a midpoint that reads as a value.
+
+### Two additions to the contract, both because rule 2 demands completeness
+
+**`renderSpec.stretch` carries its `method`.** A percentile stretch is data-dependent and a fixed one is
+not; the numbers alone cannot answer *"would this redraw the same way on other data"*.
+
+**`renderSpec.decimation` was added outright** — it is not in `api-contract.md`'s example, and the example
+is not complete without it. A figure is a picture for a person, so a 10980² scene is drawn from a decimated
+read, and two decimations produce visibly different images. `figure-ready` is agreed and not yet on the
+frontend (§6), so extending it now is a change to a contract nobody parses rather than a breaking one.
+
+### The contract suite gained a direction
+
+Adding `FIGURE_READY` to `AnalysisEventType` broke `test_the_backend_event_names_are_the_frontend_union
+_exactly` — correctly, because the frontend does not parse it yet.
+
+**Not weakened to a subset check.** `EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` records the three
+agreed-but-unimplemented events (§4 `ui-command`, §5 `speech`, §6 `figure-ready`) by name with a reason, and
+a second test fails when the frontend ships one — at which point the equality check starts enforcing it.
+The mirror of `EVENT_TYPES_NOT_YET_EMITTED`, so event drift is now tracked in both directions exactly as
+vocabulary drift has been since 0.7.
+
+### Decisions worth not relitigating
+
+- **A normalised index is always drawn over [-1, 1], never its own extremes.** Two NDVI maps of one field
+  in different weeks are only comparable if they share a scale; stretching each to its own data makes every
+  week look equally varied and hides the change being looked for. A ramp with no fixed domain is *refused*
+  for an index map rather than falling back.
+- **A true-colour composite stretches each band separately**, and records all three. Their dynamic ranges
+  genuinely differ, and a shared stretch produces a colour cast that reads as a property of the ground.
+- **A composite is transparent where *any* band is missing.** A pixel with two of three bands is a colour
+  with one channel invented.
+- **A mask overlay is semi-transparent.** An opaque mask answers "where" and destroys "over what" — and an
+  operator judging a mask is judging exactly whether it agrees with the ground beneath it.
+- **A blend takes its alpha from the base, never the overlay**, or a mask makes the scene's nodata margin
+  opaque and claims ground the sensor never saw.
+- **The figure writer *downloads* rather than being handed the bytes.** Slower, and it proves the object is
+  retrievable under a key something else can reconstruct — which is precisely what breaks silently and
+  surfaces in Phase 2 as an image that will not load.
+- **`--level` on `aeris figures`.** A band extracted into a research directory has lost its processing
+  level, and §8 rule 5 forbids *guessing* it. A human stating what the data is is not the same thing.
+
+### Mutation: 12 applied, 11 caught, 1 recorded as uncatchable
+
+Three survived the first pass. Two were real gaps: "encode the same array twice" passes for any
+deterministic choice, so it proved *stability* without proving *which value*. Two tests were added — the
+invisible pixel's colour is pinned to a specific value, and a lossless round-trip proves the encoder does
+not rewrite pixels nobody can see (which is what `exact=True` buys).
+
+**The survivor is PNG `compress_level`**, and it is recorded rather than papered over: those parameters
+change bytes between Pillow *versions* and are stable within one, so no in-process test can observe the
+drift they guard against. Same category as `_require_in_range` in 1.2 — proven by reasoning, and the
+reasoning is written down.
+
+### A correction I made mid-phase
+
+I read the contact sheet and said the mask looked like it covered water. Measured instead: 17.1% of pixels
+tinted, exactly matching the mask, **zero outside it**, mean NDVI 0.428 inside against 0.009 outside. Amber
+over green vegetation reads brown at thumbnail scale. *Squinting at a thumbnail is not a measurement* —
+which is the same lesson the 1.2 notebook taught from the other direction.
+
+### Fixed here, found by using it
+
+A 245 MB scene download had **no retry**, and a remote reset lost the whole transfer — measured, after
+three consecutive resets while fetching B02/B03 for this gate. `_download_to` now retries three times with
+backoff. Each attempt restarts rather than resuming with a `Range` header: resuming without checking the
+`ETag` risks stitching a scene from two versions of a file, which is a worse failure than a slow retry.
+
+The B02/B03 fetch never did succeed — hence the gate running against the four-band subset in
+`notebooks/01_remote_sensing/data`, which is real Sentinel-2 at 1066×1120 in the same UTM zone.
+
+### Next — Phase 1.3
+
+Preprocessing, S7–S10 and the SAR branch. Two things carry forward: the SAR backscatter figure is a *figure
+kind*, not new rendering code (`sar-grayscale` is already in the ramp vocabulary), and the frontend's
+`polarisationSchema` is `{VV, VH, ratio}` in **upper case** while `BandRole` has lower-case SAR members —
+1.3 needs its own `Polarisation` enum matching the frontend exactly.
+
+---
+
 ## Session — 2026-08-31 (1.2) · The raster engine. **An NDVI COG renders in a real browser.**
 
 S1–S6 and S11 built, TiTiler in compose, and the gate passed end to end: an NDVI COG produced by this

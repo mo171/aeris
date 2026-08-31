@@ -8,10 +8,11 @@ how   : A `Field(discriminator="type")` union rather than a base class and `isin
         one call and an unknown `type` is a validation error naming the field - which is what replay needs
         in order to fail on a journal written by a newer backend rather than silently drop the line.
 
-        **Five of the seven analysis events, not seven.** `layer-ready` and `claim` carry payloads no
-        subsystem builds yet, and are recorded in `constants/events.py` with the sub-phase that will build
-        them. `tests/contracts/test_stream_events.py` fails if that list stops matching what is modelled
-        here, so the union grows by decision rather than by drift.
+        **Six of the eight analysis events.** `layer-ready` and `claim` carry payloads no subsystem
+        builds yet, and are recorded in `constants/events.py` with the sub-phase that will build them.
+        `figure-ready` joined in 1.2.1 when `services/rendering/` gave it something to carry.
+        `tests/contracts/test_stream_events.py` fails if that list stops matching what is modelled here,
+        so the union grows by decision rather than by drift.
 """
 
 from typing import Annotated
@@ -20,6 +21,12 @@ from pydantic import Field, TypeAdapter
 
 from app.schemas.events.answer import AnswerTokenEvent
 from app.schemas.events.base import StreamEvent, serialise_event
+from app.schemas.events.figure import (
+    FigureLegend,
+    FigureReadyEvent,
+    LegendEntry,
+    RenderSpec,
+)
 from app.schemas.events.run import (
     InsufficientEvidence,
     InsufficientEvidenceRemedy,
@@ -30,7 +37,12 @@ from app.schemas.events.run import (
 from app.schemas.events.trace import AnalysisTraceStep, TraceStepEvent
 
 type AnalysisStreamEvent = Annotated[
-    RunStartEvent | TraceStepEvent | AnswerTokenEvent | RunCompleteEvent | RunErrorEvent,
+    RunStartEvent
+    | TraceStepEvent
+    | AnswerTokenEvent
+    | FigureReadyEvent
+    | RunCompleteEvent
+    | RunErrorEvent,
     Field(discriminator="type"),
 ]
 
@@ -56,6 +68,10 @@ def parse_event(payload: dict[str, object]) -> AnalysisStreamEvent:
 
 __all__ = [
     "ANALYSIS_STREAM_EVENT_ADAPTER",
+    "FigureLegend",
+    "FigureReadyEvent",
+    "LegendEntry",
+    "RenderSpec",
     "TERMINAL_EVENT_TYPES",
     "AnalysisStreamEvent",
     "AnalysisTraceStep",

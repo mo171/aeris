@@ -33,7 +33,12 @@ from typing import Any
 import aiohttp
 
 from app.config import settings
-from app.constants.datasets import DATASET_CATALOGUE, DatasetId
+from app.constants.datasets import (
+    DATASET_CATALOGUE,
+    DOWNLOAD_ATTEMPTS,
+    DOWNLOAD_RETRY_BACKOFF_SECONDS,
+    DatasetId,
+)
 from app.lib.exceptions import InvalidRequestError, UpstreamUnavailableError
 from app.services.datasets.loader import dataset_directory
 
@@ -243,26 +248,46 @@ async def download_archive(dataset_id: DatasetId) -> Path:
 
 
 async def _download_to(session: aiohttp.ClientSession, url: str, destination: Path) -> None:
-    """Stream one URL to a file.
+    """Stream one URL to a file, retrying a transfer the remote end drops.
 
     Written to a `.partial` and renamed on success, so an interrupted download never leaves a file that
-    looks complete. `aeris dataset list` measures what is on disk, and a truncated GeoTIFF that reports the
+    looks complete. `aeris dataset list` measures what is on disk, and a truncated GeoTIFF reporting the
     right size is exactly the failure that check exists to catch.
+
+    **Retried, because a long download being reset is normal rather than exceptional.** Measured: a 245 MB
+    band was cut off by the remote host after four minutes and 375 KB of a 239 MB body, failing the whole
+    fetch. A client that cannot survive that cannot acquire a scene reliably.
+
+    Each attempt restarts from zero rather than resuming with a `Range` header. Resuming would be faster
+    and would need the server's `ETag` to prove the object had not changed underneath us - and a scene
+    silently stitched from two versions of a file is a worse failure than a slow retry.
     """
     partial = destination.with_suffix(destination.suffix + ".partial")
-    try:
-        async with session.get(url) as response:
-            response.raise_for_status()
-            with partial.open("wb") as handle:
-                async for chunk in response.content.iter_chunked(DOWNLOAD_CHUNK_BYTES):
-                    handle.write(chunk)
-    except aiohttp.ClientError as error:
-        partial.unlink(missing_ok=True)
-        raise UpstreamUnavailableError(
-            f"Could not download {url}: {error}", details={"url": url}
-        ) from error
+    last_error: Exception | None = None
 
-    partial.replace(destination)
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            async with session.get(url) as response:
+                response.raise_for_status()
+                with partial.open("wb") as handle:
+                    async for chunk in response.content.iter_chunked(DOWNLOAD_CHUNK_BYTES):
+                        handle.write(chunk)
+            partial.replace(destination)
+            return
+        except (aiohttp.ClientError, TimeoutError) as error:
+            last_error = error
+            partial.unlink(missing_ok=True)
+            if attempt < DOWNLOAD_ATTEMPTS:
+                logger.warning(
+                    "download failed; retrying",
+                    extra={"url": url, "attempt": attempt, "of": DOWNLOAD_ATTEMPTS, "error": str(error)},
+                )
+                await asyncio.sleep(DOWNLOAD_RETRY_BACKOFF_SECONDS * attempt)
+
+    raise UpstreamUnavailableError(
+        f"Could not download {url} after {DOWNLOAD_ATTEMPTS} attempts: {last_error}",
+        details={"url": url, "attempts": DOWNLOAD_ATTEMPTS},
+    ) from last_error
 
 
 def acquisition_plan(dataset_id: DatasetId) -> AcquisitionPlan:

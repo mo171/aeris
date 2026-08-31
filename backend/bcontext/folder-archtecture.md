@@ -46,7 +46,8 @@ backend/
 │   │   ├── voice.py                     # `aeris voice` - the spoken loop
 │   │   └── renderers/                   # Consumers of the LangGraph stream. Not a protocol - just consumers.
 │   │       ├── trace_renderer.py        # draws the live S1-S20 trace in the terminal  DONE (1.0)
-│   │       ├── figure_writer.py         # writes figure-ready images to runs/<run_id>/figures/ and prints the path
+│   │       ├── figure_writer.py         # DONE (1.2.1). FETCHES each figure back out of storage - the same
+│   │       │                            #   thing the frontend does with imageUrl - so a bad key fails here
 │   │       └── journal_writer.py        # appends runs/<run_id>.jsonl, replayable through the frontend's Zod  DONE (1.0)
 │   │
 │   ├── routes/                          # (Phase 2) Declaration only. No logic, no database, no model.
@@ -85,7 +86,7 @@ backend/
 │   │       ├── layer.py                 # layer-ready
 │   │       ├── claim.py                 # claim
 │   │       ├── answer.py                # answer-token
-│   │       ├── figure.py                # figure-ready  (NEW - api-contract.md §6) + legend + renderSpec
+│   │       ├── figure.py                # figure-ready + legend + renderSpec  DONE (1.2.1)
 │   │       ├── speech.py                # speech        (NEW - api-contract.md §5)
 │   │       └── ui_command.py            # ui-command    (NEW - api-contract.md §4)
 │   │

@@ -30,7 +30,12 @@ from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
 from app.constants.contracts import CONTRACT_SCHEMAS_FILE
-from app.constants.events import EVENT_TYPES_NOT_YET_EMITTED, AnalysisEventType, AssistantEventType
+from app.constants.events import (
+    EVENT_TYPES_NOT_YET_EMITTED,
+    EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND,
+    AnalysisEventType,
+    AssistantEventType,
+)
 from app.constants.intents import Intent
 from app.constants.stages import PipelineStage
 from app.constants.statuses import TraceStepState
@@ -99,13 +104,42 @@ def validator_for(member: dict[str, Any]) -> Draft202012Validator:
 
 
 async def test_the_backend_event_names_are_the_frontend_union_exactly() -> None:
-    """`AnalysisEventType` equals the union's discriminators - not a subset, not a superset.
+    """`AnalysisEventType` equals the union's discriminators, once the agreed-but-unimplemented ones are set
+    aside - not a subset, not a superset.
 
     A missing member means an event the frontend can render and the backend can never send. An extra one is
     worse: the backend emits something the frontend's Zod has never heard of, the parse throws at the
     boundary, and the operator sees a blank surface rather than an error naming the field.
+
+    **The exclusion is narrow on purpose.** `api-contract.md` marks three events agreed and not yet
+    implemented on the frontend (§4 `ui-command`, §5 `speech`, §6 `figure-ready`), and the backend
+    implements them ahead of it - 1.2.1 built `figure-ready`. Excluding exactly those, by name and with a
+    reason, keeps the equality check on everything else rather than weakening it to a subset.
     """
-    assert {member.value for member in AnalysisEventType} == set(ANALYSIS_MEMBERS)
+    emitted = {member.value for member in AnalysisEventType}
+    agreed_but_unparsed = {
+        member.value for member in EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND
+    }
+
+    assert emitted - agreed_but_unparsed == set(ANALYSIS_MEMBERS)
+
+
+async def test_nothing_is_listed_as_unparsed_that_the_frontend_now_parses() -> None:
+    """The staleness check that makes the exclusion above safe.
+
+    When the frontend ships its figure panel, `figure-ready` joins its union - and this fails until the
+    entry is removed, at which point the equality test starts enforcing the event properly. Without this,
+    an exclusion added once would silently stay forever.
+    """
+    still_unparsed = {
+        member.value for member in EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND
+    }
+    now_parsed = still_unparsed & set(ANALYSIS_MEMBERS)
+
+    assert not now_parsed, (
+        f"The frontend now parses {sorted(now_parsed)}. Remove them from "
+        "`EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` so the union test enforces them."
+    )
 
 
 async def test_the_assistant_event_names_are_its_union_exactly() -> None:

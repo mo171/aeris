@@ -31,6 +31,7 @@ class AnalysisEventType(StrEnum):
     LAYER_READY = "layer-ready"
     CLAIM = "claim"
     ANSWER_TOKEN = "answer-token"
+    FIGURE_READY = "figure-ready"
     RUN_COMPLETE = "run-complete"
     RUN_ERROR = "run-error"
 
@@ -62,5 +63,24 @@ EVENT_TYPES_NOT_YET_EMITTED: Final[dict[AnalysisEventType, str]] = {
     AnalysisEventType.CLAIM: (
         "Carries a validated claim object. Phase 1.5 - `evidence/` - is what produces one, and a claim "
         "model written before the subsystem that fills it would be a shape nothing verifies."
+    ),
+}
+
+# The mirror of the map above: events the **backend** emits that the **frontend** does not parse yet.
+#
+# Three of the events in `api-contract.md` are marked "agreed, not yet implemented on the frontend" - §4
+# `ui-command`, §5 `speech` and §6 `figure-ready`. They are real parts of the contract, agreed with the
+# frontend, and they are absent from its Zod union today. So a test asserting the two vocabularies match
+# *exactly* fails the moment the backend implements one - which is precisely what happened when 1.2.1 built
+# `services/rendering/`.
+#
+# Recording them here keeps the check honest in both directions rather than loosening it: the union test
+# still demands an exact match once these are excluded, so an event that is neither in the frontend's union
+# nor listed below is still a failure. And when the frontend ships one, removing its entry here is what
+# makes the test start enforcing it.
+EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND: Final[dict[AnalysisEventType, str]] = {
+    AnalysisEventType.FIGURE_READY: (
+        "`api-contract.md` §6, agreed 2026-08-30 and not yet implemented on the frontend. Emitted and "
+        "journalled from Phase 1.2.1; the frontend's figure panel is Phase 2.3."
     ),
 }

@@ -33,12 +33,14 @@ from rich.markup import escape
 
 from app.cli import dataset as dataset_command
 from app.cli import doctor as doctor_command
+from app.cli import figures as figures_command
 from app.cli import ingest as ingest_command
 from app.cli import run as run_command
 from app.config import settings
 from app.constants.datasets import DatasetId
 from app.constants.intents import Intent
 from app.constants.pipeline import GraphName
+from app.constants.raster import ProcessingLevel
 from app.constants.statuses import RunStatus
 from app.lib import database, inngest, redis, storage
 from app.lib.logger import configure_logging
@@ -340,6 +342,31 @@ def ingest_index(
     asyncio.run(
         _run_dataset(ingest_command.execute_index(scene_directory=scene_directory, console=console))
     )
+
+
+@app.command()
+def figures(
+    scene_directory: Path = typer.Argument(..., help="A scene directory holding B02, B03, B04 and B08."),
+    level: ProcessingLevel = typer.Option(
+        ProcessingLevel.UNKNOWN,
+        "--level",
+        help="State the processing level when the path does not carry it. NDVI needs L2A.",
+    ),
+) -> None:
+    """Render the three gate figures from a scene and verify one redraws byte-identically."""
+    reproducible = asyncio.run(
+        _run_dataset(
+            figures_command.execute_render_figures(
+                scene_directory=scene_directory,
+                console=console,
+                declared_level=None if level is ProcessingLevel.UNKNOWN else level,
+            )
+        )
+    )
+    # Non-zero when the reproduction claim fails. `api-contract.md` §6 rule 2 is a property of the system,
+    # so it belongs in an exit code a script can gate on rather than in prose an operator has to read.
+    if not reproducible:
+        raise typer.Exit(code=1)
 
 
 @app.command()

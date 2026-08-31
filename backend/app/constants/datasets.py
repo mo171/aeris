@@ -32,6 +32,19 @@ from typing import Final
 
 from app.constants.licences import Licence
 
+# How many times a scene download is retried, and how long it waits between attempts.
+#
+# **Measured by it happening.** A 245 MB band over a domestic connection was reset mid-transfer by the
+# remote host - `ContentLengthError: received 375864 of 239268081 bytes` - which failed the whole fetch
+# after four minutes of successful transfer. That is not an error condition worth surfacing to an operator;
+# it is the normal behaviour of a long download, and a client that cannot survive it cannot acquire a
+# scene reliably at all.
+#
+# Three attempts with a growing pause: enough to ride out a reset and a brief outage, few enough that a
+# genuinely unreachable host fails in under a minute rather than retrying into the evening.
+DOWNLOAD_ATTEMPTS: Final[int] = 3
+DOWNLOAD_RETRY_BACKOFF_SECONDS: Final[float] = 3.0
+
 
 class DatasetId(StrEnum):
     """Every dataset this project uses. The id is also its directory name under the datasets root."""
