@@ -190,7 +190,7 @@ and label parsing belongs to the phase with a model to feed — 1.6 for boxes an
 1.1 owes acquisition, licensing, cataloguing and **enumeration**, and enumeration is what verifies a
 download is complete.
 
-## 1.2 — Raster engine · S1–S6, S11 · plus tiles
+## 1.2 — Raster engine · S1–S6, S11 · plus tiles — **done (2026-08-31)**
 
 **Research:** PDF pp.12–14 (resolutions, sensors, formats, CRS) and §15 (the 20-stage pipeline).
 Notebook: `01_remote_sensing/` — already started.
@@ -207,6 +207,32 @@ EPSG:3857 XYZ, CORS headers present, alpha channel transparent over nodata, and 
 
 This gate is deliberately early. The frontend's memory names CORS as "the most common first-day failure",
 and a tile contract that is wrong is far cheaper to discover now than in Phase 2.
+
+**Result — the gate passed in a real browser.** `aeris ingest inspect|scene|index`, `services/imagery/`
+(metadata, validation, cog, tiling, `math/`), TiTiler in compose, and `tools/tilecheck/` — seven checks at
+`http://localhost:3000`, all green, including `getImageData` on a canvas the tile was drawn into. 46 new
+tests, **314 green**.
+
+    NDVI over 10980×10980   range [-1.000, 1.000]   vegetated (>0.3) 72.6%
+    TileJSON  xyz, bounds [77.032, 27.901, 78.176, 28.913], minzoom 8, maxzoom 14
+    CORS      allowed → ACAO: http://localhost:3000   ·   other → 200 with NO ACAO
+    Tile      image/png, RGBA, 38,217 transparent px of 65,536 at the scene edge
+
+**The bug worth carrying forward.** The first NDVI ranged **[-337, +347]** and wrote a *valid* COG that
+rendered as a plausible map — 0.055% of pixels, invisible by eye, and enough to set the colour scale of
+every figure the array feeds. The first fix was wrong: raising the denominator guard changed nothing.
+The cause is that `|a−b| ≤ |a+b|` holds **only when a and b share a sign**, and subtracting the L2A offset
+from dark ground gives negative reflectance. Measured: 0.52% of valid pixels are negative, and **100% of
+the out-of-range values came from exactly those.** `math/indices.py` masks them and carries a
+post-condition that raises.
+
+Three more things were measured rather than assumed, each after assuming wrongly first: TiTiler listens on
+**80**, its settings are prefixed **`TITILER_API_`**, and its default CORS is `*` *with* credentials — a
+pair every browser rejects, so the permissive-looking default is the broken one.
+
+**Not built, deliberately**: the index *engine* (registry, vocabulary, cloud mask before arithmetic, the
+S12 trace step) is 1.4. What 1.2 has is the raster path the gate names — read, scale, divide, write a COG,
+upload, serve.
 
 ## 1.2.1 — Visual products · the figures the backend sends
 

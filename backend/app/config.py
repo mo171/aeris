@@ -302,6 +302,20 @@ class Settings(BaseSettings):
     # Element84's Earth Search, a self-hosted catalogue - and swapping is a URL, not a code change.
     stac_api_url: AnyHttpUrl = AnyHttpUrl("https://planetarycomputer.microsoft.com/api/stac/v1")
 
+    # --- Tiles and COGs. Phase 1.2. ------------------------------------------------------------------------
+    #
+    # TiTiler serves the COGs this pipeline writes into MinIO as EPSG:3857 XYZ tiles - which is what the
+    # frontend's globe consumes. Locally that is the `titiler` service in docker-compose.yml.
+    #
+    # A URL rather than a host and port because the deployed form is a path on a CDN, not a port on a host,
+    # and reassembling it from parts at each call site is how one of them ends up with a doubled slash.
+    tile_server_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8000")
+
+    # Where COGs are built before they are uploaded. Local first, then uploaded: `cog_translate` seeks while
+    # building overviews and a multipart upload cannot be seeked, so a direct-to-storage write would mean
+    # buffering a whole band in memory (~240 MB) or producing wrong overviews.
+    cog_working_directory: Path = Path("data/cogs")
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalise_log_level(cls, raw_value: object) -> object:
@@ -421,6 +435,20 @@ class Settings(BaseSettings):
         directory = self._absolute(self.datasets_directory)
         directory.mkdir(parents=True, exist_ok=True)
         return directory
+
+    @property
+    def cog_working_directory_path(self) -> Path:
+        """The COG build directory, absolute and created."""
+        return self._resolved_directory_for(self.cog_working_directory / ".keep")
+
+    @property
+    def tile_server(self) -> str:
+        """The tile server without the trailing slash `AnyHttpUrl` adds.
+
+        Same reasoning as `storage_endpoint`: a doubled slash in a tile URL is a 404 from a server that is
+        working perfectly, and it is stripped once here rather than at each of the places that build one.
+        """
+        return str(self.tile_server_url).rstrip("/")
 
     @property
     def inngest_is_production(self) -> bool:

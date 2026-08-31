@@ -1,3 +1,111 @@
+## Session — 2026-08-31 (1.2) · The raster engine. **An NDVI COG renders in a real browser.**
+
+S1–S6 and S11 built, TiTiler in compose, and the gate passed end to end: an NDVI COG produced by this
+pipeline, stored in MinIO, rendered at `http://localhost:3000` with seven checks green — including
+`getImageData` on a canvas the tile was drawn into, which is what Cesium does and what a plain `<img>`
+does not exercise. 46 new tests, **314 green**, ruff and `uv lock --check` clean.
+
+    NDVI over 10980×10980   range [-1.000, 1.000]   vegetated (>0.3) 72.6%
+    TileJSON  xyz, bounds [77.032, 27.901, 78.176, 28.913], minzoom 8, maxzoom 14
+    CORS      allowed → ACAO: http://localhost:3000   ·   other → 200 with NO ACAO
+    Tile      image/png, RGBA, 38,217 transparent px of 65,536 at the scene edge
+
+### The bug worth carrying into every later phase
+
+The first NDVI this pipeline produced ranged **[-337, +347]** against a mathematical range of [-1, +1]. It
+wrote a **valid COG**. It rendered as a plausible map. 0.055% of pixels — invisible by eye, and more than
+enough to set the colour scale of every figure drawn from the array, because a ramp is stretched to the
+extremes it is given.
+
+**My first fix was wrong.** I raised the denominator guard, on the reasoning that `(a−b)/(a+b)` blows up
+near zero. It changed nothing. The actual cause: `|a−b| ≤ |a+b|` holds **only when a and b share a sign**,
+and subtracting the L2A offset from dark ground — deep water, terrain shadow — gives a small *negative*
+reflectance, which is an atmospheric-correction artefact rather than a measurement.
+
+Measured: **0.52% of valid pixels have negative reflectance in one band, and 100% of the out-of-range
+values came from exactly those pixels.** Masked, not clamped (§8 rule 4). `math/indices.py` carries a
+post-condition that raises on any finite value outside [-1, 1].
+
+Reproduced independently in `notebooks/03_raster_engine/01_cog_and_tiles.ipynb` — which itself found a
+second lesson: a 1024×1024 window at the centre of the tile contains **none** of the artefact and reports
+the bug as 0.0000%. The notebook now reads decimated over the whole scene. *A window that misses the
+defect makes a real bug look fixed.*
+
+### Four things measured after assuming otherwise
+
+- **TiTiler listens on 80**, not 8000. Read from its own startup log after a health check that never went
+  green.
+- **Its settings are prefixed `TITILER_API_`.** Bare `CORS_ORIGINS` had no effect at all; read off the
+  running container's `ApiSettings`.
+- **Its default CORS is `*` *with* `allow-credentials: true`** — a pair every browser rejects outright, so
+  the permissive-looking default is in fact the broken one. Now named to the frontend origin, same
+  reasoning as `MINIO_API_CORS_ALLOW_ORIGIN` in 0.4.
+- **`distinct / valid` is scale-dependent.** At 1e-6 the constant-raster check fired on a 10980² scene and
+  silently passed a 20×20 one — the check existed and only worked on large rasters. Found by a failing
+  test. Constancy is scale-free and is now *counted*.
+
+One correction I made mid-phase: I called the COG predictor a second bug, then found `IMAGE_STRUCTURE`
+reports `PREDICTOR: 3` correctly — rasterio's `.profile` simply does not surface it. The 508 MB NDVI is
+just what float32 costs; not a defect.
+
+### The mutation pass, and the one left uncaught on purpose
+
+12 mutations, 8 caught immediately. Four survived the first pass, and each told me something:
+
+| Survivor | Why | Resolution |
+|---|---|---|
+| nodata detected as `array != 0` | every test used `nodata=0`, so the two were indistinguishable | new test with a declared −9999 and real zeros |
+| prediction-shape check dropped | nothing fed a wrong shape; NumPy broadcasts (1,64) into (64,64) happily and paints a stripe | new test |
+| nodata masked *after* scaling | **the mutation was wrong**, not the test — it still masked before | mutation corrected → caught by 3 tests |
+| `_require_in_range` call removed | **genuinely uncatchable, and recorded as such** | see below |
+
+The last one is worth keeping. Once the masks are correct, no input can produce an out-of-range value, so
+the post-condition is unreachable and deleting its call changes no behaviour. It is defence in depth
+against a *future* regression in the masking — which a separate mutation shows is caught. The guard itself
+is tested directly. Writing a test that forced the call site to fire would mean breaking the masks to do
+it. **Recorded as uncaught rather than papered over.**
+
+### Decisions worth not relitigating
+
+- **A COG is not an optimisation, it is what makes the globe possible.** An ordinary GeoTIFF stores pixels
+  in scanline order, so one 512² patch means reading most of the file. Both open identically in QGIS,
+  which is why `is_cloud_optimised` *validates* rather than trusting an extension.
+- **`web_optimized=False`.** The COG stays in its native CRS and TiTiler reprojects per request. Baking
+  EPSG:3857 in is faster to serve and destroys the pixel grid every measurement depends on — an area from
+  a reprojected raster is an area from resampled pixels (§8 rule 3).
+- **The predictor follows dtype.** 2 for integers, 3 for float. Applying 2 to float32 writes without error
+  and decompresses to noise.
+- **Tiles overlap, and stitching is weighted.** A model's predictions near a window edge are made from
+  cropped context; without overlap those errors land in a grid and read as seams. Averaging overlaps
+  equally keeps half of that error, so the blend ramps to near-zero at the edge — never *to* zero, or
+  normalisation divides by nothing.
+- **The last window is shifted, not padded.** Padding feeds a model fabricated black pixels and asks it
+  about them.
+- **Measurement and policy are separate.** `math/` returns numbers and never decides; `validation.py`
+  compares against `constants/raster.py` and decides. That is what let the index bug be fixed with a unit
+  test instead of a two-minute scene conversion.
+- **Severity, not a boolean.** 60% cloud and a missing CRS are not the same thing: one is a judgement call
+  for a demo, the other means nothing downstream can proceed.
+- **Quality reads are decimated, regularly.** 2.78% of a scene answers "is this mostly nodata" to within a
+  fraction of a percent — and *regular* rather than random, so the same scene measures the same twice.
+
+### What Phase 0 caught again
+
+Three new `StrEnum`s failed `test_every_backend_enum_is_classified`; two new settings failed the
+`.env.example` test. Checked against the frontend before declaring them backend-only — and that surfaced a
+note for 1.3: the frontend's `polarisationSchema` is `{VV, VH, ratio}` in **upper case**, while `BandRole`
+has lower-case SAR members alongside the optical ones. 1.3 needs its own `Polarisation` enum matching the
+frontend exactly; `BandRole` is not it and must not reach the wire.
+
+### Next — Phase 1.2.1
+
+The rendering primitive: `services/rendering/`, colour ramps, stretches, the `figure-ready` event and
+`cli/renderers/figure_writer.py`. Everything it needs is now in place — the scene, the index array, and the
+statistics that decide a stretch (`p2`/`p98` rather than min/max, which this phase measured as 1108/3276
+against a min/max of 252/15747).
+
+---
+
 ## Session — 2026-08-31 (1.1) · Datasets, licences, and one loader. **A real scene is on disk.**
 
 18 datasets catalogued from the PDF's Table 5, one loader over six declared layout shapes,

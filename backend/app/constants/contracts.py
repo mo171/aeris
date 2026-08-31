@@ -134,6 +134,22 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     ),
     "licences.Redistribution": "Internal, with the same note as `Licence`.",
     "licences.CommercialUse": "Internal, with the same note as `Licence`.",
+    "raster.BandRole": (
+        "Internal. What a band is *for*, so `math/` can ask for RED rather than being told B04 - the "
+        "indirection that keeps the arithmetic sensor-agnostic. **Note for Phase 1.3**: the frontend's "
+        "`polarisationSchema` is {VV, VH, ratio} in upper case, while the SAR members here are lower case "
+        "and sit alongside the optical roles. 1.3 needs a separate `Polarisation` enum matching the "
+        "frontend exactly; `BandRole` is not it and must not be put on the wire."
+    ),
+    "raster.ProcessingLevel": (
+        "Internal today. L1C/L2A/GRD gates whether band arithmetic is permitted at all "
+        "(architecture-context.md §8 rule 5); the frontend shows a scene's modality, not its correction "
+        "level. A candidate for the wire if an operator ever needs to see why an index was refused."
+    ),
+    "raster.SpectralBand": (
+        "Internal. Sentinel-2 band identifiers. The wire carries what a band *means* - an index name, a "
+        "layer kind - never which instrument channel produced it."
+    ),
     "redis_keys.KeyNamespace": "Internal. A Redis key prefix never crosses the boundary.",
     "storage.Bucket": "Internal. A bucket role never crosses the boundary; the frontend sees signed URLs.",
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",

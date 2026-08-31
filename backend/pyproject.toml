@@ -62,6 +62,7 @@ dependencies = [
     "inngest>=0.5.19",
     "langgraph>=1.2.11",
     "langgraph-checkpoint-sqlite>=3.1.1",
+    "rio-cogeo>=7.0.2",
 ]
 
 [dependency-groups]

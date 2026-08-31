@@ -39,7 +39,7 @@ backend/
 │   │   ├── main.py                      # Typer app. The only place asyncio.run() is called.
 │   │   ├── doctor.py                    # `aeris doctor` - the dependency table (Phase 0.6) DONE
 │   │   ├── dataset.py                   # `aeris dataset list|show|fetch|search`  DONE (1.1)
-│   │   ├── ingest.py                    # `aeris ingest <path>`
+│   │   ├── ingest.py                    # `aeris ingest inspect|scene|index`  DONE (1.2)
 │   │   ├── analyse.py                   # `aeris analyse --scene --query`
 │   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
 │   │   │                                 #   points it at the three real graphs; the flags do not change.
@@ -136,16 +136,22 @@ backend/
 │   │   │       ├── temporal_graph.py
 │   │   │       └── cross_modal_graph.py
 │   │   │
-│   │   ├── imagery/                     # S1-S6, S11
-│   │   │   ├── ingestion.py
-│   │   │   ├── metadata.py
-│   │   │   ├── validation.py
-│   │   │   ├── cog.py                   # COG conversion into MinIO
-│   │   │   ├── tiling.py
-│   │   │   └── math/
-│   │   │       ├── windowing.py         # tile grid + overlap arithmetic
-│   │   │       ├── resampling.py        # the kernels; method choice by dtype stays in the service
+│   │   ├── imagery/                     # S1-S6, S11  DONE (1.2)
+│   │   │   ├── metadata.py              # S1-S3. Driver, CRS, bands, processing level - all READ, never
+│   │   │   │                            #   inferred from a filename
+│   │   │   ├── validation.py            # S4-S5. Severity, not a boolean: WARNS is carried into the
+│   │   │   │                            #   trace, REFUSES stops the run
+│   │   │   ├── cog.py                   # S6. COG conversion into MinIO. Predictor follows dtype
+│   │   │   ├── tiling.py                # S11. Overlapping windows + weighted stitching
+│   │   │   └── math/                    # pure, sync, no I/O, no policy
+│   │   │       ├── windowing.py         # tile grid + overlap arithmetic + blend weights
+│   │   │       ├── indices.py           # normalised difference + reflectance scaling. Carries the
+│   │   │       │                        #   post-condition that caught the NDVI-of-347 bug
 │   │   │       └── quality_statistics.py# nodata fraction, histogram sanity, resolution report
+│   │   │
+│   │   │   NOTE: `ingestion.py` was planned here and is not needed - `metadata.py` reads and
+│   │   │   `validation.py` decides, and a third module between them had nothing left to do.
+│   │   │   `resampling.py` arrives with 1.3, which is the first phase that actually resamples.
 │   │   │
 │   │   ├── preprocessing/               # S7-S10 and the SAR branch
 │   │   │   ├── cloud_masking.py

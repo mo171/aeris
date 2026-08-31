@@ -25,6 +25,7 @@ how   : **A Typer command callback is sync, and that is the `code-standards.md` 
 import asyncio
 from collections.abc import Coroutine
 from datetime import date
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -32,6 +33,7 @@ from rich.markup import escape
 
 from app.cli import dataset as dataset_command
 from app.cli import doctor as doctor_command
+from app.cli import ingest as ingest_command
 from app.cli import run as run_command
 from app.config import settings
 from app.constants.datasets import DatasetId
@@ -300,6 +302,44 @@ async def _run_dataset[T](work: Coroutine[object, object, T]) -> T:
         return await work
     finally:
         await _close_connections()
+
+
+ingest_app = typer.Typer(
+    name="ingest",
+    help="Inspect, validate and convert imagery into COGs the globe can draw. Stages S1-S6, S11.",
+    no_args_is_help=True,
+)
+app.add_typer(ingest_app)
+
+
+@ingest_app.command("inspect")
+def ingest_inspect(
+    path: Path = typer.Argument(..., help="A raster file."),
+) -> None:
+    """Describe a raster and report what is wrong with it. Converts nothing."""
+    analysable = asyncio.run(_run_dataset(ingest_command.execute_inspect(path, console)))
+    # Exit code is the contract, as with `doctor` and `dataset list`: a script deciding whether to run an
+    # analysis over a scene branches on this rather than parsing a table.
+    if not analysable:
+        raise typer.Exit(code=1)
+
+
+@ingest_app.command("scene")
+def ingest_scene(
+    path: Path = typer.Argument(..., help="A raster file to convert and upload."),
+) -> None:
+    """Validate a raster, convert it to a COG and upload it to object storage."""
+    asyncio.run(_run_dataset(ingest_command.execute_ingest(path, console)))
+
+
+@ingest_app.command("index")
+def ingest_index(
+    scene_directory: Path = typer.Argument(..., help="A fetched scene directory holding B04 and B08."),
+) -> None:
+    """Compute NDVI over a scene and publish it as a COG. The Phase 1.2 gate."""
+    asyncio.run(
+        _run_dataset(ingest_command.execute_index(scene_directory=scene_directory, console=console))
+    )
 
 
 @app.command()
