@@ -15,6 +15,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { fetchInvestigation } from "@/features/investigation/services/investigation.service";
+import { QUERY_KEYS } from "@/lib/constants/query-keys";
 
 import { GlassPanel } from "@/components/sharedUI/dumbComponent/GlassPanel";
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
@@ -215,6 +219,7 @@ function InvestigationGroup({ group }: { group: { investigationId: string; inves
 }
 
 function ClaimCard({ claim }: { claim: AuditedClaim }) {
+  const queryClient = useQueryClient();
   const [isExpanded, setIsExpanded] = useState(claim.isPrimary);
   const model = SPECIALIST_MODELS[claim.modelId];
   
@@ -346,7 +351,16 @@ function ClaimCard({ claim }: { claim: AuditedClaim }) {
             </div>
             
             <Button asChild size="sm" variant="secondary" className="h-7 text-xs font-mono">
-              <Link href={buildRoute.investigationDetail(claim.investigationId)}>
+              <Link 
+                href={buildRoute.investigationDetail(claim.investigationId)}
+                prefetch={true}
+                onMouseEnter={() => {
+                  queryClient.prefetchQuery({
+                    queryKey: QUERY_KEYS.investigations.detail(claim.investigationId),
+                    queryFn: ({ signal }) => fetchInvestigation(claim.investigationId, signal),
+                  });
+                }}
+              >
                 <ExternalLink className="mr-2 size-3" />
                 Open Investigation
               </Link>

@@ -14,6 +14,7 @@
 
 "use client";
 
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { TIMELINE_LAYOUT } from "@/lib/constants/timeline";
 import { cn } from "@/lib/utils";
 
@@ -76,43 +77,58 @@ export function TimelineTrack({
             : `${Math.round(acquisition.cloudCoverPercentage)}% cloud`;
 
         return (
-          <button
-            key={acquisition.id}
-            type="button"
-            onClick={() => onSelectAcquisition(acquisition)}
-            title={`${acquisition.capturedAt.slice(0, 10)} · ${acquisition.sensorPlatform} · ${cloudLabel}${usable ? "" : " · not usable"}`}
-            aria-label={`${acquisition.capturedAt.slice(0, 10)}, ${acquisition.sensorPlatform}, ${cloudLabel}`}
-            aria-pressed={isSelected}
-            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            style={{ left: `${position * 100}%`, width: TIMELINE_LAYOUT.markerWidthPx * 2 }}
-          >
-            <span
-              className={cn(
-                "mx-auto block rounded-[1px] border transition-colors duration-fast",
-                isSelected
-                  ? "border-aeris-teal bg-aeris-teal"
-                  : !usable
-                    ? // Hollow: catalogued, but nothing here can answer a question.
-                      "border-aeris-amber/60 bg-transparent"
-                    : colorByModality && isRadar
-                      ? // On the merged rule the mark is the only thing that can say which sensor it is.
-                        "border-aeris-blue/70 bg-aeris-blue/45 hover:border-aeris-blue hover:bg-aeris-blue/70"
-                      : "border-foreground/50 bg-foreground/35 hover:border-aeris-teal hover:bg-aeris-teal/60",
+          <HoverCard key={acquisition.id} openDelay={200} closeDelay={100}>
+            <HoverCardTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onSelectAcquisition(acquisition)}
+                aria-label={`${acquisition.capturedAt.slice(0, 10)}, ${acquisition.sensorPlatform}, ${cloudLabel}`}
+                aria-pressed={isSelected}
+                className="group absolute top-1/2 -translate-x-1/2 -translate-y-1/2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                style={{ left: `${position * 100}%`, width: TIMELINE_LAYOUT.markerWidthPx * 4 }}
+              >
+                <span
+                  className={cn(
+                    "mx-auto block rounded-[1px] border transition-all duration-300 group-hover:scale-125 group-hover:shadow-[0_0_8px_rgba(255,255,255,0.4)]",
+                    isSelected
+                      ? "border-aeris-teal bg-aeris-teal shadow-[0_0_10px_var(--color-aeris-teal)]"
+                      : !usable
+                        ? "border-aeris-amber/60 bg-transparent"
+                        : colorByModality && isRadar
+                          ? "border-aeris-blue/70 bg-aeris-blue/45 group-hover:border-aeris-blue group-hover:bg-aeris-blue/70"
+                          : "border-foreground/50 bg-foreground/35 group-hover:border-aeris-teal group-hover:bg-aeris-teal/60",
+                  )}
+                  style={{
+                    width: TIMELINE_LAYOUT.markerWidthPx,
+                    height: isSelected ? TIMELINE_LAYOUT.laneHeightPx - 2 : TIMELINE_LAYOUT.laneHeightPx - 6,
+                  }}
+                />
+                {/* An underline marks the dates the answer on screen actually drew from. */}
+                {isCited ? (
+                  <span
+                    className="absolute inset-x-0 -bottom-0.5 mx-auto h-px bg-aeris-blue"
+                    style={{ width: TIMELINE_LAYOUT.markerWidthPx }}
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </button>
+            </HoverCardTrigger>
+            <HoverCardContent side="top" className="w-52 p-0 overflow-hidden bg-surface-2/95 backdrop-blur-md border-border/60 shadow-xl shadow-black/40">
+              {acquisition.quicklookUrl && (
+                <div className="w-full h-28 relative bg-surface-1 border-b border-border/50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={acquisition.quicklookUrl} alt="Quicklook" className="absolute inset-0 w-full h-full object-cover" />
+                </div>
               )}
-              style={{
-                width: TIMELINE_LAYOUT.markerWidthPx,
-                height: isSelected ? TIMELINE_LAYOUT.laneHeightPx - 4 : TIMELINE_LAYOUT.laneHeightPx - 8,
-              }}
-            />
-            {/* An underline marks the dates the answer on screen actually drew from. */}
-            {isCited ? (
-              <span
-                className="absolute inset-x-0 -bottom-0.5 mx-auto h-px bg-aeris-blue"
-                style={{ width: TIMELINE_LAYOUT.markerWidthPx }}
-                aria-hidden="true"
-              />
-            ) : null}
-          </button>
+              <div className="p-3 text-xs flex flex-col gap-1.5">
+                <span className="font-mono text-aeris-teal tracking-wide">{acquisition.capturedAt.slice(0, 10)}</span>
+                <span className="text-foreground font-medium">{acquisition.sensorPlatform}</span>
+                <span className={cn("text-muted-foreground", !usable && "text-aeris-amber")}>
+                  {cloudLabel}{usable ? "" : " · not usable"}
+                </span>
+              </div>
+            </HoverCardContent>
+          </HoverCard>
         );
       })}
     </div>

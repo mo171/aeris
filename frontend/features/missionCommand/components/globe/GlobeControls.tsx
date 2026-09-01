@@ -71,13 +71,11 @@ export function GlobeControls() {
     if (globeViewer) {
       setBuildingMode(globeViewer.getBuildingMode());
 
-      // Apply the persisted auto-rotation state when the globe initializes
-      const persistedAutoRotate = useMissionCommandStore.getState().isAutoRotating;
-      if (globeViewer.isAutoRotating() !== persistedAutoRotate) {
-        globeViewer.setAutoRotate(persistedAutoRotate);
+      if (globeViewer.isAutoRotating() !== isAutoRotating) {
+        globeViewer.setAutoRotate(isAutoRotating);
       }
     }
-  }, [globeViewer]);
+  }, [globeViewer, isAutoRotating]);
 
   const handleAutoRotateToggle = () => {
     const next = !isAutoRotating;

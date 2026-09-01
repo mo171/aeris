@@ -21,12 +21,12 @@
 //         that an operator reading "these two sensors disagree here" had no assistant to ask about it, no
 //         timeline to move the pair, and no draw tool to scope a question to the ground in question.
 
-//         Each zone has its own error boundary: a failure in the layer stack must cost the layer stack,
 //         not the answer and the trace as well.
 
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
 import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
@@ -55,6 +55,7 @@ import { useUiStore } from "@/store/ui-store";
 import { useAnalysisRun } from "../hooks/use-analysis-run";
 import { useAutonomousInvestigation } from "../hooks/use-autonomous-investigation";
 import { useCatalogueSearch } from "../hooks/use-catalogue-search";
+import { searchCatalogue } from "../services/catalogue.service";
 import { useEvidenceGraph } from "../hooks/use-evidence-graph";
 import { useInvestigation } from "../hooks/use-investigation";
 import { useInvestigationCommands } from "../hooks/use-investigation-commands";
@@ -91,6 +92,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const { investigation, isLoading, error, assignSceneRole, saveCameraView } =
     useInvestigation(investigationId);
   const { graph, layers, featureIdsForClaim } = useEvidenceGraph(investigationId);
+  const [isAutoFetchingSar, setIsAutoFetchingSar] = useState(false);
 
   // Which catalogue products are actually on the scene, so the overlay browser can mark them rather than
   // listing every capability with no indication of which ones the operator is already looking at.
@@ -299,8 +301,39 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
     saveCameraView,
     prepareAutonomous: autonomous.prepare,
     evidenceById: graph.evidenceById,
-    areaOfInterest: investigation?.areaOfInterest ?? null,
+    areaOfInterest: investigation?.areaOfInterest ?? { west: 0, south: 0, east: 0, north: 0 },
   });
+
+  const handleAutoFetchCrossModal = useCallback(
+    async (from: string, to: string) => {
+      if (!investigation) return;
+      setIsAutoFetchingSar(true);
+      toast.info("Searching archive for matching radar imagery...");
+      try {
+        const result = await searchCatalogue({
+          areaOfInterest: investigation.areaOfInterest,
+          from: new Date(from).toISOString(),
+          to: new Date(to).toISOString(),
+          modalities: ["sar"],
+          maximumCloudPercentage: 100, // SAR sees through cloud anyway
+        });
+
+        const sarScene = result.acquisitions.find((a) => a.modality === "sar");
+        if (sarScene) {
+          assignSceneRole(sarScene.id, "sar");
+          setCrossModalLensActive(true);
+          toast.success("Radar scene retrieved and attached.");
+        } else {
+          toast.error("No radar scenes found in this temporal window.");
+        }
+      } catch (err) {
+        toast.error("Failed to retrieve radar scenes from the archive.");
+      } finally {
+        setIsAutoFetchingSar(false);
+      }
+    },
+    [investigation, assignSceneRole, setCrossModalLensActive],
+  );
 
   const handleFocusScene = useCallback(
     (slot: InvestigationSceneSlot) => {
@@ -519,6 +552,8 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               <TimelineScrubber
                 timeline={timeline}
                 hasCrossModalScene={sceneSlots.some((slot) => slot.role === "sar")}
+                isAutoFetchingSar={isAutoFetchingSar}
+                onAutoFetchCrossModal={handleAutoFetchCrossModal}
                 archive={{
                   isSearching: catalogue.isSearching,
                   error: catalogue.error,

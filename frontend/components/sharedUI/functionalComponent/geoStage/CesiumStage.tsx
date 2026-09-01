@@ -169,7 +169,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
     // ── Stage state ────────────────────────────────────────────────────────────────────────────────
     let mode: StageMode = "globe";
     let renderMode: StageLayerRenderMode = "draped";
-    let prefersAutoRotate = !isMotionReducedRef.current;
+    let prefersAutoRotate = false;
     let isInteracting = false;
     let isFlying = false;
     let resumeTimeoutId: number | null = null;
@@ -837,7 +837,7 @@ export function CesiumStage({ isMotionReduced, onReady }: CesiumStageProps) {
             );
             orbitAxis = Cartesian3.clone(Cartesian3.UNIT_Z);
             basemapBrightness = GLOBE_APPEARANCE.imageryBrightness;
-            prefersAutoRotate = !isMotionReducedRef.current;
+            prefersAutoRotate = false;
 
             // Restored for the orbital instrument: pinning the camera's up-vector to world Z is what
             // keeps north up while the planet turns underneath.

@@ -79,7 +79,7 @@ export const useMissionCommandStore = create<MissionCommandState>()(
   uploadTasks: [],
   isCatalogSectionExpanded: true,
   isMissionSectionExpanded: true,
-  isAutoRotating: true,
+  isAutoRotating: false,
   globeViewer: null,
   assistantControls: null,
 
@@ -136,5 +136,6 @@ export const useMissionCommandStore = create<MissionCommandState>()(
       focusedMissionId: state.focusedMissionId,
       catalogSearchTerm: state.catalogSearchTerm,
     }),
+    version: 1,
   },
 ));
