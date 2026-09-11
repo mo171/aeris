@@ -68,7 +68,8 @@ export function MissionCommandScreen() {
   const handleLocateScene = useCallback(
     (scene: ImageryScene) => {
       toggleSceneSelection(scene.id);
-      flyToPosition(scene.centroid.latitude, scene.centroid.longitude);
+      // Hardcoded Gulf Coast Refineries coordinates per user request
+      flyToPosition(29.69080, -95.37001);
     },
     [flyToPosition, toggleSceneSelection],
   );

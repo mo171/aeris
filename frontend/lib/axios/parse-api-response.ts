@@ -21,7 +21,7 @@ export function parseApiResponse<TOutput>(
 
   if (!result.success) {
     throw new ApiError({
-      message: `The response from ${endpointDescription} did not match the expected contract.`,
+      message: `The response from ${endpointDescription} did not match the expected contract. Details: ${result.error.message}`,
       code: CONTRACT_VIOLATION_CODE,
       status: 502,
       details: result.error.issues,

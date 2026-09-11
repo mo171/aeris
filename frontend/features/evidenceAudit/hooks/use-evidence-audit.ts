@@ -13,6 +13,7 @@
 "use client";
 
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -46,7 +47,10 @@ export interface EvidenceAuditView {
 }
 
 export function useEvidenceAudit(): EvidenceAuditView {
-  const [search, setSearch] = useState("");
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams?.get("search") ?? "";
+  
+  const [search, setSearch] = useState(initialSearch);
   const [modelId, setModelId] = useState<ModelId | null>(null);
   const [band, setBand] = useState<ConfidenceBandId>("all");
 

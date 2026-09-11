@@ -24,6 +24,8 @@ export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
 export const buildRoute = {
   investigationDetail: (investigationId: string) =>
     `${ROUTES.INVESTIGATION}/${investigationId}` as const,
+  evidenceAudit: (search: string) =>
+    `${ROUTES.EVIDENCE}?search=${encodeURIComponent(search)}` as const,
 } as const;
 
 /*

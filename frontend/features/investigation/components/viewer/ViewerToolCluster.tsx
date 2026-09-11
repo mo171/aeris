@@ -100,7 +100,9 @@ function ToolButton({ label, onClick, isActive, children }: ToolButtonProps) {
           aria-label={label}
           aria-pressed={isActive}
           onClick={onClick}
-          className={cn(isActive && "text-aeris-teal")}
+          className={cn(
+            isActive && "bg-aeris-teal/15 text-aeris-teal hover:bg-aeris-teal/25 hover:text-aeris-teal",
+          )}
         >
           {children}
         </Button>

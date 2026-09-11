@@ -20,6 +20,7 @@ import {
   BookmarkPlus,
   Check,
   Copy,
+  FileSearch,
   FileText,
   Presentation,
   Radar,
@@ -32,7 +33,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { dispatchCommand } from "@/lib/command-bus";
 import { COMMAND_IDS } from "@/lib/constants/commands";
 import { CROSS_MODAL_OPERATION_ID } from "@/lib/constants/cross-modal";
-import { ROUTES } from "@/lib/constants/routes";
+import { buildRoute, ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils";
 
 import { useInvestigationStore } from "../../store/investigation-store";
@@ -191,6 +192,23 @@ export function InvestigationHeader({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">Hide the panels and orbit the scene</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              asChild
+              aria-label="Evidence Audit"
+            >
+              <Link href={buildRoute.evidenceAudit(investigation.name)}>
+                <FileSearch />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Audit this investigation's evidence corpus</TooltipContent>
         </Tooltip>
 
         <Button

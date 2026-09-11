@@ -144,6 +144,8 @@ export const INVESTIGATION_LIMITS = {
   deckGlConsiderationThreshold: 100_000,
   /** Trace steps retained in memory for one run. A run that emits more than this is malfunctioning. */
   maximumTraceSteps: 60,
+  /** Maximum UI commands an agent can execute in a single run. Limits interface twitching. */
+  maximumCommandsPerRun: 11,
 } as const;
 
 /** Which scene role occupies which side of the comparator, per workspace mode. */

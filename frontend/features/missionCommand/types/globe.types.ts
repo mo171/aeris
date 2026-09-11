@@ -12,6 +12,7 @@
 //         frame budget.
 
 import type { z } from "zod";
+import type { StageBuildingMode } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 
 import type {
   globeMarkerSchema,
@@ -49,6 +50,9 @@ export interface GlobeViewerHandle {
   resetView: () => void;
   setAutoRotate: (isEnabled: boolean) => void;
   isAutoRotating: () => boolean;
+  setBuildingMode: (mode: StageBuildingMode) => void;
+  getBuildingMode: () => StageBuildingMode;
+  isPhotorealisticAvailable: () => boolean;
 }
 
 export type GlobeLayerId = "markers" | "satelliteTracks" | "graticule";

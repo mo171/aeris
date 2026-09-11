@@ -70,6 +70,8 @@ interface TimelineScrubberProps {
     }) => void;
     onDismissRecommendation: () => void;
   };
+  isAutoFetchingSar?: boolean;
+  onAutoFetchCrossModal?: (from: string, to: string) => void;
 }
 
 const VERDICT_TONE = { clean: "green", degraded: "amber", unusable: "red" } as const;
@@ -84,7 +86,13 @@ const BINDING_HINT: Record<WorkspaceMode, string> = {
   crossModal: "Compare radar against optical — does backscatter agree with reflectance?",
 };
 
-export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: TimelineScrubberProps) {
+export function TimelineScrubber({
+  timeline,
+  hasCrossModalScene,
+  archive,
+  isAutoFetchingSar = false,
+  onAutoFetchCrossModal,
+}: TimelineScrubberProps) {
   const {
     lanes,
     domain,
@@ -99,8 +107,8 @@ export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: Time
   } = timeline;
 
   const [isExpanded, setExpanded] = useState(false);
-  const comparatorBinding = useInvestigationStore((state) => state.comparatorBinding);
-  const setComparatorBinding = useInvestigationStore((state) => state.setComparatorBinding);
+  const crossModalLensActive = useInvestigationStore((state) => state.crossModalLens.isActive);
+  const setCrossModalLensActive = useInvestigationStore((state) => state.setCrossModalLensActive);
 
   const trackRef = useRef<HTMLDivElement | null>(null);
   const baselineHandleRef = useRef<HTMLDivElement | null>(null);
@@ -315,22 +323,39 @@ export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: Time
             <button
               key={mode}
               type="button"
-              disabled={mode === "crossModal" && !hasCrossModalScene}
-              onClick={() => setComparatorBinding(mode)}
-              aria-pressed={comparatorBinding === mode}
+              disabled={mode === "crossModal" && !hasCrossModalScene && !onAutoFetchCrossModal}
+              onClick={() => {
+                if (mode === "crossModal") {
+                  if (!hasCrossModalScene && onAutoFetchCrossModal) {
+                    onAutoFetchCrossModal(
+                      new Date(domain.startMs).toISOString(),
+                      new Date(domain.endMs).toISOString(),
+                    );
+                  } else {
+                    setCrossModalLensActive(true);
+                  }
+                } else {
+                  setCrossModalLensActive(false);
+                }
+              }}
+              aria-pressed={
+                (mode === "crossModal" && crossModalLensActive) ||
+                (mode === "temporal" && !crossModalLensActive)
+              }
               title={
                 mode === "crossModal" && !hasCrossModalScene
-                  ? "No radar scene attached to compare against"
+                  ? "Click to auto-fetch a matching radar scene from the archive"
                   : BINDING_HINT[mode]
               }
               className={cn(
                 "rounded-sm px-1.5 py-0.5 font-mono text-[10px] tracking-wide transition-colors duration-fast disabled:opacity-35",
-                comparatorBinding === mode
+                ((mode === "crossModal" && crossModalLensActive) ||
+                  (mode === "temporal" && !crossModalLensActive))
                   ? "bg-aeris-teal/10 text-aeris-teal"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {BINDING_LABEL[mode]}
+              {mode === "crossModal" && isAutoFetchingSar ? "Fetching..." : BINDING_LABEL[mode]}
             </button>
           ))}
         </span>
@@ -410,7 +435,7 @@ export function TimelineScrubber({ timeline, hasCrossModalScene, archive }: Time
         <span
           ref={bandRef}
           aria-hidden="true"
-          className="absolute inset-y-0 border-x border-aeris-teal/30 bg-aeris-teal/8"
+          className="absolute inset-y-0 border-x border-aeris-teal/40 bg-gradient-to-r from-aeris-teal/5 via-aeris-teal/10 to-aeris-teal/5 shadow-[inset_0_0_15px_rgba(0,255,200,0.05)] transition-all duration-75"
           style={{ left: "0%", width: "0%" }}
         />
 
@@ -579,15 +604,15 @@ function ScrubHandle({
             onStep(role, 1);
           }
         }}
-        className="pointer-events-auto absolute inset-y-0 -left-2 w-4 cursor-ew-resize focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className="group pointer-events-auto absolute inset-y-0 -left-2 w-4 cursor-ew-resize focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         <span
-          className="absolute inset-y-0 left-1/2 -translate-x-1/2 bg-aeris-teal"
+          className="absolute inset-y-0 left-1/2 -translate-x-1/2 bg-aeris-teal shadow-[0_0_8px_var(--color-aeris-teal)] transition-transform duration-100 group-hover:scale-x-150"
           style={{ width: TIMELINE_LAYOUT.handleWidthPx }}
           aria-hidden="true"
         />
-        <span className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-sm border border-aeris-teal/40 bg-surface-2 px-1 font-mono text-[9px] whitespace-nowrap text-aeris-teal">
-          {label} {capturedDate}
+        <span className="absolute -top-6 left-1/2 -translate-x-1/2 rounded-full border border-aeris-teal/30 bg-surface-2/80 backdrop-blur-md px-2 py-0.5 font-mono text-[9px] whitespace-nowrap text-aeris-teal shadow-lg shadow-black/50 transition-all duration-200 group-hover:-top-7 group-hover:border-aeris-teal/60 group-hover:bg-surface-2/95 group-hover:shadow-[0_4px_12px_rgba(0,255,200,0.2)]">
+          {label} <span className="text-foreground ml-1">{capturedDate}</span>
         </span>
       </button>
     </div>

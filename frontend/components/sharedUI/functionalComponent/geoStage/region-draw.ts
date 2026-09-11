@@ -426,6 +426,7 @@ export function createDrawController(viewer: Viewer): DrawController {
     );
     committedSource.entities.add(
       new Entity({
+        id: `${region.id}_outline`,
         polyline: {
           positions: [...ring, ring[0]].map(toCartesian),
           width: DRAW_TOOLS.outlineWidthPixels,
@@ -677,6 +678,7 @@ export function createDrawController(viewer: Viewer): DrawController {
     }
     regions.splice(index, 1);
     committedSource.entities.removeById(regionId);
+    committedSource.entities.removeById(`${regionId}_outline`);
     emitRegions();
   }
 

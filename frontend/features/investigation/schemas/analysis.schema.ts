@@ -146,6 +146,29 @@ export const analysisStreamEventSchema = z.discriminatedUnion("type", [
     runId: z.string().min(1),
     message: z.string().min(1),
   }),
+  z.object({
+    type: z.literal("ui-command"),
+    runId: z.string().min(1),
+    commandId: z.string().min(1),
+    params: z.record(z.string(), z.any()),
+    reason: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("speech"),
+    runId: z.string().min(1),
+    claimIds: z.array(z.string()),
+    audioUrl: z.string().url(),
+    interruptible: z.boolean(),
+    provisional: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal("figure-ready"),
+    runId: z.string().min(1),
+    figureId: z.string().min(1),
+    isPrimary: z.boolean().optional(),
+    legend: z.any(),
+    renderSpec: z.any(),
+  }),
 ]);
 
 export const regionSuggestionSchema = z.object({

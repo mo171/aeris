@@ -65,7 +65,7 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     // Built, and the route works, but the surface does not hydrate — the filters are inert and the claim
     // list never loads. Left unavailable rather than shipping a rail entry to a page that cannot be used.
     // See fcontext/memory.md for the reproduction; flip this once that is fixed.
-    isAvailable: false,
+    isAvailable: true,
   },
   {
     id: "models",

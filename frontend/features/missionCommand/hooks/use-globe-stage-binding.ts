@@ -73,6 +73,9 @@ export function useGlobeStageBinding({ onMarkerSelect }: GlobeStageBindingOption
       resetView: () => stage.camera.flyTo(GLOBE_HOME_TARGET),
       setAutoRotate: (isEnabled) => stage.camera.setAutoRotate(isEnabled),
       isAutoRotating: () => stage.camera.isAutoRotating(),
+      setBuildingMode: (mode) => stage.appearance.setBuildingMode(mode),
+      getBuildingMode: () => stage.appearance.getBuildingMode(),
+      isPhotorealisticAvailable: () => stage.appearance.isPhotorealisticAvailable(),
     });
 
     return () => {
