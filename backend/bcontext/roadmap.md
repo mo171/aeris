@@ -509,7 +509,7 @@ needs an investigation row, which is 1.9's session persistence; the JSON records
 Phase 1 audit trail and are the columns 1.9 writes. The confidence rule is `minimum-of-stated` with every
 stage declining; 1.6 supplies the first stated score and 1.7 the validation checks PDF §20 folds in.
 
-## 1.6 — Specialist models · S13
+## 1.6 — Specialist models · S13 — **done (2026-09-12)**
 
 **Research:** PDF pp.17–18 (change detection architectures and failure modes), p.17 (grounding), p.20–21
 (model comparison). Notebooks `05_grounding`, `06_segmentation`, `07_change_detection`.
@@ -524,6 +524,55 @@ stage declining; 1.6 supplies the first stated score and 1.7 the validation chec
 **Gate** — change mask plus area statistics computed for a LEVIR-CD test pair, scored against ground truth.
 Two models requested back-to-back on the 8 GB profile: the first evicts, the second loads, neither crashes,
 and `warming` is observable in the status output.
+
+**Result — both halves of the gate passed, on real weights, on a 4 GB laptop GPU.** Pretrained first, as
+the plan says; nothing was trained. 31 new tests, **502 green** (the two reds are still the 1.2 tile
+tests wanting the Ghaziabad COG), ruff and `uv lock --check` clean.
+
+    aeris models evaluate --limit 256        changeformer  v6-levircd256-hzdr   93 ms per crop
+      change class   precision 0.8009   recall 0.7905   F1 0.7957   IoU 0.6607
+      area           predicted 15.70 ha   truth 15.91 ha   (nominal 0.5 m pixels)
+      all 2,048 test crops:  F1 0.8233   IoU 0.6996   P 0.8516   R 0.7968   159.9 ha of 170.9 ha
+
+    aeris models warm changeformer segformer-landcover --budget 700
+      changeformer          offline -> warming (queue 1) -> online     resident 512 of 700 MB
+      segformer-landcover   offline -> warming (queue 1) -> online     evicted changeformer; 640 of 700 MB
+
+`warming` is *observed*, from a second task polling `status()` while the load runs, both in the CLI and
+in a test. The models: **ChangeFormerV6** (wgcban's architecture vendored under MIT, HZDR-FWGEL's LEVIR-
+CD-256 checkpoint from the Hub, 41.0 M parameters) and **SegFormer-B2 fine-tuned on LoveDA** through
+`transformers`; the **SAR log-ratio detector** as the deterministic `sar-change`; and the residual gate of
+§8 rule 2 in front of the optical detector, tested to refuse a misaligned pair *before* the model is
+loaded. `app/models/` is the fleet: `constants/fleet.py` states every model's capability, stages,
+weights source and measured footprint; `manager.py` leases, evicts idle least-recently-used models to a
+budget, and reports `offline / warming / online / degraded` with `queueDepth` and `medianLatencyMs`
+exactly as `modelStatusSchema` asks; `aeris doctor` gained a "Model device" row.
+
+Measured rather than assumed:
+
+- **The checkpoint's input convention is not the paper's.** ChangeFormer normalises to [-1, 1]; HZDR's
+  checkpoint scores F1 0.21 that way, 0.19 with ImageNet statistics, 0.42 in BGR, and **0.79** on plain
+  RGB in [0, 1]. Every wrong convention produces a plausible mask. The evaluation harness is what chose,
+  and the adapter's header says so.
+- **The vendored file was not verbatim the first time.** The extractor cut `ConvLayer` at a column-0
+  comment inside the class, leaving 38.7 M parameters against the checkpoint's 41.0 M; the strict load
+  refused it (10 unexpected tensors). Re-extracted to the next top-level definition, 41.0 M, loads clean.
+- **Footprints:** ChangeFormer 157 MB of weights, 461 MB peak through a 256 tile, 102 ms; SegFormer 104
+  MB, 556 MB peak through a 512 tile, 217 ms. Declared as 512 and 640. A Sentinel-2 subset (1120×1066)
+  runs through either in about two seconds, windowed and stitched with no seam of NaN.
+- **This laptop is a 4 GB profile**, below the roadmap's smallest. `VramProfile` gained a `4gb` tier and
+  the profile is measured from `mem_get_info`, never read from a product name. Both models fit at once
+  in 3,071 MB of budget, so the eviction is demonstrated with `--budget`, which is what "on the 8 GB
+  profile" means on a card with four.
+- **transformers 5's image processor requires torchvision** for a rescale and a normalisation whose
+  constants are in the checkpoint's own `preprocessor_config.json`. The adapter reads the file instead.
+
+**Not built, and why**: `dota-detector` - no pip-loadable pretrained DOTA/DIOR detector could be verified
+(the published ones need mmrotate); `grounding-dino-sam` and `rs-vlm` are 1.7's (both load through
+`transformers`, and the fleet records are in place with `offline` and a refusal naming the gap). The
+LEVIR-CD licence page was unreachable from the build machine, so the dataset stays `UNVERIFIED` - which
+blocks training, not evaluation, and no training was planned. The S13 *node* is 1.10's composition; the
+1.5 builder already turns any mask the detector produces into both representations and claims.
 
 ## 1.7 — VLM and constrained answer generation · S14, S16
 

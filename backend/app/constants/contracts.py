@@ -159,6 +159,10 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
         "layer kind - never which instrument channel produced it."
     ),
     "redis_keys.KeyNamespace": "Internal. A Redis key prefix never crosses the boundary.",
+    "fleet.VramProfile": (
+        "Internal. Which residency tier a machine measured as. The frontend sees each model's health "
+        "(`modelHealthSchema`), never the card it runs on."
+    ),
     "spectral.SpectralIndex": (
         "Shared in substance, not in Zod: the frontend declares `SPECTRAL_INDEX_IDS` in "
         "`lib/constants/overlays/spectral-indices.ts` as a constants array rather than a schema, so the "

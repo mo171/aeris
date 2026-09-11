@@ -154,6 +154,18 @@ class DatasetLayout:
 
 
 @dataclass(frozen=True, slots=True)
+class HubParquetMirror:
+    """A dataset republished on the Hugging Face Hub as parquet, split by split."""
+
+    repository: str
+    revision: str
+    # Split -> the parquet file inside the repository.
+    files: dict[DatasetSplit, str]
+    # Parquet column -> the layout directory its images are written to (`A`, `B`, `label`).
+    columns: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class DatasetRecord:
     """One dataset: what it is, what it unlocks, what its licence permits, and how to get it."""
 
@@ -195,6 +207,15 @@ class DatasetRecord:
     # the roadmap asks for a notebook per dataset that "records its quirks", and this is where the
     # one-line version of each quirk lives so the loader's caller sees it without opening a notebook.
     quirks: tuple[str, ...] = field(default_factory=tuple)
+
+    # For `acquisition="huggingface"`: a Hub mirror published as one parquet file per split, whose image
+    # columns are written out into the declared layout so the single loader serves it like every other.
+    hub_parquet: HubParquetMirror | None = None
+
+    # The ground sample distance a benchmark's pixels nominally have, for area statistics over samples
+    # that carry no georeference. `None` where the record's `resolution` is a range or the data is
+    # georeferenced and measured properly (`evidence/math/area.py`).
+    pixel_size_metres: float | None = None
 
 
 # The catalogue. Ordered by the phase that unlocks each entry, so reading it top to bottom is the
@@ -300,7 +321,20 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
         licence_url="https://chenhao.in/LEVIR/",
         licence_verified=False,
         source_url="https://chenhao.in/LEVIR/",
-        acquisition="manual",
+        # The 256-crop republication the fleet's ChangeFormer checkpoint was trained on - the same
+        # crops, so a score here is comparable with the checkpoint's published one. Fetched split by
+        # split and written into the paired-mask layout; the original 1024 tiles stay a manual download.
+        acquisition="huggingface",
+        hub_parquet=HubParquetMirror(
+            repository="ericyu/LEVIRCD_Cropped256",
+            revision="main",
+            files={
+                DatasetSplit.TRAIN: "data/train-00000-of-00001-737f96f51caac8cd.parquet",
+                DatasetSplit.VALIDATION: "data/val-00000-of-00001-d09d88a7419f2427.parquet",
+                DatasetSplit.TEST: "data/test-00000-of-00001-31d7c3e3444e5b5d.parquet",
+            },
+            columns={"imageA": "A", "imageB": "B", "label": "label"},
+        ),
         layout=DatasetLayout(
             kind=LayoutKind.PAIRED_MASK,
             split_directories={
@@ -312,12 +346,17 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
             label_directory="label",
             image_suffixes=(".png",),
         ),
-        approximate_size="~2 GB",
+        pixel_size_metres=0.5,
+        approximate_size="~400 MB as 256 crops (73 MB for the test split); ~2 GB as the original 1024 tiles",
         quirks=(
             "The change class is a small fraction of pixels. Accuracy is meaningless here; the metric is "
             "F1 or IoU on the change class alone, which is what the PDF's evaluation section specifies.",
             "1024x1024 tiles - most published results crop to 256, and a model compared against them "
-            "without the same cropping is not being compared against them.",
+            "without the same cropping is not being compared against them. The Hub mirror IS the 256 "
+            "crops, 16 per tile, in an order that does not name the tile they came from.",
+            "The licence page at chenhao.in was unreachable from the build machine on 2026-09-11, so the "
+            "terms are still unverified. Evaluation on the test split does not train on it; training "
+            "stays refused until someone has read the page.",
         ),
     ),
     DatasetId.S2LOOKING: DatasetRecord(

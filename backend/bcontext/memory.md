@@ -1,3 +1,91 @@
+## Session — 2026-09-12 (1.6) · The first learned models. **The paper's convention scored 0.21; the checkpoint's scored 0.82.**
+
+Phase 1.6 put real weights behind two of the twelve model ids and built the residency they live in. Both
+halves of the gate passed on a 4 GB laptop GPU - a tier the roadmap did not have a name for. 31 new
+tests, **502 green**, ruff and `uv lock --check` clean; the two reds are still the 1.2 tile tests.
+
+### The gate
+
+    ChangeFormerV6 on LEVIR-CD test crops:  F1 0.823  IoU 0.700  P 0.852  R 0.797  (all 2,048)
+                                            159.9 ha predicted of 170.9 ha, at the nominal 0.5 m; 93 ms/crop
+    aeris models warm A B --budget 700:     A offline -> warming -> online; B warming -> online, A evicted
+
+`warming` is observed by a second task polling `status()` - in the CLI and in a test - not asserted from
+inside the load. Neither model crashed; the second's load evicted the first because it would not fit.
+
+### Measured rather than assumed
+
+- **HZDR's ChangeFormer checkpoint wants RGB in [0, 1], not the paper's [-1, 1].** On the same 128 crops:
+  0.79 on [0, 1], 0.21 on [-1, 1], 0.19 on ImageNet mean/std, 0.42 in BGR. Every wrong convention draws
+  a plausible mask. I wrote the adapter with the paper's convention first, and its header said so with
+  confidence; the evaluation harness corrected both. This is the whole reason the harness exists in 1.6
+  rather than 1.14.
+- **The vendored architecture was not verbatim the first time.** My block extractor stopped at a
+  column-0 comment inside `ConvLayer`, dropping its conv and forward; the model had 38.7 M parameters
+  against the checkpoint's 41.0 M, and the strict load refused it with 10 unexpected tensors. That
+  refusal is the design: a checkpoint that "mostly" fits is a different model.
+- **Footprints:** ChangeFormer 157 MB weights / 461 MB peak (256 tile) / 102 ms; SegFormer-B2 104 MB /
+  556 MB peak (512 tile) / 217 ms. Declared 512 and 640 in `constants/fleet.py` - my first guesses of
+  1,200 and 900 were file-size intuition, and a footprint too large evicts for no reason.
+- **This machine is an RTX 3050 with 4,095 MB.** The roadmap plans 8 and 16 GB profiles; `VramProfile`
+  now has `4gb` and `cpu`, and the tier comes from `torch.cuda.mem_get_info`, never a product name. With
+  75% of the card as budget (3,071 MB) both models co-reside, so the eviction gate is run with `--budget`.
+- **s2cloudless-style models are not the only thing L2A lacks.** LEVIR-CD's licence page at chenhao.in
+  was unreachable from here; the dataset stays `UNVERIFIED`. That blocks *training* only, and 1.6 trains
+  nothing - pretrained first, as the roadmap says. Recorded as a quirk on the record.
+- **transformers 5's `SegformerImageProcessor` needs torchvision** for a rescale and an ImageNet
+  normalisation. The constants are in the checkpoint's `preprocessor_config.json`; the adapter reads the
+  file and skips the dependency.
+- **CUDA torch for cp314 on Windows exists on the cu130 index** (`torch-2.14.0+cu130`), not on PyPI.
+  `[tool.uv.sources]` pins torch to that index with `explicit = true` so nothing else resolves from it.
+  The wheel is 1.9 GB and took the better part of an hour on this connection.
+
+### Decisions worth not relitigating
+
+- **A lease, not a handle.** `async with manager.lease(id) as model:` marks the model in use; in-use
+  models are never evicted, and a newcomer that cannot fit beside them loads on the CPU as `degraded`
+  rather than freeing a tensor under a running forward pass. A mutation that drops the guard fails a test.
+- **Footprints are declared and measured once, not measured at load.** Admission that depended on the
+  allocator's caching state would be admission by weather.
+- **The residual gate is a separate module in front of the detector** (`comparison.py`), and the S13
+  node will call it, never the detector. A mutation that removes the `require_comparison_ready` call
+  fails the test that checks the model was never loaded for a misaligned pair.
+- **The detector's stated confidence is the model's mean winning-class probability** over observed
+  pixels, named as exactly that. It is the first non-`None` confidence in the system and S18 aggregates
+  it; it is not a calibrated accuracy and the record does not call it one.
+- **Change-class F1/IoU only, counts summed before ratios.** Accuracy is absent by design (95% for a mask
+  of nothing on LEVIR-CD); a mean of per-crop F1s rewards empty crops.
+- **The SAR detector keeps increase and decrease apart** - a flood and a building site are opposite
+  signs - and layover or shadow on either date is unobserved, never unchanged.
+- **Engines are `online` while the process is; a model with no registered checkpoint is `offline` and
+  refuses with a message naming the gap.** `dota-detector`, `grounding-dino-sam` and `rs-vlm` say so.
+- **LEVIR-CD is fetched from the Hub as the 256-crop mirror the checkpoint trained on**, a new
+  `huggingface` acquisition route that writes parquet columns into the declared layout so the 1.1
+  loader and enumeration serve it unchanged. `aeris dataset list` reports it `PARTIAL` (test only).
+
+### Mutation: 2 applied, 2 caught
+
+In-use guard removed from eviction: 1 test fails. Residual gate removed from `compare_pair`: 1 test
+fails. Both restored and byte-compared.
+
+### Owed
+
+- `dota-detector`: no pip-loadable pretrained DOTA/DIOR detector was verifiable (mmrotate-only). A
+  weights source and an adapter, when one is found or trained.
+- `grounding-dino-sam` and `rs-vlm` load through `transformers` (~700 MB and a quantised 7B) - 1.7.
+- LEVIR-CD's licence: read chenhao.in/LEVIR when it is reachable and set the record.
+- The S13 node and the `temporal` graph that composes `compare_pair` → `build_region_evidence` - 1.10.
+- Batching in the evaluation harness (one forward per crop today; 204 s for the full split) - 1.14.
+
+### Next — Phase 1.7
+
+VLM and constrained answer generation, S14 and S16. 1.6 hands it the manager (`lease()` for a 7B model
+quantised to the 4 GB profile - which will not fit at 4-bit either, so `degraded` on the CPU or a smaller
+VLM is the honest first result), the fleet record for `rs-vlm` waiting for a weights source, the figures
+1.2.1 renders for it to read, and the claims 1.5 builds for it to phrase.
+
+---
+
 ## Session — 2026-09-11 (1.5) · Evidence, claims and provenance. **A claim is a thing you can walk back to pixels.**
 
 Phase 1.5 closed the loop 1.0 opened: the two analysis events recorded as owed since the spine —

@@ -135,6 +135,20 @@ class Settings(BaseSettings):
     tile_server_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8000")
     cog_working_directory: Path = Path("data/cogs")
 
+    # --- The specialist fleet (Phase 1.6) ---
+
+    # Where checkpoints are cached. Hugging Face Hub downloads land here rather than in the user's home
+    # cache, so a machine's weights sit beside its datasets and `aeris doctor` can report them.
+    model_weights_directory: Path = Path("data/models")
+    # `auto` measures the device; `cpu` forces the degraded path, which is what a machine without CUDA gets
+    # anyway and what a test that must not touch the GPU asks for.
+    model_device: Literal["auto", "cuda", "cpu"] = "auto"
+    # Overrides the measured budget, in megabytes. The 1.6 gate is an eviction, and on a card where every
+    # model fits at once the only way to demonstrate one is to say how much room there is.
+    model_vram_budget_megabytes: int | None = Field(default=None, ge=256)
+    model_load_timeout_seconds: float = Field(default=600.0, gt=0, le=3_600)
+    huggingface_token: SecretStr | None = None
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalise_log_level(cls, raw_value: object) -> object:
@@ -218,6 +232,13 @@ class Settings(BaseSettings):
     def cog_working_directory_path(self) -> Path:
         """Absolute path to the COG build directory, creating it if needed."""
         return self._resolved_directory_for(self.cog_working_directory / ".keep")
+
+    @property
+    def model_weights_path(self) -> Path:
+        """Absolute path to the checkpoint cache, creating it if needed."""
+        directory = self._absolute(self.model_weights_directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     @property
     def tile_server(self) -> str:

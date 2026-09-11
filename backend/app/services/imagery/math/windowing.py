@@ -156,3 +156,42 @@ def blend_weights(*, tile_size: int, overlap: int) -> np.ndarray:
     # Outer product: the 2-D weight is the product of the two 1-D ramps, so a corner - cropped on both
     # axes - is weighted lowest of all, which is correct.
     return np.outer(ramp, ramp).astype(np.float32)
+
+
+def stitch_windows(
+    windows: list[TileWindow],
+    predictions: list[np.ndarray],
+    *,
+    shape: tuple[int, int],
+    tile_size: int,
+    overlap: int,
+) -> np.ndarray:
+    """Reassemble per-window predictions into one array, weighted by `blend_weights`.
+
+    The array-level half of `services/imagery/tiling.py`'s `stitch_predictions`, split out so a model
+    adapter holding a scene in memory can window and stitch without a raster file behind it. Returns NaN
+    where no window covered a pixel, which a grid from `plan_tile_grid` never leaves.
+    """
+    if len(predictions) != len(windows):
+        raise ValueError(
+            f"Stitching {len(predictions)} predictions into {len(windows)} windows. Every window must have "
+            "exactly one prediction, in the order the plan lists them."
+        )
+    height, width = shape
+    accumulated = np.zeros((height, width), dtype=np.float64)
+    weight_total = np.zeros((height, width), dtype=np.float64)
+    weights = blend_weights(tile_size=tile_size, overlap=overlap)
+
+    for window, prediction in zip(windows, predictions, strict=True):
+        if prediction.shape != (window.height, window.width):
+            raise ValueError(
+                f"Prediction for window ({window.row_index}, {window.column_index}) is {prediction.shape}, "
+                f"but its window is {(window.height, window.width)}."
+            )
+        rows, columns = window.as_slices()
+        tile_weights = weights[: window.height, : window.width]
+        accumulated[rows, columns] += prediction.astype(np.float64, copy=False) * tile_weights
+        weight_total[rows, columns] += tile_weights
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(weight_total > 0, accumulated / weight_total, np.nan).astype(np.float32)

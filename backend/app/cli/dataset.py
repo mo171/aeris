@@ -25,11 +25,12 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from app.constants.datasets import DATASET_CATALOGUE, DatasetId
+from app.constants.datasets import DATASET_CATALOGUE, DatasetId, DatasetSplit
 from app.constants.licences import Licence, Redistribution
 from app.services.datasets.acquisition import (
     acquisition_plan,
     download_archive,
+    fetch_hub_split,
     fetch_scene,
     search_scenes,
 )
@@ -221,14 +222,24 @@ async def execute_fetch(
     limit: int,
     asset_names: tuple[str, ...] | None,
     console: Console,
+    split: DatasetSplit | None = None,
 ) -> bool:
-    """Acquire a dataset by whichever of the three routes its record declares."""
+    """Acquire a dataset by whichever of the four routes its record declares."""
     record = DATASET_CATALOGUE[dataset_id]
 
     if record.acquisition == "manual":
         console.print(escape(acquisition_plan(dataset_id).instructions))
         # Not a failure. "Go and get this one yourself" is an answer, and exiting non-zero would make a
         # script treat a correct response as a broken command.
+        return True
+
+    if record.acquisition == "huggingface":
+        assert record.hub_parquet is not None
+        splits = [split] if split is not None else list(record.hub_parquet.files)
+        for one in splits:
+            console.print(f"Fetching {escape(record.title)} {one.value} split from {escape(record.hub_parquet.repository)}...")
+            destination = await fetch_hub_split(dataset_id, one)
+            console.print(f"[green]Written[/green] {escape(str(destination))}")
         return True
 
     if record.acquisition == "download":

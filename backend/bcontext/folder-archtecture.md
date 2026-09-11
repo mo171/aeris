@@ -45,6 +45,8 @@ backend/
 │   │   │                                 #   index-query graph through the same session as `run`.
 │   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
 │   │   │                                 #   points it at the three real graphs; the flags do not change.
+│   │   ├── models.py                    # `aeris models status|warm|evaluate`  DONE (1.6). The fleet strip,
+│   │   │                                 #   the watchable eviction, the LEVIR-CD score.
 │   │   ├── voice.py                     # `aeris voice` - the spoken loop
 │   │   └── renderers/                   # Consumers of the LangGraph stream. Not a protocol - just consumers.
 │   │       ├── trace_renderer.py        # draws the live S1-S20 trace in the terminal  DONE (1.0)
@@ -209,14 +211,22 @@ backend/
 │   │   │       └── vectorize.py         # DONE (1.5). Eight-connected labels -> one polygon per region,
 │   │   │                                #   holes kept; per-region means. The labelling every count uses.
 │   │   │
-│   │   ├── change_detection/            # S13
-│   │   │   ├── detector.py
-│   │   │   ├── comparison.py            # gated by the co-registration residual
+│   │   ├── change_detection/            # S13  DONE (1.6)
+│   │   │   ├── detector.py              # leases `changeformer`, thresholds its probability, states the
+│   │   │   │                            #   model's own mean certainty as the confidence
+│   │   │   ├── comparison.py            # the residual gate (§8 rule 2) IN FRONT of the detector; the
+│   │   │   │                            #   S13 node calls this and never the detector directly
+│   │   │   ├── sar_change.py            # `sar-change`: log-ratio on the 1.3 chain's output, increase and
+│   │   │   │                            #   decrease kept apart, layover/shadow unobserved not unchanged
 │   │   │   ├── classification.py
 │   │   │   └── math/
 │   │   │       ├── differencing.py      # optical difference / ratio
-│   │   │       ├── log_ratio.py         # SAR change
-│   │   │       └── change_statistics.py # magnitude, class transitions
+│   │   │       ├── log_ratio.py         # DONE (1.6). 10 log10(after/before), two-sided dB threshold.
+│   │   │       └── change_statistics.py # DONE (1.6). Change-class P/R/F1/IoU as counts; no accuracy.
+│   │   │
+│   │   ├── evaluation/                  # Scores a model against a benchmark. 1.6 seeds, 1.14 completes.
+│   │   │   └── change_detection.py      # DONE (1.6). The detector over a paired-mask split through the
+│   │   │                                #   single loader; counts summed before ratios; nominal hectares.
 │   │   │
 │   │   ├── optical_sar/                 # S13, S15 - late fusion only (PDF §9, p.19)
 │   │   │   ├── per_sensor_runs.py       # two independent runs
@@ -285,15 +295,22 @@ backend/
 │   │       ├── analyst.py
 │   │       └── synthesis.py
 │   │
-│   ├── models/                          # ML model residency, not SQLAlchemy models.
-│   │   ├── registry.py                  # the twelve model ids - vocabulary shared with the frontend
-│   │   ├── loader.py
-│   │   ├── manager.py                   # VRAM profile, lazy load, LRU eviction under an async lock
+│   ├── models/                          # ML model residency, not SQLAlchemy models.  DONE (1.6)
+│   │   ├── registry.py                  # `LOADERS`: which of the twelve ids this process can build, bound
+│   │   │                                #   to the fleet facts in constants/fleet.py
+│   │   ├── loader.py                    # the device, MEASURED (`mem_get_info`); Hub downloads into
+│   │   │                                #   data/models; memory release; the `aeris doctor` row. torch is
+│   │   │                                #   imported inside functions so nothing else pays for it.
+│   │   ├── manager.py                   # `lease()`: lazy load under the 0.3 Redis lock, LRU eviction of
+│   │   │                                #   IDLE models to a declared budget, offline/warming/online/
+│   │   │                                #   degraded, queueDepth, medianLatencyMs -> modelStatusSchema
+│   │   ├── change.py                    # ChangeFormerV6 adapter: [-1, 1] inputs, 256 windows, stitched
+│   │   ├── segmentation.py              # SegFormer-B2 LoveDA adapter via transformers, 512 windows
+│   │   ├── vendor/
+│   │   │   └── changeformer_v6.py       # wgcban's architecture, verbatim, MIT, licence in the header
 │   │   ├── vqa.py
 │   │   ├── grounding.py
-│   │   ├── segmentation.py
 │   │   ├── detection.py
-│   │   ├── change.py
 │   │   └── fusion.py
 │   │
 │   ├── db/                              # SQLAlchemy persistence shape. Carries no business logic.
@@ -353,6 +370,10 @@ backend/
 │       ├── logs.py                      # JSON field names, format strings, third-party noise floor
 │       ├── pagination.py                # default and maximum page size (named for what it bounds, not `limits.py`)
 │       ├── color_ramps.py               # (Phase 1.2.1) named ramps + their domains. Shared vocabulary with the frontend's legends.
+│       ├── fleet.py                     # (Phase 1.6) what each of the twelve ids IS here: capability, stages,
+│       │                                #   weights source, measured VRAM footprint, tile size; the
+│       │                                #   VRAM profile tiers (4 GB is a tier); engine vs learned.
+│       ├── change.py                    # (Phase 1.6) the change threshold and the SAR log-ratio dB threshold
 │       ├── spectral.py                  # (Phase 1.4) the seven indices, their band roles, coefficients,
 │       │                                #   interpretation bands and the phrase -> target table. Transcribed
 │       │                                #   from the frontend's overlays/spectral-indices.ts (PDF §3.3).
@@ -434,6 +455,8 @@ backend/
 | Something both the CLI and a future route need | A service. Never in `cli/`, never in `routes/` |
 | A hardcoded list of anything | `constants/` |
 | A stage's intermediate output (a mask, an index array) | `services/evidence/artefacts.py` writes it; the state carries its path and key. Never the array itself |
+| A model's weights, footprint or version | `constants/fleet.py`. A service leases the model from `app/models/manager.py` and never loads it |
+| A third-party model architecture | `app/models/vendor/`, verbatim, with its licence; an adapter beside it wraps it |
 | A URL, credential, path, threshold default or timeout | `.env` → `config.py` |
 
 ## Folders that were deliberately removed

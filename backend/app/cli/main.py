@@ -36,11 +36,13 @@ from app.cli import dataset as dataset_command
 from app.cli import doctor as doctor_command
 from app.cli import figures as figures_command
 from app.cli import ingest as ingest_command
+from app.cli import models as models_command
 from app.cli import preprocess as preprocess_command
 from app.cli import run as run_command
 from app.config import settings
-from app.constants.datasets import DatasetId
+from app.constants.datasets import DatasetId, DatasetSplit
 from app.constants.intents import Intent
+from app.constants.model_ids import ModelId
 from app.constants.pipeline import GraphName
 from app.constants.raster import ProcessingLevel
 from app.constants.statuses import RunStatus
@@ -221,8 +223,11 @@ def dataset_fetch(
             "the scene classification layer; a full L2A scene is over a gigabyte."
         ),
     ),
+    split: str = typer.Option(
+        "", "--split", help="One split of a Hub-mirrored benchmark (train, val, test). Default: every split."
+    ),
 ) -> None:
-    """Acquire a dataset: STAC for imagery, a direct download where one exists, instructions otherwise."""
+    """Acquire a dataset: STAC for imagery, a direct download or a Hub mirror where one exists, instructions otherwise."""
     acquired = asyncio.run(
         _run_dataset(
             dataset_command.execute_fetch(
@@ -234,6 +239,7 @@ def dataset_fetch(
                 limit=limit,
                 asset_names=tuple(name.strip() for name in assets.split(",") if name.strip()) or None,
                 console=console,
+                split=DatasetSplit(split) if split else None,
             )
         )
     )
@@ -429,6 +435,60 @@ def preprocess_relief() -> None:
     """Run the SAR branch over terrain steep enough to blind a radar. The rest of the Phase 1.3 gate."""
     if not asyncio.run(_run_dataset(preprocess_command.execute_relief(console))):
         raise typer.Exit(code=1)
+
+
+models_app = typer.Typer(
+    name="models",
+    help="The specialist fleet: status, warming and eviction, and benchmark scores. Phase 1.6.",
+    no_args_is_help=True,
+)
+app.add_typer(models_app)
+
+
+@models_app.command("status")
+def models_status() -> None:
+    """The fleet as the frontend's strip draws it: health, latency, queue depth, per model."""
+    asyncio.run(_run_models(models_command.render_status(console)))
+
+
+@models_app.command("warm")
+def models_warm(
+    model_ids: list[ModelId] = typer.Argument(..., help="Models to load, in order."),
+    budget: int = typer.Option(
+        0, "--budget", help="VRAM budget in MB to work within. 0 measures the device. Half the 1.6 gate."
+    ),
+) -> None:
+    """Load models back to back, printing each health transition, and show what was evicted to fit."""
+    if not asyncio.run(
+        _run_models(models_command.execute_warm(model_ids, budget_megabytes=budget or None, console=console))
+    ):
+        raise typer.Exit(code=1)
+
+
+@models_app.command("evaluate")
+def models_evaluate(
+    dataset_id: DatasetId = typer.Option(DatasetId.LEVIR_CD, "--dataset", help="A paired-mask benchmark."),
+    split: DatasetSplit = typer.Option(DatasetSplit.TEST, "--split", help="Which split to score."),
+    limit: int = typer.Option(0, "--limit", help="Score only the first N samples. 0 scores every one."),
+) -> None:
+    """Score the change detector on a benchmark split: change-class F1 and IoU, and the areas. Half the 1.6 gate."""
+    asyncio.run(
+        _run_models(
+            models_command.execute_evaluate(dataset_id=dataset_id, split=split, limit=limit or None, console=console)
+        )
+    )
+
+
+async def _run_models[T](work: Coroutine[object, object, T]) -> T:
+    """Configure logging, do the work, unload the fleet, and close whatever it opened."""
+    from app.models.manager import reset_manager
+
+    await configure_logging()
+    try:
+        return await work
+    finally:
+        await reset_manager()
+        await _close_connections()
 
 
 @app.command()

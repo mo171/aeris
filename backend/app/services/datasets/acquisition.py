@@ -4,12 +4,15 @@ what  : `search_scenes()`, `fetch_scene()`, `download_archive()`, and `Acquisiti
         prints for a dataset it cannot fetch itself.
 where : Called by `aeris dataset fetch`. Phase 1.2's catalogue search reuses `search_scenes` directly -
         the STAC query behind `POST /catalogue/search` is this one.
-how   : Three acquisition routes, named on each record in `constants/datasets.py`, because they are
+how   : Four acquisition routes, named on each record in `constants/datasets.py`, because they are
         genuinely different problems and pretending otherwise produces a `fetch` that lies:
 
         - **`stac`** - Sentinel-1 and Sentinel-2, searched and fetched from a STAC API. Real, and the only
           imagery this project acquires rather than downloads.
         - **`download`** - a direct archive URL. Real.
+        - **`huggingface`** (1.6) - a benchmark republished on the Hub as parquet. One file per split,
+          the image columns written out into the record's declared layout, so the single loader and the
+          enumeration behind `aeris dataset list` serve it like anything unpacked by hand.
         - **`manual`** - behind a registration form, a Google Drive link or an email request. **The CLI
           prints instructions and does not pretend.** Roughly half of the PDF's Table 5 is in this state,
           and a `fetch` command that silently did nothing for those would be worse than one that refuses.
@@ -38,9 +41,10 @@ from app.constants.datasets import (
     DOWNLOAD_ATTEMPTS,
     DOWNLOAD_RETRY_BACKOFF_SECONDS,
     DatasetId,
+    DatasetSplit,
 )
 from app.lib.exceptions import InvalidRequestError, UpstreamUnavailableError
-from app.services.datasets.loader import dataset_directory
+from app.services.datasets.loader import dataset_directory, split_directory
 
 logger = logging.getLogger(__name__)
 
@@ -311,3 +315,64 @@ def acquisition_plan(dataset_id: DatasetId) -> AcquisitionPlan:
             f"  Approximate size: {record.approximate_size}"
         ),
     )
+
+
+async def fetch_hub_split(dataset_id: DatasetId, split: DatasetSplit) -> Path:
+    """Fetch one split of a Hub parquet mirror and write its images into the declared layout.
+
+    Returns the split directory. Idempotent: a split already on disk with the expected count is left alone,
+    so re-running `fetch` is cheap and a partial write is finished rather than duplicated.
+    """
+    record = DATASET_CATALOGUE[dataset_id]
+    mirror = record.hub_parquet
+    if mirror is None or split not in mirror.files:
+        raise InvalidRequestError(
+            f"{record.title} has no Hub parquet for its {split.value} split.",
+            details={"datasetId": dataset_id.value, "split": split.value},
+        )
+    destination = split_directory(dataset_id, split)
+    parquet = await asyncio.to_thread(_download_hub_file, mirror.repository, mirror.files[split], mirror.revision)
+    written = await asyncio.to_thread(_materialise_parquet, parquet, destination, mirror.columns, record.layout.image_suffixes[0])
+    logger.info(
+        "hub split materialised",
+        extra={"dataset_id": dataset_id.value, "split": split.value, "samples": written, "directory": str(destination)},
+    )
+    return destination
+
+
+def _download_hub_file(repository: str, filename: str, revision: str) -> Path:
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.errors import HfHubHTTPError
+
+    try:
+        return Path(
+            hf_hub_download(
+                repo_id=repository, filename=filename, revision=revision, repo_type="dataset",
+                cache_dir=settings.model_weights_path,
+            )
+        )
+    except (HfHubHTTPError, OSError) as error:
+        raise UpstreamUnavailableError(
+            f"Could not fetch {filename} from {repository}: {error}",
+            details={"upstream": "huggingface-hub", "repository": repository},
+        ) from error
+
+
+def _materialise_parquet(parquet: Path, destination: Path, columns: dict[str, str], suffix: str) -> int:
+    """Write each image column of the parquet into its layout directory, one file per row, zero-padded."""
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(parquet, columns=list(columns))
+    for directory in columns.values():
+        (destination / directory).mkdir(parents=True, exist_ok=True)
+    row_count = table.num_rows
+    width = len(str(row_count))
+    for column, directory in columns.items():
+        values = table.column(column).to_pylist()
+        for index, value in enumerate(values):
+            # The `image` feature is a struct of `bytes` and `path`; the bytes are the encoded PNG as-is.
+            payload = value["bytes"] if isinstance(value, dict) else value
+            target = destination / directory / f"{index:0{width}d}{suffix}"
+            if not target.exists():
+                target.write_bytes(payload)
+    return row_count

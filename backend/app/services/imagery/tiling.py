@@ -35,8 +35,8 @@ from app.constants.raster import INFERENCE_TILE_OVERLAP, INFERENCE_TILE_SIZE
 from app.lib.exceptions import InternalError
 from app.services.imagery.math.windowing import (
     TileWindow,
-    blend_weights,
     plan_tile_grid,
+    stitch_windows,
     tile_count_for,
 )
 from app.services.imagery.metadata import RasterMetadata
@@ -149,25 +149,11 @@ def stitch_predictions(
             "Every window must have exactly one prediction, in the order the plan lists them.",
             details={"expected": plan.tile_count, "received": len(predictions)},
         )
-
-    height, width = plan.metadata.height, plan.metadata.width
-    accumulated = np.zeros((height, width), dtype=np.float64)
-    weight_total = np.zeros((height, width), dtype=np.float64)
-    weights = blend_weights(tile_size=plan.tile_size, overlap=plan.overlap)
-
-    for window, prediction in zip(plan.windows, predictions, strict=True):
-        if prediction.shape != (window.height, window.width):
-            raise InternalError(
-                f"Prediction for tile ({window.row_index}, {window.column_index}) is "
-                f"{prediction.shape}, but its window is {(window.height, window.width)}.",
-                details={"tile": [window.row_index, window.column_index]},
-            )
-        rows, columns = window.as_slices()
-        tile_weights = weights[: window.height, : window.width]
-        accumulated[rows, columns] += prediction.astype(np.float64, copy=False) * tile_weights
-        weight_total[rows, columns] += tile_weights
-
-    with np.errstate(invalid="ignore", divide="ignore"):
-        stitched = np.where(weight_total > 0, accumulated / weight_total, np.nan)
-
+    try:
+        stitched = stitch_windows(
+            plan.windows, predictions,
+            shape=(plan.metadata.height, plan.metadata.width), tile_size=plan.tile_size, overlap=plan.overlap,
+        )
+    except ValueError as error:
+        raise InternalError(str(error), details={"tiles": plan.tile_count}) from error
     return stitched.astype(dtype)
