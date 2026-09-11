@@ -19,6 +19,15 @@ cd backend
 uv sync
 ```
 
+If downloading the Matplotlib wheel times out on a slower connection, increase uv's HTTP timeout for that shell and retry:
+
+```powershell
+$env:UV_HTTP_TIMEOUT = "120"
+uv sync --refresh --refresh-package matplotlib
+```
+
+The lock file already selects a CPython 3.14 Windows wheel for Matplotlib, so no source build or dependency downgrade is needed.
+
 ### 3. Activate the Virtual Environment
 You must activate the virtual environment so your terminal uses the correct Python instance:
 - **Windows (PowerShell):** `.venv\Scripts\activate`
