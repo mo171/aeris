@@ -81,6 +81,10 @@ class RasterMetadata:
     # (west, south, east, north) in the raster's own CRS.
     bounds: tuple[float, float, float, float]
 
+    # The affine geotransform in rasterio's `(a, b, c, d, e, f)` order: pixel (column, row) to CRS
+    # coordinates. Carried so a computed array can be measured or georeferenced without reopening the file.
+    transform: tuple[float, float, float, float, float, float]
+
     band: BandDescriptor
     processing_level: ProcessingLevel
 
@@ -207,6 +211,7 @@ def _read_metadata(path: Path) -> RasterMetadata:
             resolution=(abs(source.transform.a), abs(source.transform.e)),
             is_projected=bool(crs.is_projected) if crs is not None else False,
             bounds=tuple(source.bounds),  # type: ignore[arg-type]
+            transform=tuple(source.transform)[:6],  # type: ignore[arg-type]
             band=band,
             processing_level=detect_processing_level(path),
             is_cloud_optimised=bool(is_valid),

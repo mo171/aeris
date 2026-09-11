@@ -57,6 +57,10 @@ def _reproject_to_reference_grid(
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         profile = reference.profile.copy()
         profile.update(count=source.count, dtype=source.dtypes[0], nodata=source.nodata)
+        # A striped reference still reports a block size; GDAL only accepts one on a tiled output.
+        if not profile.get("tiled"):
+            profile.pop("blockxsize", None)
+            profile.pop("blockysize", None)
         method = Resampling.nearest if categorical else Resampling.bilinear
         with rasterio.open(destination_path, "w", **profile) as destination:
             for band_index in range(1, source.count + 1):

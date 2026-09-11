@@ -158,6 +158,13 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
         "layer kind - never which instrument channel produced it."
     ),
     "redis_keys.KeyNamespace": "Internal. A Redis key prefix never crosses the boundary.",
+    "spectral.SpectralIndex": (
+        "Shared in substance, not in Zod: the frontend declares `SPECTRAL_INDEX_IDS` in "
+        "`lib/constants/overlays/spectral-indices.ts` as a constants array rather than a schema, so the "
+        "exporter never sees it. The seven values are transcribed from that file and the layer schema "
+        "carries them as a plain string. A candidate for a Zod enum on the frontend, at which point this "
+        "moves up to `SHARED_VOCABULARIES`."
+    ),
     "storage.Bucket": "Internal. A bucket role never crosses the boundary; the frontend sees signed URLs.",
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",
 }

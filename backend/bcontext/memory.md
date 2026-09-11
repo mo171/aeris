@@ -1,3 +1,100 @@
+## Session — 2026-09-11 (1.4) · The index engine and the first hectare. **Three tools, one number.**
+
+Phase 1.4 built the first end-to-end vertical slice: `aeris analyse --scene <dir> --query "unhealthy
+vegetation"` runs a real graph — **S7 → S12 → S15 → S16** — through the 1.0 session, journals it, draws
+the trace, fetches three figures back from storage, and prints a hectare figure read from the checkpoint.
+65 new tests, **444 green**, ruff and `uv lock --check` clean. The two remaining reds are the 1.2 tile
+tests, which need the Ghaziabad NDVI COG in MinIO; this machine never fetched that scene.
+
+### The gate, on the Mumbai scene
+
+    S12   NDVI from B08, B04 over 1066x1120; no mask applied              index-engine 1.4.0
+    S15   Sparse vegetation (NDVI 0.20 to 0.40): 2,471.0 ha,              geospatial-engine 1.4.0
+          21.2% of 11,651.6 ha observed, 7,691 regions
+
+QGIS is not on the build machine, so the check was made twice over instead of once: the S15 mask was
+vectorised (7,691 polygons — the same count S15 reported) and measured by pyproj's ellipsoidal integral
+and by PostGIS `ST_Area(::geography)`, the 0.2 route. **All three give 2,471.0057 ha.** The naive figure,
+pixel count × 100 m² in UTM, is 2,472.13 ha — 1.12 ha too many, because UTM's scale 230 km from the
+central meridian is 1.00025 and area goes as its square. That is the whole of §8 rule 3 in one number,
+and `test_a_utm_grid_is_not_measured_in_its_own_units` fails on it.
+
+### Measured rather than assumed
+
+- **s2cloudless cannot run on an L2A scene.** Its ten bands include B10, which Sen2Cor consumes and L2A
+  products do not publish. 1.3 built the s2cloudless path against a synthetic cube; the S7 that works on
+  the data every index runs over is the product's own SCL layer, read with nearest neighbour onto the 10 m
+  grid. `mask_from_scene_classification` joined `cloud_masking.py`; cirrus is cloud, dark-area and
+  unclassified pixels are observed, nodata and saturated are unread (NaN, so `obscuredFraction` counts them).
+- **Footprints, not resampling.** The area kernel projects pixel *corners* into a local LAEA and sums
+  footprints per 32-pixel block; the mask itself is never reprojected, because reprojecting it changes
+  which pixels it contains. Agreement with the geodesic integral: 2×10⁻⁹ in UTM, 6×10⁻⁸ in a geographic
+  grid, and the hand value 100 / 0.9996² = 100.0800 m² for one pixel on the central meridian is exact.
+- **`coverageFraction` is a ratio of areas, over observed ground.** Pixel footprints differ across a scene
+  at the sixth digit, so a test written as a ratio of counts needed `rel=1e-5` — the number is right and
+  the expectation was the approximation. The denominator is what the S7 mask left observed, not the grid;
+  `measure_mask` refuses a detection over unobserved pixels, which is the structural proof S12 masked first.
+  For a normalised difference, masking before and after the formula produce identical arrays, so that rule
+  is enforced by construction (the mask reaches the inputs; there is no other path) rather than by a test
+  that could tell the two apart.
+- **EVI is unbounded; SAVI exceeds 1 over specular pixels.** Both mask outside [-1, 1] and the share the
+  formula refused is reported in the S12 detail. A formula that refuses a third of the ground was the
+  wrong formula, and that belongs beside the stage rather than in a figure's holes.
+- **`write_cog_from_array` asked for eight overviews regardless of size** and GDAL refuses an overview
+  smaller than a pixel. Found by a 64-pixel test raster; clamped to what the raster holds. Also from 1.3:
+  reprojection copied a striped reference's block size onto a non-tiled output, one GDAL warning per band.
+
+### Decisions worth not relitigating
+
+- **The interpretation bands are the frontend's, transcribed** (`constants/spectral.py` ←
+  `overlays/spectral-indices.ts` ← PDF §3.3). "Unhealthy vegetation" is NDVI [0.2, 0.4) — the band the
+  legend calls "Sparse vegetation" — so the mask and the legend agree by construction. `aeris figures`
+  now draws its demonstration mask from the same table (0.2, was 0.3): 29.8% vegetated, was 17.1%; the
+  byte-identical reproduction is unchanged at 1,478,754 bytes.
+- **The query→target table is the deterministic half of routing** (PDF p.24). Longest phrase wins, whole
+  words only ("urbanisation" is not "urban"), nothing matching is a refusal that names the phrases it
+  knows. 1.8 replaces the phrase match; the table stays.
+- **Arrays never enter the checkpoint.** S7, S12 and S15 retain their outputs through
+  `services/evidence/artefacts.py` — a COG under `runs/<run_id>/artefacts/` plus the `artefacts` bucket —
+  and the state carries paths and keys. A run interrupted after S12 with its local artefact *deleted*
+  resumes through S15 by restoring it from storage; that is a test, and it is what a resume on another
+  machine will do.
+- **A node reads its own step id from a context variable** (`current_trace_step_id()`), the mechanism
+  LangGraph uses for `get_stream_writer()`, and sets its completion line with `describe_trace_step()`.
+  `pipeline_node` takes `model_id` / `model_version`, so the trace names the engine. Nothing about the
+  decorator's shape changed; the spine's 26 tests passed untouched.
+- **A `math/` module may import a sibling `math/`.** `spectral/math/index_formulae.py` imports the
+  normalised-difference kernel 1.2 guards in `imagery/math/indices.py` rather than copying a function that
+  caught a real bug. `architecture-context.md` §5/§6 and `code-standards.md` §8 now say so.
+- **No caption carries a number.** The obscured fraction was in the S12 caption for an hour; §6 rule 4
+  says a figure carries only what a claim carries, and claims are 1.5. Thresholds in a legend
+  ("NDVI 0.20 to 0.40") are the definition of the mask, not a measurement, and stay.
+- **`SpectralIndex` is backend-only in the contract map, with a reason**: the frontend declares the seven
+  ids as a constants array, not a Zod schema, so the exporter never sees them.
+
+### Mutation: 2 applied, 2 caught
+
+Naive-units area (count × |a·e|): 5 tests fail. Whole-grid coverage denominator: 2 tests fail. Both files
+restored and byte-compared.
+
+### Owed
+
+- **A real SCL under the gate scene.** The local subset has four bands and no SCL, so the S7 node's real-
+  data path is proven only on the synthetic scene (cloud, shadow and nodata blocks, all measured). A
+  windowed multi-band fetch from Planetary Computer — the 1.3 `fetch_backscatter_window` idea, for five
+  assets — would put a real mask under `aeris analyse`; it is 1.1 territory and was not started.
+- The 1.2 tile tests want the Ghaziabad NDVI COG in the bucket. `aeris dataset fetch` + `aeris ingest
+  index` on a machine with the scene restores them; nothing in 1.4 touched that path.
+
+### Next — Phase 1.5
+
+Evidence, confidence and provenance. 1.4 hands it: a mask artefact with `DETECTED / NOT_DETECTED /
+UNOBSERVED` bytes to vectorise, a `MeasurementState` whose keys are already the wire's names
+(`areaHectares`, `coverageFraction`), the `index-engine` and `geospatial-engine` model ids on the trace
+steps, and figures that already carry their `traceStepId` and an empty `claimIds` waiting to be filled.
+
+---
+
 ## Session — 2026-09-01 (1.3) · Preprocessing. **Four defects, none visible to a passing suite.**
 
 Phase 1.3 arrived already written — services, math kernels and a first pass of tests, all green. The job

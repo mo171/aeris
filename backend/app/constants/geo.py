@@ -19,11 +19,11 @@ how   : **Geometry is stored in EPSG:4326 and measured somewhere else.** Storing
            stays correct for a catalogue spanning multiple continents. This is what `AREA_MEASUREMENT_SQL`
            records, and it is the route the Phase 0.2 gate demonstrates.
 
-        2. **Raster pixel counting in Python** (Phase 1.4 onward) - reproject the raster to a *local*
-           equal-area projection centred on the scene, then count pixels and multiply by pixel area. A
-           spheroidal integral is not available for a grid of pixels, and a global equal-area grid distorts
-           shape badly enough at scene scale to bias which pixels fall inside a mask. `LOCAL_EQUAL_AREA_PROJ`
-           is the template for that projection.
+        2. **Raster pixel counting in Python** (Phase 1.4, `services/evidence/math/area.py`) - project the
+           pixel *corners* into a local equal-area projection centred on the scene and sum each pixel's
+           footprint there. The raster itself is never resampled: resampling a mask into another grid
+           changes which pixels it contains, which is the bias a global equal-area grid would also
+           introduce. `LOCAL_EQUAL_AREA_PROJ` is the template for that projection.
 
         Both produce square metres; `SQUARE_METRES_PER_HECTARE` is the only place the conversion is written.
 """
@@ -52,6 +52,7 @@ POINT_GEOMETRY: Final[str] = "POINT"
 # --- Measurement ---------------------------------------------------------------------------------------
 
 SQUARE_METRES_PER_HECTARE: Final[float] = 10_000.0
+SQUARE_METRES_PER_SQUARE_KILOMETRE: Final[float] = 1_000_000.0
 
 # The only sanctioned way to measure a stored geometry's area in SQL. Written as a template so that the
 # expression appears once: a second hand-written `ST_Area` somewhere in a repository is exactly how square
@@ -68,8 +69,14 @@ AREA_MEASUREMENT_SQL: Final[str] = "ST_Area({column}::geography)"
 # EPSG:6933 would also conserve area but shears mid-latitude scenes noticeably, which changes which pixels a
 # mask contains.
 #
-# Formatted with the scene centroid, then handed to pyproj. Not used yet - it is written here rather than in
-# Phase 1.4 because it is the other half of the rule this module exists to state.
+# Formatted with the scene centroid, then handed to pyproj.
 LOCAL_EQUAL_AREA_PROJ: Final[str] = (
     "+proj=laea +lat_0={latitude} +lon_0={longitude} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
 )
+
+# Pixel footprints are measured per block of this many pixels a side, not per pixel. Projecting every
+# corner of a 10980x10980 scene is 120 million points and a gigabyte of coordinates; projecting one corner
+# per 32 pixels is a hundred thousand. Within a block the pixel area is taken as uniform, and the error
+# that introduces is bounded by the variation of the projection's scale across 320 m - about 3e-6 relative
+# in UTM, under 1e-4 at mid-latitudes in a geographic grid - and only in blocks the mask partly covers.
+AREA_BLOCK_SIZE_PIXELS: Final[int] = 32

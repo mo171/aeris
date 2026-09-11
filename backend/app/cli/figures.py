@@ -32,11 +32,12 @@ from rich.markup import escape
 
 from app.cli.renderers.figure_writer import FigureWriter, open_figure_writer
 from app.constants.raster import BandRole, ProcessingLevel
+from app.constants.spectral import INTERPRETATION_BANDS, SpectralIndex
 from app.db.identifiers import IdentifierPrefix, new_identifier
-from app.lib.exceptions import ConflictError, InvalidRequestError
+from app.lib.exceptions import InvalidRequestError
 from app.schemas.events import serialise_event
 from app.services.imagery.math.indices import normalised_difference, to_surface_reflectance
-from app.services.imagery.metadata import RasterMetadata, identify_band, inspect_raster
+from app.services.imagery.metadata import RasterMetadata, inspect_raster
 from app.services.rendering.figures import (
     RenderedFigure,
     render_from_spec,
@@ -44,28 +45,15 @@ from app.services.rendering.figures import (
     render_mask_overlay,
     render_rgb_composite,
 )
+from app.services.spectral.indices import locate_bands, require_surface_reflectance
 
 logger = logging.getLogger(__name__)
 
-# Above this NDVI a pixel is called vegetated. A demonstration threshold, not a calibrated one - Phase 1.4
-# owns index thresholds and their justification. Stated here so the mask figure has something real to draw.
-VEGETATION_THRESHOLD = 0.3
+# The mask figure draws everything the NDVI interpretation table calls vegetation: from the bottom of
+# "Sparse vegetation" upward (`constants/spectral.py`, transcribed from PDF §3.3.1).
+VEGETATION_THRESHOLD = INTERPRETATION_BANDS[SpectralIndex.NDVI][2].lower
 
 REQUIRED_ROLES = (BandRole.RED, BandRole.GREEN, BandRole.BLUE, BandRole.NEAR_INFRARED)
-
-
-def _find_bands(scene_directory: Path) -> dict[BandRole, Path]:
-    """Locate bands by role, never by file position.
-
-    `B04` is red on Sentinel-2 and band 3 on Landsat; a positional read is how a true-colour composite
-    silently becomes a false-colour one that still looks like a photograph.
-    """
-    found: dict[BandRole, Path] = {}
-    for candidate in sorted(scene_directory.glob("*.tif")):
-        role = identify_band(candidate).role
-        if role is not None:
-            found[role] = candidate
-    return found
 
 
 async def execute_render_figures(
@@ -75,7 +63,7 @@ async def execute_render_figures(
     declared_level: ProcessingLevel | None = None,
 ) -> bool:
     """Render the three gate figures from one scene and verify the reproduction claim."""
-    bands = _find_bands(scene_directory)
+    bands = await locate_bands(scene_directory)
     missing = set(REQUIRED_ROLES) - set(bands)
     if missing:
         raise InvalidRequestError(
@@ -85,7 +73,7 @@ async def execute_render_figures(
         )
 
     reflectance, metadata = await _read_reflectance(bands)
-    _require_surface_reflectance(metadata, declared_level)
+    await require_surface_reflectance(metadata, declared_level)
 
     # A real run id, so the figures land under `runs/<run_id>/figures/` exactly as a pipeline run's would.
     run_id = new_identifier(IdentifierPrefix.RUN)
@@ -118,28 +106,6 @@ async def _read_reflectance(
 
     assert metadata is not None
     return reflectance, metadata
-
-
-def _require_surface_reflectance(
-    metadata: RasterMetadata, declared_level: ProcessingLevel | None
-) -> None:
-    """**§8 rule 5**, and the same refusal `aeris ingest index` makes.
-
-    An NDVI over uncorrected values is a different quantity wearing the same name - and a *figure* of it is
-    worse than a number, because the VLM reads the picture at S14 and an operator reads it at a glance.
-
-    `--level` exists because the level is read from the scene path, and a band extracted into a research
-    directory has lost it. **A human stating what the data is is not the same thing as the code guessing**;
-    only the second is what §8 rule 5 forbids.
-    """
-    level = declared_level or metadata.processing_level
-    if level is not ProcessingLevel.L2A:
-        raise ConflictError(
-            f"This scene reads as {level.value}, and NDVI needs surface reflectance (L2A). If you know "
-            "what it is, say so with --level; the code will not assume it "
-            "(architecture-context.md §8 rule 5).",
-            details={"level": level.value},
-        )
 
 
 async def _render_three(
@@ -182,8 +148,8 @@ async def _render_three(
         bands=["B08", "B04"],
         scene_ids=scene_reference,
         crs=metadata.crs,
-        # Honest: no cloud mask has been applied. Phase 1.3 builds one, and §8 rule 1 makes applying it
-        # before index arithmetic mandatory - so this figure records that it was not.
+        # Honest: no cloud mask has been applied here. `aeris analyse` is the command that masks before
+        # the arithmetic (§8 rule 1); this one exercises the renderer, so the figure records that it was not.
         mask_applied=False,
     )
     await _report(index_map, writer, console)

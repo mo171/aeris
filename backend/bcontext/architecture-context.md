@@ -167,7 +167,7 @@ a wrapper — structured output, tool calling and streaming are used directly fr
 | **Service** | Own a use case end to end; orchestrate domain functions and persistence | Know about HTTP, SSE, Typer or WebSockets. Contain a numerical method |
 | **Pipeline node** | One stage (S1–S20). Take typed state, return a state update, emit events, check cancellation | Call another node directly. Reach into the database. Retry itself |
 | **Domain function** | Pure computation on plain data; call into its `math/` module | Do I/O, read config, log business meaning, hold state |
-| **`math/` module** | The numerical method itself — formulae, transforms, statistics, thresholds | Know what a scene, a claim or a run is. Import anything from the project except `constants/` |
+| **`math/` module** | The numerical method itself — formulae, transforms, statistics, thresholds | Know what a scene, a claim or a run is. Import anything from the project except `constants/` and a sibling `math/` |
 | **Agent** | Plan, route, dispatch tools, synthesise from validated results | Compute a number. Invent evidence. Call a database |
 | **Model** (SQLAlchemy) | Persistence shape | Carry business logic |
 | **Worker / Inngest function** | Trigger, execute, retry, report | Decide what should run. Contain a stage's logic |
@@ -187,7 +187,9 @@ routes / cli  →  controllers  →  services  →  domain  →  lib  →  const
 ```
 
 **One-way, always.** A service never imports a controller. Domain code never imports `lib`. A `math/` module
-imports NumPy and `constants/` and nothing else from the project. `constants` imports nothing.
+imports NumPy, `constants/` and other `math/` modules, and nothing else from the project — a formula is
+written once (§12 reason 4), so `spectral/math` imports the normalised-difference kernel `imagery/math`
+already guards rather than copying it. `constants` imports nothing.
 
 `cli/` and `routes/` are **sibling adapters over the same core.** Neither imports the other, and neither may
 hold logic the other needs — if it is needed by both, it belongs in a service.

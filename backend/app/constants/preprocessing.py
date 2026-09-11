@@ -38,3 +38,22 @@ SENTINEL1_IW_GRD_EQUIVALENT_LOOKS: Final[float] = 4.4
 # exists. The range covers calm water near -25 dB through vegetation around -10 dB to urban double-bounce
 # above 0 dB, so nothing of interest saturates.
 SAR_BACKSCATTER_DECIBEL_DOMAIN: Final[tuple[float, float]] = (-25.0, 5.0)
+
+# Sentinel-2 L2A scene classification (SCL) classes, as ESA numbers them. The mask an L2A scene already
+# carries at 20 m, and the S7 path that actually runs on our data: s2cloudless needs B10, which L2A
+# products do not publish, so the ten-band cube can only be assembled from an L1C scene.
+#
+# Cirrus (10) is excluded with the opaque classes because an index over thin cloud is an index over the
+# cloud, not the ground. Dark area pixels (2) and unclassified (7) are kept as observed: they are ground
+# the sensor saw, and excluding them would report a scene as more obscured than it was.
+SCL_CLOUD_CLASSES: Final[frozenset[int]] = frozenset({8, 9, 10})
+SCL_SHADOW_CLASSES: Final[frozenset[int]] = frozenset({3})
+SCL_UNOBSERVED_CLASSES: Final[frozenset[int]] = frozenset({0, 1})
+
+# The S7 mask artefact, one uint8 per pixel. Stated once so the node that writes it and the node that reads
+# it back after a resume cannot disagree. 255 rather than 0 for unobserved, so "clear" and "nodata" are
+# never the same byte.
+MASK_CLEAR: Final[int] = 0
+MASK_CLOUD: Final[int] = 1
+MASK_SHADOW: Final[int] = 2
+MASK_UNOBSERVED: Final[int] = 255

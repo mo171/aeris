@@ -369,7 +369,7 @@ and *unjudged* pixels for optical; layover and shadow for radar.
 every NDVI on [-1, 1] in 1.2.1. A radar time series exists to be compared, and a per-date stretch makes a
 flooded field and a calm one look alike.
 
-## 1.4 — Spectral indices and geospatial statistics · S12, S15 measurement
+## 1.4 — Spectral indices and geospatial statistics · S12, S15 measurement — **done (2026-09-11)**
 
 **Research:** PDF pp.12–14 (index formulae) and p.9 (why deterministic tools, not learned approximations).
 
@@ -389,6 +389,57 @@ operator will quote in a report.
 produces an NDVI map, a stressed-region mask and an area in hectares, **checked against QGIS on the same
 scene**. Fully deterministic, so it is fully testable — and because the arithmetic sits in `math/`, the unit
 test is a handful of lines against hand-computed values.
+
+**Result — the gate passed**, and it ran as a real pipeline run rather than a script. `aeris analyse
+--scene <dir> --query "unhealthy vegetation"` runs the new `index-query` graph — **S7 → S12 → S15 → S16** —
+through the 1.0 session and fan-out, with the journal, the live trace and the figure writer registered. On
+the Mumbai scene that closed 1.2 and 1.3:
+
+    S7    no cloud mask: the subset carries no SCL layer; NDVI reported unmasked (and says so)
+    S12   NDVI from B08, B04 over 1066x1120                       index-engine 1.4.0
+    S15   Sparse vegetation (NDVI 0.20 to 0.40): 2,471.0 ha,      geospatial-engine 1.4.0
+          21.2% of 11,651.6 ha observed, 7,691 regions
+    S16   "...covers 2,471.0 hectares ... in 7,691 regions. No cloud mask was available..."
+    3 figures (index map, true colour, mask overlay - primary), each carrying its stage's trace step id
+
+**The hectare figure was checked against two independent tools, not one.** QGIS is not on the build
+machine, so the S15 mask was vectorised and measured by pyproj's ellipsoidal integration
+(`Geod.geometry_area_perimeter`) and by PostGIS `ST_Area(::geography)` — the 0.2 route. All three give
+**2,471.0057 ha**; the 7,691 polygons match the 7,691 regions. The naive figure — pixel count × 100 m² in
+UTM — is 2,472.13 ha, **1.12 ha too many** (+0.045%), because UTM's scale at 230 km from the central
+meridian is not 1. That is the plausible wrong number §8 rule 3 exists to prevent, and a test now fails on
+it. 65 new tests, **444 green** (the two remaining reds need the 1.2 gate's Ghaziabad NDVI COG in MinIO,
+which this machine never fetched); ruff and `uv lock --check` clean.
+
+Measured rather than assumed, and each recorded where it is relied on:
+
+- **s2cloudless cannot run on an L2A scene.** Its ten-band cube needs B10, which L2A products do not
+  publish. The S7 that actually works on the data every index runs over is the product's own scene
+  classification layer, so `mask_from_scene_classification` joined `cloud_masking.py` and the S7 node
+  uses it. Cirrus counts as cloud; dark-area and unclassified pixels count as observed.
+- **Areas are measured per pixel footprint in a local LAEA, without resampling the mask.** Projecting
+  corners and summing footprints (per 32-pixel block) agrees with the geodesic integral to 2×10⁻⁹ in UTM
+  and 6×10⁻⁸ in a geographic grid, and never changes which pixels the mask contains — which resampling
+  the raster into the equal-area CRS would.
+- **`coverageFraction` is a ratio of areas over *observed* ground**, not of counts over the grid. A field
+  under cloud is not "not vegetated"; the same mask that kept it out of the index keeps it out of the
+  denominator. `measure_mask` refuses a detection over unobserved ground, which is the structural proof
+  that S12 masked before it computed.
+- **EVI is unbounded and SAVI exceeds 1 over specular pixels**; both mask (never clip) outside [-1, 1],
+  and the share the formula refused is reported in the S12 trace detail rather than absorbed.
+
+Two additions to the spine, both because a figure rendered inside a node has to carry that node's id
+(`api-contract.md` §6 rule 1): `pipeline_node` now exposes `current_trace_step_id()` and
+`describe_trace_step()` through a context variable, and takes `model_id` / `model_version` so the trace
+says which engine ran. Arrays never enter the checkpoint — S7, S12 and S15 retain their outputs through
+`services/evidence/artefacts.py` (local COG plus the `artefacts` bucket) and the state carries paths and
+keys. A run interrupted after S12, with its local artefact deleted, resumes through S15 by restoring the
+artefact from storage; that is a test.
+
+**Not built, deliberately**: vectorisation, claims and evidence records are 1.5, which is why no caption
+carries a number yet; the query→index table is the deterministic half of routing and 1.8 replaces the
+phrase match with a classifier; and a windowed multi-band fetch that would put a real SCL under the local
+gate scene is 1.1 territory, so the real-data demonstration of S7 is recorded as owed.
 
 ## 1.5 — Evidence, confidence and provenance · S15, S18, S19
 

@@ -31,6 +31,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
+from app.cli import analyse as analyse_command
 from app.cli import dataset as dataset_command
 from app.cli import doctor as doctor_command
 from app.cli import figures as figures_command
@@ -367,6 +368,31 @@ def figures(
     # Non-zero when the reproduction claim fails. `api-contract.md` §6 rule 2 is a property of the system,
     # so it belongs in an exit code a script can gate on rather than in prose an operator has to read.
     if not reproducible:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def analyse(
+    scene: Path = typer.Option(..., "--scene", help="A scene directory holding the bands the index needs."),
+    query: str = typer.Option(..., "--query", help='The question, e.g. "unhealthy vegetation" or "water".'),
+    level: ProcessingLevel = typer.Option(
+        ProcessingLevel.UNKNOWN,
+        "--level",
+        help="State the processing level when the path does not carry it. Every index needs L2A.",
+    ),
+) -> None:
+    """Answer an index question over one scene: the map, the region, and its area in hectares. Phase 1.4."""
+    status = asyncio.run(
+        _run_dataset(
+            analyse_command.execute_analyse(
+                scene_directory=scene,
+                query=query,
+                console=console,
+                declared_level=None if level is ProcessingLevel.UNKNOWN else level,
+            )
+        )
+    )
+    if status is not RunStatus.COMPLETE:
         raise typer.Exit(code=1)
 
 

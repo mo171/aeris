@@ -41,7 +41,8 @@ backend/
 │   │   ├── dataset.py                   # `aeris dataset list|show|fetch|search`  DONE (1.1)
 │   │   ├── ingest.py                    # `aeris ingest inspect|scene|index`  DONE (1.2)
 │   │   ├── preprocess.py                # `aeris preprocess coregister|sar`  DONE (1.3)
-│   │   ├── analyse.py                   # `aeris analyse --scene --query`
+│   │   ├── analyse.py                   # `aeris analyse --scene --query`  DONE (1.4). Runs the
+│   │   │                                 #   index-query graph through the same session as `run`.
 │   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
 │   │   │                                 #   points it at the three real graphs; the flags do not change.
 │   │   ├── voice.py                     # `aeris voice` - the spoken loop
@@ -118,6 +119,12 @@ backend/
 │   │   │   ├── memory_store.py           # BaseStore for long-term memory, selected from config (§1.6)
 │   │   │   │
 │   │   │   ├── nodes/                   # One stage each. async def(state) -> state update. No retry, no maths.
+│   │   │   │   │                         #   A node reads its own step id with `current_trace_step_id()` and
+│   │   │   │   │                         #   sets its completion line with `describe_trace_step()` (node.py).
+│   │   │   │   ├── cloud_handling.py        # S7  DONE (1.4). SCL -> mask artefact, or "no mask" said aloud.
+│   │   │   │   ├── feature_extraction.py    # S12 DONE (1.4). Mask the bands, then the formula; artefact + figure.
+│   │   │   │   ├── evidence_localisation.py # S15 DONE (1.4). Threshold, measure vs OBSERVED ground, overlay.
+│   │   │   │   ├── answer_generation.py     # S16 DONE (1.4). Sentences from the state's numbers only.
 │   │   │   │   ├── input_validation.py
 │   │   │   │   ├── metadata_analysis.py
 │   │   │   │   ├── query_interpretation.py
@@ -127,12 +134,12 @@ backend/
 │   │   │   │   ├── mission_planning.py
 │   │   │   │   ├── model_routing.py
 │   │   │   │   ├── inference.py
-│   │   │   │   ├── evidence_generation.py
 │   │   │   │   ├── confidence.py
-│   │   │   │   ├── response_synthesis.py
 │   │   │   │   └── trace_generation.py
 │   │   │   │
 │   │   │   └── graphs/                  # StateGraph composition + add_conditional_edges routing tables
+│   │   │       ├── probe.py             # DONE (1.0). Two nodes, no imagery - "is the spine broken?"
+│   │   │       ├── index_query.py       # DONE (1.4). S7 -> S12 -> S15 -> S16 over one optical scene.
 │   │   │       ├── investigation_graph.py
 │   │   │       ├── single_image_graph.py
 │   │   │       ├── temporal_graph.py
@@ -175,11 +182,14 @@ backend/
 │   │   │       └── terrain_flattening.py     # layover + shadow retained. The sign convention is the
 │   │   │                                     #   whole file - it was inverted once and looked fine.
 │   │   │
-│   │   ├── spectral/                    # S12 - the reference example of rule 3
-│   │   │   ├── indices.py               # async. Picks the index, maps bands per sensor, masks, returns a result.
+│   │   ├── spectral/                    # S12 - the reference example of rule 3.  DONE (1.4)
+│   │   │   ├── indices.py               # async. Phrase -> index + range; bands by ROLE onto the finest grid
+│   │   │   │                            #   (SWIR resampled before it meets a 10 m band); L1C and unknown
+│   │   │   │                            #   levels refused; the mask applied to the INPUTS, then the formula.
 │   │   │   └── math/
-│   │   │       ├── index_formulae.py    # sync, pure. ndvi/evi/savi/ndwi/mndwi/ndbi/nbr over arrays.
-│   │   │       └── thresholds.py        # sync, pure. Otsu, fixed cut-offs, histogram statistics.
+│   │   │       ├── index_formulae.py    # sync, pure. ndvi/evi/savi/ndwi/mndwi/ndbi/nbr. Imports the one
+│   │   │       │                        #   normalised-difference kernel from imagery/math (written once).
+│   │   │       └── thresholds.py        # sync, pure. Range masks (NaN never detected), Otsu, summary.
 │   │   │
 │   │   ├── detection/                   # S13
 │   │   │   ├── detector.py
@@ -225,13 +235,19 @@ backend/
 │   │   │   └── math/
 │   │   │       └── box_operations.py
 │   │   │
-│   │   ├── evidence/                    # S15, S18, S19
+│   │   ├── evidence/                    # S15, S18, S19. 1.4 built the measurement half; 1.5 the rest.
+│   │   │   ├── artefacts.py             # DONE (1.4). A stage's array -> COG on disk + `artefacts` bucket;
+│   │   │   │                            #   the state carries the path and key, never the array.
+│   │   │   ├── spatial.py               # DONE (1.4). The geospatial-engine: hectares, coverage of OBSERVED
+│   │   │   │                            #   ground, region count and density. Refuses a detection over
+│   │   │   │                            #   unobserved pixels - the structural proof S12 masked first.
 │   │   │   ├── builder.py               # evidence + claim objects
-│   │   │   ├── spatial.py
 │   │   │   ├── confidence.py            # float | None. Never 0.0 by default.
 │   │   │   ├── trace.py                 # trace steps + artefact URIs
 │   │   │   └── math/
-│   │   │       ├── area.py              # equal-area CRS reprojection, then hectares. Never from degrees.
+│   │   │       ├── area.py              # DONE (1.4). Pixel FOOTPRINTS projected into a local LAEA and
+│   │   │       │                        #   summed; the mask is never resampled. Checked against pyproj's
+│   │   │       │                        #   geodesic integral and PostGIS geography.
 │   │   │       ├── simplification.py
 │   │   │       └── confidence_aggregation.py
 │   │   │
@@ -330,6 +346,9 @@ backend/
 │       ├── logs.py                      # JSON field names, format strings, third-party noise floor
 │       ├── pagination.py                # default and maximum page size (named for what it bounds, not `limits.py`)
 │       ├── color_ramps.py               # (Phase 1.2.1) named ramps + their domains. Shared vocabulary with the frontend's legends.
+│       ├── spectral.py                  # (Phase 1.4) the seven indices, their band roles, coefficients,
+│       │                                #   interpretation bands and the phrase -> target table. Transcribed
+│       │                                #   from the frontend's overlays/spectral-indices.ts (PDF §3.3).
 │       ├── ui_commands.py               # (deferred) mirrors frontend/lib/constants/commands.ts - written when `ui-command` is first emitted
 │       └── tasks.py                     # (Phase 0.5) Inngest event names + the `aeris/<domain>.<action>` convention
 │
@@ -393,7 +412,7 @@ backend/
 
 | You are writing… | It goes in |
 |---|---|
-| A formula, a transform, a statistic, a threshold | `services/<subsystem>/math/` — sync, pure, no project imports beyond `constants/` |
+| A formula, a transform, a statistic, a threshold | `services/<subsystem>/math/` — sync, pure, no project imports beyond `constants/` and a sibling `math/` |
 | The choice of *which* formula to apply | The async service file above that `math/` folder |
 | One stage of S1–S20 | `services/pipeline/nodes/` — `async def`, no maths, no retry, no database |
 | The order stages run in, or a branch between them | `services/pipeline/graphs/` — a `StateGraph`, not an `if` chain in a service |
@@ -407,6 +426,7 @@ backend/
 | Drawing a tile for the globe | Nowhere here. Tiles are TiTiler's, via `lib/tiles.py`. Tiles are not figures (`api-contract.md` §8) |
 | Something both the CLI and a future route need | A service. Never in `cli/`, never in `routes/` |
 | A hardcoded list of anything | `constants/` |
+| A stage's intermediate output (a mask, an index array) | `services/evidence/artefacts.py` writes it; the state carries its path and key. Never the array itself |
 | A URL, credential, path, threshold default or timeout | `.env` → `config.py` |
 
 ## Folders that were deliberately removed

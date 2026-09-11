@@ -1,6 +1,6 @@
 """The kinds of assertion AERIS can make, and the kinds of proof it can attach to them.
 
-what  : `ClaimKind`, `EvidenceKind`, `MetricDirection`.
+what  : `ClaimKind`, `EvidenceKind`, `MetricDirection`, and the byte values of the S15 mask artefact.
 where : Read by the claim validator (Phase 1.5) and by every stream event that carries a claim or an
         evidence record. Transcribed from the frontend's investigation schema.
 how   : `ClaimKind.NEGATIVE` is the one that makes the product honest. "No new construction was detected in
@@ -14,6 +14,7 @@ how   : `ClaimKind.NEGATIVE` is the one that makes the product honest. "No new c
 """
 
 from enum import StrEnum
+from typing import Final
 
 
 class ClaimKind(StrEnum):
@@ -42,3 +43,11 @@ class MetricDirection(StrEnum):
     INCREASE = "increase"
     DECREASE = "decrease"
     NEUTRAL = "neutral"
+
+
+# The S15 mask artefact, one uint8 per pixel. `UNOBSERVED` is distinct from `NOT_DETECTED` for the reason
+# `services/evidence/spatial.py` gives: ground under cloud was not searched, and a mask that recorded it as
+# "nothing found" would be reporting an absence nobody measured.
+DETECTION_MASK_NOT_DETECTED: Final[int] = 0
+DETECTION_MASK_DETECTED: Final[int] = 1
+DETECTION_MASK_UNOBSERVED: Final[int] = 255

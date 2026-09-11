@@ -1,9 +1,17 @@
 """Runs cloud/shadow masking before optical arithmetic.
 
-what  : Typed cloud-mask result plus s2cloudless inference, thresholding, and mask application.
+what  : Typed cloud-mask result plus s2cloudless inference, the SCL-derived mask, thresholding, mask
+        application, and the raster encoding the S7 node stores the mask as.
 where : Stage S7 feeds this result to spectral indices and renders its raster artefact in later graphs.
 how   : The s2cloudless model is invoked here rather than approximated from visible bands. Masking converts
         cloud, shadow, and invalid observations to NaN before downstream math.
+
+        **Two sources, one result type.** s2cloudless needs ten bands including B10, which L2A products do
+        not publish (the cirrus band is consumed by the atmospheric correction), so on the surface-
+        reflectance scenes every index runs over, the mask that is actually available is the product's own
+        scene classification layer. `mask_from_scene_classification` reads it into the same
+        `OpticalMaskResult`, so nothing downstream knows which source produced the mask - and the
+        encoded raster records the same three states either way.
 """
 
 import asyncio
@@ -11,7 +19,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.constants.preprocessing import CLOUD_PROBABILITY_THRESHOLD
+from app.constants.preprocessing import (
+    CLOUD_PROBABILITY_THRESHOLD,
+    MASK_CLEAR,
+    MASK_CLOUD,
+    MASK_SHADOW,
+    MASK_UNOBSERVED,
+    SCL_CLOUD_CLASSES,
+    SCL_SHADOW_CLASSES,
+    SCL_UNOBSERVED_CLASSES,
+)
 from app.services.preprocessing.math.cloud_probability import project_cloud_shadow, threshold_cloud_probability
 
 
@@ -88,3 +105,49 @@ async def apply_optical_mask(values: np.ndarray, mask: OpticalMaskResult) -> np.
     if values.shape != mask.exclusion_mask.shape:
         raise ValueError("optical values and mask must share one grid")
     return await asyncio.to_thread(lambda: np.where(mask.exclusion_mask, np.nan, values).astype(np.float32))
+
+
+async def mask_from_scene_classification(scene_classification: np.ndarray) -> OpticalMaskResult:
+    """S7 from the L2A product's own SCL layer, already resampled (nearest) onto the analysis grid.
+
+    Cloud probability is 1 for the cloud classes and 0 otherwise - the SCL is a decision, not a likelihood,
+    and reporting it as anything in between would invent a confidence nobody measured. Nodata and
+    saturated pixels are NaN, which `exclusion_mask` counts as unread rather than clear.
+    """
+    return await asyncio.to_thread(_mask_from_scene_classification, scene_classification)
+
+
+def _mask_from_scene_classification(scene_classification: np.ndarray) -> OpticalMaskResult:
+    classes = scene_classification.astype(np.int32, copy=False)
+    cloud = np.isin(classes, list(SCL_CLOUD_CLASSES))
+    shadow = np.isin(classes, list(SCL_SHADOW_CLASSES))
+    unobserved = np.isin(classes, list(SCL_UNOBSERVED_CLASSES))
+    probability = np.where(cloud, 1.0, 0.0).astype(np.float32)
+    probability[unobserved] = np.nan
+    return OpticalMaskResult(probability, cloud, shadow)
+
+
+async def encode_mask_raster(mask: OpticalMaskResult) -> np.ndarray:
+    """The mask as one uint8 raster - the artefact S7 retains so S12 can read it back after a resume."""
+    return await asyncio.to_thread(_encode_mask_raster, mask)
+
+
+def _encode_mask_raster(mask: OpticalMaskResult) -> np.ndarray:
+    encoded = np.full(mask.cloud_mask.shape, MASK_CLEAR, dtype=np.uint8)
+    encoded[mask.shadow_mask] = MASK_SHADOW
+    encoded[mask.cloud_mask] = MASK_CLOUD
+    encoded[~np.isfinite(mask.cloud_probability)] = MASK_UNOBSERVED
+    return encoded
+
+
+async def decode_mask_raster(encoded: np.ndarray) -> OpticalMaskResult:
+    """The inverse of `encode_mask_raster`. Cloud probability comes back as the decision it recorded."""
+    return await asyncio.to_thread(_decode_mask_raster, encoded)
+
+
+def _decode_mask_raster(encoded: np.ndarray) -> OpticalMaskResult:
+    cloud = encoded == MASK_CLOUD
+    shadow = encoded == MASK_SHADOW
+    probability = np.where(cloud, 1.0, 0.0).astype(np.float32)
+    probability[encoded == MASK_UNOBSERVED] = np.nan
+    return OpticalMaskResult(probability, cloud, shadow)

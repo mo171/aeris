@@ -28,6 +28,7 @@ how   : **What a COG actually is, because every constant in `constants/raster.py
 
 import asyncio
 import logging
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -93,6 +94,16 @@ def _predictor_for(dtype: str) -> int:
     return COG_PREDICTOR_FLOAT if np.dtype(dtype).kind == "f" else COG_PREDICTOR_INTEGER
 
 
+def _overview_levels(width: int, height: int) -> int:
+    """As many overview levels as the raster can hold, up to the project default.
+
+    Each level halves the raster; asking for a level that would be smaller than one pixel is an error in
+    GDAL rather than a no-op. A full Sentinel-2 tile takes all eight; a small subset or a test raster
+    takes what fits.
+    """
+    return max(0, min(COG_OVERVIEW_LEVELS, int(math.floor(math.log2(min(width, height))))))
+
+
 def _cog_profile(dtype: str) -> dict[str, object]:
     """The creation options every COG this project writes is built with."""
     profile = dict(cog_profiles.get("deflate"))
@@ -149,11 +160,13 @@ def _translate(source: Path, destination: Path, dtype: str, resampling: str) -> 
     The size is returned rather than stat-ed by the caller so the whole filesystem interaction stays in
     this thread; an `await`ing caller reaching back for `.stat()` would put a blocking syscall on the loop.
     """
+    with rasterio.open(source) as dataset:
+        levels = _overview_levels(dataset.width, dataset.height)
     cog_translate(
         str(source),
         str(destination),
         _cog_profile(dtype),
-        overview_level=COG_OVERVIEW_LEVELS,
+        overview_level=levels,
         overview_resampling=resampling,
         # `web_optimized=False`: the COG stays in its native CRS and TiTiler reprojects per request. The
         # alternative bakes EPSG:3857 into the file, which is faster to serve and destroys the pixel grid
@@ -171,6 +184,7 @@ async def write_cog_from_array(
     reference: RasterMetadata,
     destination: Path,
     nodata: float = NODATA_FLOAT,
+    categorical: bool = False,
 ) -> Path:
     """Write a computed array - an index map, a mask - as a COG, georeferenced from the raster it came from.
 
@@ -179,7 +193,8 @@ async def write_cog_from_array(
     georeferencing of its own and inventing one would place the result somewhere plausible and wrong.
 
     NaN as nodata, never a sentinel like -9999: a sentinel is a real number that survives arithmetic and
-    can be averaged into a mean, whereas NaN propagates (§8 rule 4).
+    can be averaged into a mean, whereas NaN propagates (§8 rule 4). A mask states its own nodata value
+    and `categorical=True`, so its overviews are nearest-neighbour rather than an average of class labels.
     """
     if array.shape != (reference.height, reference.width):
         raise InternalError(
@@ -190,7 +205,7 @@ async def write_cog_from_array(
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(_write_array, array, reference, destination, nodata)
+    await asyncio.to_thread(_write_array, array, reference, destination, nodata, categorical)
 
     is_valid, errors, _ = await asyncio.to_thread(cog_validate, str(destination), quiet=True)
     if not is_valid:
@@ -202,7 +217,7 @@ async def write_cog_from_array(
 
 
 def _write_array(
-    array: np.ndarray, reference: RasterMetadata, destination: Path, nodata: float
+    array: np.ndarray, reference: RasterMetadata, destination: Path, nodata: float, categorical: bool
 ) -> None:
     """Georeference an array and translate it to a COG. Sync."""
     with rasterio.open(reference.path) as source:
@@ -229,8 +244,8 @@ def _write_array(
             memory.name,
             str(destination),
             _cog_profile(array.dtype.name),
-            overview_level=COG_OVERVIEW_LEVELS,
-            overview_resampling=COG_OVERVIEW_RESAMPLING,
+            overview_level=_overview_levels(array.shape[1], array.shape[0]),
+            overview_resampling=COG_OVERVIEW_RESAMPLING_CATEGORICAL if categorical else COG_OVERVIEW_RESAMPLING,
             web_optimized=False,
             quiet=True,
             in_memory=True,
