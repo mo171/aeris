@@ -467,14 +467,17 @@ def models_warm(
 
 @models_app.command("evaluate")
 def models_evaluate(
-    dataset_id: DatasetId = typer.Option(DatasetId.LEVIR_CD, "--dataset", help="A paired-mask benchmark."),
-    split: DatasetSplit = typer.Option(DatasetSplit.TEST, "--split", help="Which split to score."),
+    model_id: ModelId = typer.Option(ModelId.CHANGEFORMER, "--model", help="changeformer or dota-detector."),
+    dataset_id: DatasetId | None = typer.Option(None, "--dataset", help="A benchmark; defaults per model."),
+    split: DatasetSplit | None = typer.Option(None, "--split", help="Which split to score; defaults per model."),
     limit: int = typer.Option(0, "--limit", help="Score only the first N samples. 0 scores every one."),
 ) -> None:
-    """Score the change detector on a benchmark split: change-class F1 and IoU, and the areas. Half the 1.6 gate."""
+    """Score a learned model on a benchmark split - change-class F1 and IoU for changeformer, box F1 at IoU 0.5 for dota-detector."""
     asyncio.run(
         _run_models(
-            models_command.execute_evaluate(dataset_id=dataset_id, split=split, limit=limit or None, console=console)
+            models_command.execute_evaluate(
+                model_id=model_id, dataset_id=dataset_id, split=split, limit=limit or None, console=console
+            )
         )
     )
 

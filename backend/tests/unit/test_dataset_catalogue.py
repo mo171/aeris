@@ -174,7 +174,9 @@ async def test_the_datasets_the_roadmap_names_are_all_catalogued() -> None:
         DatasetId.SENTINEL2_L2A, DatasetId.SENTINEL1_GRD, DatasetId.LEVIR_CD, DatasetId.S2LOOKING,
         DatasetId.SECOND, DatasetId.DOTA, DatasetId.DIOR, DatasetId.LOVEDA, DatasetId.OPEN_EARTH_MAP,
         DatasetId.RSVQA_LR, DatasetId.RSVQA_HR, DatasetId.VRSBENCH, DatasetId.DIOR_RSVG,
-        DatasetId.RRSIS_D, DatasetId.SEN12MS, DatasetId.BIGEARTHNET_MM, DatasetId.EUROSAT,
+        DatasetId.RRSIS_D, DatasetId.SEN12MS, DatasetId.BIGEARTHNET_MM, DatasetId.EUROSAT, DatasetId.DOTA8,
+        # Named by the problem statement itself, 2026-09-12.
+        DatasetId.BIGEARTHNET_TXT, DatasetId.CDVQA,
     }
     assert required <= set(DATASET_CATALOGUE), (
         f"roadmap.md 1.1 names these and the catalogue lacks them: {sorted(required - set(DATASET_CATALOGUE))}"

@@ -19,12 +19,14 @@ how   : `constants/model_ids.py` deferred the model-to-capability mapping to "wh
         A footprint that is too small lets the manager admit a model that OOMs; too large evicts for no
         reason. The 1.6 gate is the eviction, so these numbers are load-bearing.
 
-        The weights sources are Hugging Face Hub repositories. `changeformer` is HZDR-FWGEL's ChangeFormerV6
-        checkpoint trained on the 256-crop LEVIR-CD - the original wgcban architecture under `CD_model.` -
-        and `segformer-landcover` is a SegFormer-B2 fine-tuned on LoveDA. Neither has an entry for
-        `dota-detector`, `grounding-dino-sam` or `rs-vlm` yet: no pip-loadable pretrained DOTA detector was
-        verifiable at the time of writing, and grounding and the VLM are 1.7's. A model with no weights
-        source reports `offline` and refuses to load, which is louder than a placeholder.
+        The weights sources are Hugging Face Hub repositories, or a release asset at a URL pinned by its
+        SHA-256. `changeformer` is HZDR-FWGEL's ChangeFormerV6 checkpoint trained on the 256-crop LEVIR-CD -
+        the original wgcban architecture under `CD_model.` - and `segformer-landcover` is a SegFormer-B2
+        fine-tuned on LoveDA. `dota-detector` is Ultralytics' YOLO11s-OBB trained on DOTA v1.0, **AGPL-3.0**
+        (weights and the `ultralytics` package alike; the network copyleft is recorded in
+        `constants/licences.py` and is a product decision before any hosted deployment). `grounding-dino-sam`
+        and `rs-vlm` are 1.7's. A model with no weights source reports `offline` and refuses to load, which
+        is louder than a placeholder.
 """
 
 from enum import StrEnum
@@ -62,7 +64,10 @@ class WeightsSource(NamedTuple):
 
     repository: str
     filename: str | None
+    # A Hub git revision, or the SHA-256 of the file when `url` is set - either way, one artefact.
     revision: str
+    # A direct download instead of the Hub, for weights published as release assets.
+    url: str | None = None
 
 
 class FleetRecord(NamedTuple):
@@ -128,11 +133,21 @@ FLEET: Final[dict[ModelId, FleetRecord]] = {
     ModelId.OPTICAL_SAR_FUSION: FleetRecord(
         ModelId.OPTICAL_SAR_FUSION, "0.0.0", ModelCapability.CROSS_MODAL_FUSION, (PipelineStage.S14,), None, 0, None
     ),
-    # No weights source yet - see the header. Each reports `offline` and refuses to load.
     ModelId.DOTA_DETECTOR: FleetRecord(
-        ModelId.DOTA_DETECTOR, "0.0.0", ModelCapability.OBJECT_DETECTION,
-        (PipelineStage.S13, PipelineStage.S15), None, 0, None,
+        model_id=ModelId.DOTA_DETECTOR,
+        version="yolo11s-obb-dotav1",
+        capability=ModelCapability.OBJECT_DETECTION,
+        stages=(PipelineStage.S13, PipelineStage.S15),
+        weights=WeightsSource(
+            "ultralytics/assets", "yolo11s-obb.pt",
+            "43fa63102922e0701501241b307420d24fc55e080816888b18bf8c6f96b1a45a",
+            url="https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s-obb.pt",
+        ),
+        # Measured on the RTX 3050: 79 MB of weights, 225 MB peak through a 1024 tile. Declared with margin.
+        vram_megabytes=320,
+        tile_size=1024,
     ),
+    # No weights source yet - see the header. Each reports `offline` and refuses to load.
     ModelId.GROUNDING_DINO_SAM: FleetRecord(
         ModelId.GROUNDING_DINO_SAM, "0.0.0", ModelCapability.GROUNDING, (PipelineStage.S13,), None, 0, None
     ),

@@ -93,7 +93,7 @@ class ModelManager:
                 self._telemetry[model_id].health = ModelHealth.ONLINE
 
     @classmethod
-    async def create(cls, loaders: Mapping[ModelId, Loader], lock_factory: LockFactory | None = None) -> "ModelManager":
+    async def create(cls, loaders: Mapping[ModelId, Loader], lock_factory: LockFactory | None = None) -> ModelManager:
         return cls(device=await detect_device(), loaders=loaders, lock_factory=lock_factory)
 
     # --- Leasing -------------------------------------------------------------------------------------

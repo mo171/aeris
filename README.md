@@ -113,3 +113,14 @@ uv run aeris models evaluate --limit 256
 The second command loads two models within a budget that fits one, so you watch the first go
 `warming → online` and then get evicted for the second. The last two fetch LEVIR-CD's 256-crop test split
 (73 MB) and score the change detector on it: change-class F1 and IoU, and the predicted and true areas.
+
+The oriented-object detector (YOLO11s-OBB on DOTA, **AGPL-3.0** - see `constants/licences.py`) has its own
+smoke test on Ultralytics' eight-crop DOTA8 sample: fetch the archive, unpack it in place, then score.
+
+```bash
+uv run aeris dataset fetch dota8
+```
+
+```bash
+uv run aeris models evaluate --model dota-detector
+```

@@ -127,7 +127,7 @@ async def test_least_recently_used_is_the_one_evicted(monkeypatch: pytest.Monkey
     from app.constants.fleet import FleetRecord, WeightsSource
     from app.models import manager as manager_module
 
-    third = ModelId.DOTA_DETECTOR
+    third = ModelId.GROUNDING_DINO_SAM
     fleet = dict(FLEET)
     fleet[third] = FleetRecord(third, "test", FLEET[third].capability, FLEET[third].stages,
                                WeightsSource("test/repo", None, "main"), 500, None)
@@ -196,9 +196,9 @@ async def test_engines_are_online_without_loading_and_cannot_be_leased() -> None
 async def test_a_model_with_no_checkpoint_registered_is_offline_and_refuses() -> None:
     manager = manager_with(budget=CHANGE_MB)
 
-    assert manager.health_of(ModelId.DOTA_DETECTOR) is ModelHealth.OFFLINE
+    assert manager.health_of(ModelId.GROUNDING_DINO_SAM) is ModelHealth.OFFLINE
     with pytest.raises(ConflictError, match="no pretrained checkpoint"):
-        async with manager.lease(ModelId.DOTA_DETECTOR):
+        async with manager.lease(ModelId.GROUNDING_DINO_SAM):
             pass
 
 

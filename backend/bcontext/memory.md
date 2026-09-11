@@ -2,7 +2,7 @@
 
 Phase 1.6 put real weights behind two of the twelve model ids and built the residency they live in. Both
 halves of the gate passed on a 4 GB laptop GPU - a tier the roadmap did not have a name for. 31 new
-tests, **502 green**, ruff and `uv lock --check` clean; the two reds are still the 1.2 tile tests.
+tests, **502 green** (515 with the addendum below), ruff and `uv lock --check` clean; the two reds are still the 1.2 tile tests.
 
 ### The gate
 
@@ -68,10 +68,31 @@ inside the load. Neither model crashed; the second's load evicted the first beca
 In-use guard removed from eviction: 1 test fails. Residual gate removed from `compare_pair`: 1 test
 fails. Both restored and byte-compared.
 
+### Addendum, same day - `dota-detector` via YOLO11s-OBB
+
+The operator asked whether Ultralytics' YOLO-OBB (pretrained on DOTA v1.0, pure PyTorch) was a feasible
+route. It is, and it is real: 9.7 M parameters, 79 MB / 225 MB peak / 55 ms per 1024 tile on the 3050,
+published test mAP50 79.5, `ultralytics` and CUDA `torchvision` both resolve for cp314 (torchvision from
+the cu130 index like torch). Weights are a GitHub release asset, not a Hub file, so `WeightsSource` gained
+a `url` and the loader a SHA-256-pinned download route. Nine new tests; 515 green.
+
+- **`ultralytics` reads a NumPy array as BGR.** Fed RGB and BGR score the same on some crops (the
+  baseball diamonds of P1571 to four decimals) and differ on others; the test that settles it compares
+  the adapter's boxes to the package's own file route on P1470, where they differ.
+- **A 2×2 mosaic returned 10 boxes for 8 objects** before seam-cut boxes were dropped: an object at a
+  window's interior edge yields a partial box with IoU < 0.5 to the whole one, which NMS cannot merge.
+  Dropped only when narrower than the overlap, so a field wider than 128 px on a seam may still double.
+- **`ultralytics` installs a top-level `tests` package into site-packages**, which shadowed this
+  project's namespace `tests` and broke `from tests.integration...` imports. `tests/` is a regular
+  package now, with `__init__.py` files saying why.
+- **DOTA8 is a smoke test, not a benchmark**: its crops come from images the detector trained on. F1
+  0.842 there checks the adapter; the number to quote is the published mAP50.
+- **AGPL-3.0.** Weights and package. Recorded as `Licence.AGPL_3_0`; the fleet header and the roadmap
+  both say a hosted deployment that keeps this detector must publish its source or license commercially.
+
 ### Owed
 
-- `dota-detector`: no pip-loadable pretrained DOTA/DIOR detector was verifiable (mmrotate-only). A
-  weights source and an adapter, when one is found or trained.
+- `dota-detector` on DOTA proper (`manual`, 20 GB) and mAP over the curve - 1.14.
 - `grounding-dino-sam` and `rs-vlm` load through `transformers` (~700 MB and a quantised 7B) - 1.7.
 - LEVIR-CD's licence: read chenhao.in/LEVIR when it is reachable and set the record.
 - The S13 node and the `temporal` graph that composes `compare_pair` → `build_region_evidence` - 1.10.

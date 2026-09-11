@@ -32,6 +32,7 @@ from app.models.loader import Device, detect_device
 from app.models.manager import ModelManager, get_manager
 from app.models.registry import LOADERS
 from app.services.evaluation.change_detection import evaluate_change_detection
+from app.services.evaluation.object_detection import evaluate_object_detection
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,27 @@ async def execute_warm(model_ids: list[ModelId], *, budget_megabytes: int | None
     return healthy
 
 
+async def _evaluate_detector(
+    manager: ModelManager, dataset_id: DatasetId, split: DatasetSplit, limit: int | None, console: Console
+) -> bool:
+    console.print(f"\n  scoring dota-detector on {escape(dataset_id.value)} {split.value}" + (f" (first {limit})" if limit else ""))
+    report = await evaluate_object_detection(manager=manager, dataset_id=dataset_id, split=split, limit=limit)
+    score = report.score
+    console.print(
+        f"\n  {report.samples} samples  model {escape(report.model_version)}  mean latency {report.mean_latency_ms:.0f} ms"
+        + (f"  mean stated confidence {report.mean_confidence:.3f}" if report.mean_confidence is not None else "")
+    )
+    console.print(
+        f"  boxes @ IoU 0.5   precision {score.precision:.4f}   recall {score.recall:.4f}   [bold]F1 {score.f1:.4f}[/bold]"
+    )
+    console.print(
+        f"  counts            TP {score.true_positives:,}  FP {score.false_positives:,}  FN {score.false_negatives:,}"
+        f"   predicted {report.predicted_boxes:,}  truth {report.truth_boxes:,}"
+    )
+    await render_status(console, manager)
+    return True
+
+
 async def _lease_while_watching(manager: ModelManager, model_id: ModelId, console: Console) -> list[ModelHealth]:
     """Lease in a task; poll `status()` from this one and print each health transition as it happens."""
     seen: list[ModelHealth] = []
@@ -124,10 +146,17 @@ async def _lease_while_watching(manager: ModelManager, model_id: ModelId, consol
 
 
 async def execute_evaluate(
-    *, dataset_id: DatasetId, split: DatasetSplit, limit: int | None, console: Console
+    *, model_id: ModelId, dataset_id: DatasetId | None, split: DatasetSplit | None, limit: int | None, console: Console
 ) -> bool:
-    """Score the change detector on a benchmark split and print the change-class metrics and areas."""
+    """Score a learned model on a benchmark split and print the metrics its task is scored by."""
     manager = await get_manager()
+    if model_id is ModelId.DOTA_DETECTOR:
+        return await _evaluate_detector(manager, dataset_id or DatasetId.DOTA8, split or DatasetSplit.VALIDATION, limit, console)
+    if model_id is not ModelId.CHANGEFORMER:
+        console.print(f"  [red]no evaluation harness for {escape(model_id.value)}[/red]")
+        return False
+    dataset_id = dataset_id or DatasetId.LEVIR_CD
+    split = split or DatasetSplit.TEST
     console.print(f"\n  scoring changeformer on {escape(dataset_id.value)} {split.value}" + (f" (first {limit})" if limit else ""))
     report = await evaluate_change_detection(manager=manager, dataset_id=dataset_id, split=split, limit=limit)
     score = report.score

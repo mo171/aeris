@@ -15,12 +15,14 @@ from typing import Final
 from app.constants.fleet import FLEET, FleetRecord
 from app.constants.model_ids import ModelId
 from app.models.change import load_changeformer
+from app.models.detection import load_yolo_obb
 from app.models.manager import Loader
 from app.models.segmentation import load_segformer
 
 LOADERS: Final[dict[ModelId, Loader]] = {
     ModelId.CHANGEFORMER: load_changeformer,
     ModelId.SEGFORMER_LANDCOVER: load_segformer,
+    ModelId.DOTA_DETECTOR: load_yolo_obb,
 }
 
 

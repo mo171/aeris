@@ -29,7 +29,11 @@ from app.services.change_detection.detector import detect_change
 from app.services.change_detection.sar_change import detect_sar_change
 from app.services.datasets.acquisition import fetch_hub_split
 from app.services.datasets.loader import split_directory
+from app.services.detection.detector import detect_objects
+from app.services.detection.labels import read_yolo_obb_labels
+from app.services.detection.math.oriented_boxes import match_boxes
 from app.services.evaluation.change_detection import evaluate_change_detection
+from app.services.evaluation.object_detection import evaluate_object_detection
 from app.services.preprocessing.sar_calibration import SarPreprocessingResult
 
 pytestmark = pytest.mark.integration
@@ -177,6 +181,7 @@ async def test_declared_footprints_are_not_smaller_than_measured(manager: ModelM
     for model_id, run in (
         (ModelId.CHANGEFORMER, lambda m: m.predict(*synthetic_pair())),
         (ModelId.SEGFORMER_LANDCOVER, lambda m: m.predict(np.zeros((512, 512, 3), dtype=np.uint8))),
+        (ModelId.DOTA_DETECTOR, lambda m: m.predict(np.zeros((1024, 1024, 3), dtype=np.uint8))),
     ):
         await manager.unload_all()
         torch.cuda.reset_peak_memory_stats()
@@ -240,3 +245,68 @@ async def test_a_misaligned_pair_is_refused_before_the_model_is_ever_loaded() ->
     assert good.registration.measurement.residual_pixels < 0.5
     assert good.change.changed_fraction == 0.0
     await manager.unload_all()
+
+
+# Measured: F1 0.842 on DOTA8's four val crops at the pipeline's own threshold (8 hits, 3 false alarms, 0
+# misses). These crops come from images the detector trained on, so this is a smoke test of the adapter -
+# a wrong channel order, a wrong scale or a broken load - not a benchmark; the published DOTA v1.0 test
+# mAP50 is 79.5. Pinned below the measured value so a GPU's rounding cannot fail it.
+MINIMUM_DOTA8_F1 = 0.7
+DOTA8_CROP = "P1470__1024__3296___1648"
+
+
+def dota8_crop(name: str = DOTA8_CROP) -> np.ndarray:
+    from PIL import Image
+
+    path = split_directory(DatasetId.DOTA8, DatasetSplit.VALIDATION) / "images" / "val" / f"{name}.jpg"
+    if not path.exists():
+        pytest.skip(f"{path} is not on disk; `aeris dataset fetch dota8` and unpack it")
+    return np.asarray(Image.open(path).convert("RGB"))
+
+
+async def test_the_detector_fed_rgb_matches_the_package_fed_the_file(manager: ModelManager) -> None:
+    """The package reads arrays as BGR; the adapter reverses. Proved box for box against the file route."""
+    image = dota8_crop()
+    ours = await detect_objects(image, manager=manager)
+    wrong_order = await detect_objects(np.ascontiguousarray(image[:, :, ::-1]), manager=manager)
+    async with manager.lease(ModelId.DOTA_DETECTOR) as model:
+        path = split_directory(DatasetId.DOTA8, DatasetSplit.VALIDATION) / "images" / "val" / f"{DOTA8_CROP}.jpg"
+        reference = await asyncio.to_thread(
+            lambda: model._module.predict(str(path), imgsz=1024, conf=0.25, verbose=False)[0]
+        )
+    theirs = sorted((int(c), round(float(s), 3)) for c, s in zip(reference.obb.cls, reference.obb.conf, strict=True))
+    assert sorted((b.class_index, round(b.confidence, 3)) for b in ours.boxes) == theirs
+    assert sorted((b.class_index, round(b.confidence, 3)) for b in wrong_order.boxes) != theirs
+    assert ours.model_version == FLEET[ModelId.DOTA_DETECTOR].version and ours.confidence is not None
+
+
+async def test_a_mosaic_is_windowed_and_each_object_is_reported_once(manager: ModelManager) -> None:
+    """Four copies of one crop, tiled at 1024 with overlap: exactly four times the boxes, no seam duplicates."""
+    image = dota8_crop()
+    single = await detect_objects(image, manager=manager)
+    mosaic = np.concatenate([np.concatenate([image, image], axis=1)] * 2, axis=0)
+    four = await detect_objects(mosaic, manager=manager)
+    assert len(single.boxes) > 0
+    assert len(four.boxes) == 4 * len(single.boxes)
+
+
+async def test_boxes_over_unobserved_ground_are_not_reported(manager: ModelManager) -> None:
+    image = dota8_crop().astype(np.float32)
+    image[:, :512] = np.nan
+    result = await detect_objects(image, manager=manager)
+    assert all(box.corners.mean(axis=0)[0] >= 512 for box in result.boxes)
+
+
+async def test_the_gate_the_detector_scores_on_dota8(manager: ModelManager) -> None:
+    if not (split_directory(DatasetId.DOTA8, DatasetSplit.VALIDATION) / "images" / "val").exists():
+        pytest.skip("DOTA8 is not on disk; `aeris dataset fetch dota8` and unpack it")
+    report = await evaluate_object_detection(manager=manager)
+    assert report.samples == 4 and report.truth_boxes > 0
+    assert report.score.f1 >= MINIMUM_DOTA8_F1, f"F1 {report.score.f1:.3f} on DOTA8 val"
+    assert report.score.false_negatives == 0
+
+    image = dota8_crop()
+    label = split_directory(DatasetId.DOTA8, DatasetSplit.VALIDATION) / "labels" / "val" / f"{DOTA8_CROP}.txt"
+    truths = await read_yolo_obb_labels(label, width=image.shape[1], height=image.shape[0])
+    result = await detect_objects(image, manager=manager)
+    assert match_boxes(result.boxes, truths, iou_threshold=0.5).recall == 1.0

@@ -50,3 +50,4 @@ data/
 # Phase 1.2 build artefacts: COGs are rebuilt from the scene by `aeris ingest`, and a 500 MB float32
 # NDVI is not something to carry in git.
 data/cogs/
+.vscode

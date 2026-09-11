@@ -74,10 +74,15 @@ dependencies = [
     "huggingface-hub>=0.30",
     "transformers>=4.50",
     "pyarrow>=19.0",
+    # The DOTA detector: YOLO11-OBB through `ultralytics` (AGPL-3.0 - recorded in constants/licences.py).
+    # torchvision comes from the same CUDA index as torch so the two match.
+    "ultralytics>=8.3",
+    "torchvision>=0.29",
 ]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
 
 [[tool.uv.index]]
 # CUDA 13.0 builds of torch, which PyPI does not carry for Windows. `explicit = true` keeps every other

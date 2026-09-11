@@ -224,9 +224,18 @@ backend/
 │   │   │       ├── log_ratio.py         # DONE (1.6). 10 log10(after/before), two-sided dB threshold.
 │   │   │       └── change_statistics.py # DONE (1.6). Change-class P/R/F1/IoU as counts; no accuracy.
 │   │   │
+│   │   ├── detection/                   # S13/S15 oriented-object detection  DONE (1.6)
+│   │   │   ├── detector.py              # leases `dota-detector`; mean box score as the stated confidence
+│   │   │   ├── labels.py                # YOLO-OBB (normalised) and DOTA labelTxt readers -> OrientedBox
+│   │   │   └── math/
+│   │   │       └── oriented_boxes.py    # polygon IoU (shapely), class-aware rotated NMS, greedy matching,
+│   │   │                                #   DetectionScore as counts
+│   │   │
 │   │   ├── evaluation/                  # Scores a model against a benchmark. 1.6 seeds, 1.14 completes.
-│   │   │   └── change_detection.py      # DONE (1.6). The detector over a paired-mask split through the
-│   │   │                                #   single loader; counts summed before ratios; nominal hectares.
+│   │   │   ├── change_detection.py      # DONE (1.6). The detector over a paired-mask split through the
+│   │   │   │                            #   single loader; counts summed before ratios; nominal hectares.
+│   │   │   └── object_detection.py      # DONE (1.6). Box P/R/F1 at IoU 0.5 over an annotation split at the
+│   │   │                                #   pipeline's own threshold; mAP is 1.14's.
 │   │   │
 │   │   ├── optical_sar/                 # S13, S15 - late fusion only (PDF §9, p.19)
 │   │   │   ├── per_sensor_runs.py       # two independent runs
@@ -298,14 +307,16 @@ backend/
 │   ├── models/                          # ML model residency, not SQLAlchemy models.  DONE (1.6)
 │   │   ├── registry.py                  # `LOADERS`: which of the twelve ids this process can build, bound
 │   │   │                                #   to the fleet facts in constants/fleet.py
-│   │   ├── loader.py                    # the device, MEASURED (`mem_get_info`); Hub downloads into
-│   │   │                                #   data/models; memory release; the `aeris doctor` row. torch is
-│   │   │                                #   imported inside functions so nothing else pays for it.
+│   │   ├── loader.py                    # the device, MEASURED (`mem_get_info`); Hub downloads and
+│   │   │                                #   SHA-256-pinned release assets into data/models; memory release;
+│   │   │                                #   the `aeris doctor` row. torch is imported inside functions.
 │   │   ├── manager.py                   # `lease()`: lazy load under the 0.3 Redis lock, LRU eviction of
 │   │   │                                #   IDLE models to a declared budget, offline/warming/online/
 │   │   │                                #   degraded, queueDepth, medianLatencyMs -> modelStatusSchema
-│   │   ├── change.py                    # ChangeFormerV6 adapter: [-1, 1] inputs, 256 windows, stitched
+│   │   ├── change.py                    # ChangeFormerV6 adapter: [0, 1] RGB (measured), 256 windows, stitched
 │   │   ├── segmentation.py              # SegFormer-B2 LoveDA adapter via transformers, 512 windows
+│   │   ├── detection.py                 # YOLO11s-OBB (DOTA v1.0) adapter via ultralytics, AGPL-3.0; RGB->BGR
+│   │   │                                #   at the boundary, 1024 windows, seam-cut boxes dropped, rotated NMS
 │   │   ├── vendor/
 │   │   │   └── changeformer_v6.py       # wgcban's architecture, verbatim, MIT, licence in the header
 │   │   ├── vqa.py

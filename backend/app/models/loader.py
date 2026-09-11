@@ -14,11 +14,14 @@ how   : **The profile is measured, not read from a product name.** `torch.cuda.m
         must not pay that. Callers that want torch have already decided to.
 
         Weights come from the Hugging Face Hub into `settings.model_weights_path`, pinned to the revision
-        the fleet record names, so two machines that ran the same version ran the same bytes.
+        the fleet record names, so two machines that ran the same version ran the same bytes. A source
+        with a `url` is a release asset instead; its `revision` is the file's SHA-256, checked after the
+        download, which is the same guarantee by a different route.
 """
 
 import asyncio
 import gc
+import hashlib
 import logging
 import time
 from dataclasses import dataclass
@@ -84,7 +87,9 @@ def _detect_device(preference: str, budget_override: int | None) -> Device:
 
 
 async def fetch_weights(source: WeightsSource) -> Path:
-    """One file from the Hub, at the pinned revision, cached under the weights directory."""
+    """One file from the Hub or a release URL, at the pinned revision, cached under the weights directory."""
+    if source.url is not None:
+        return await _download_release(source)
     if source.filename is None:
         return await fetch_repository(source)
     return await asyncio.to_thread(_download_file, source)
@@ -132,6 +137,37 @@ def _download_repository(source: WeightsSource) -> Path:
             details={"upstream": "huggingface-hub", "repository": source.repository},
         ) from error
     return Path(path)
+
+
+async def _download_release(source: WeightsSource) -> Path:
+    """A release asset, fetched once and verified against the SHA-256 the record pins."""
+    import aiohttp
+
+    assert source.filename is not None and source.url is not None
+    destination = settings.model_weights_path / "releases" / source.repository.replace("/", "--") / source.filename
+    if not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        partial = destination.with_suffix(destination.suffix + ".part")
+        try:
+            async with aiohttp.ClientSession() as session, session.get(source.url) as response:
+                response.raise_for_status()
+                with partial.open("wb") as handle:
+                    async for chunk in response.content.iter_chunked(MEGABYTE):
+                        handle.write(chunk)
+        except (aiohttp.ClientError, OSError) as error:
+            raise UpstreamUnavailableError(
+                f"Could not fetch {source.filename} from {source.url}: {error}",
+                details={"upstream": source.url.split("/")[2], "repository": source.repository},
+            ) from error
+        partial.replace(destination)
+    digest = await asyncio.to_thread(lambda: hashlib.sha256(destination.read_bytes()).hexdigest())
+    if digest != source.revision:
+        destination.unlink()
+        raise UpstreamUnavailableError(
+            f"{source.filename} from {source.url} has SHA-256 {digest}, not the pinned {source.revision}.",
+            details={"upstream": source.url.split("/")[2], "repository": source.repository},
+        )
+    return destination
 
 
 async def release_device_memory() -> None:

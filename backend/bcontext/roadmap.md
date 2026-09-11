@@ -526,7 +526,7 @@ Two models requested back-to-back on the 8 GB profile: the first evicts, the sec
 and `warming` is observable in the status output.
 
 **Result — both halves of the gate passed, on real weights, on a 4 GB laptop GPU.** Pretrained first, as
-the plan says; nothing was trained. 31 new tests, **502 green** (the two reds are still the 1.2 tile
+the plan says; nothing was trained. 40 new tests, **515 green** (the two reds are still the 1.2 tile
 tests wanting the Ghaziabad COG), ruff and `uv lock --check` clean.
 
     aeris models evaluate --limit 256        changeformer  v6-levircd256-hzdr   93 ms per crop
@@ -567,12 +567,23 @@ Measured rather than assumed:
 - **transformers 5's image processor requires torchvision** for a rescale and a normalisation whose
   constants are in the checkpoint's own `preprocessor_config.json`. The adapter reads the file instead.
 
-**Not built, and why**: `dota-detector` - no pip-loadable pretrained DOTA/DIOR detector could be verified
-(the published ones need mmrotate); `grounding-dino-sam` and `rs-vlm` are 1.7's (both load through
-`transformers`, and the fleet records are in place with `offline` and a refusal naming the gap). The
-LEVIR-CD licence page was unreachable from the build machine, so the dataset stays `UNVERIFIED` - which
-blocks training, not evaluation, and no training was planned. The S13 *node* is 1.10's composition; the
-1.5 builder already turns any mask the detector produces into both representations and claims.
+**`dota-detector`, added the same day**: the mmrotate detectors need a compiler toolchain; **YOLO11s-OBB**
+(Ultralytics, trained on DOTA v1.0, pure PyTorch) does not, and it is real - published test mAP50 79.5,
+measured here at 79 MB of weights, 225 MB peak through a 1024 tile, 55 ms per tile. Served through the
+`ultralytics` package, which reads a NumPy array as **BGR**: the adapter reverses at the boundary and a
+test proves it box for box against the package's own file route. Large scenes are windowed at 1024 with a
+128 overlap; a box cut by a window's interior edge is dropped when the neighbour holds it whole, which
+took a 2×2 mosaic from 10 boxes for 8 objects to exactly 8. Smoke-tested on DOTA8 (Ultralytics' eight
+crops, a new `download` route): F1 0.842 at IoU 0.5, no misses - crops the model trained on, so a check of
+the adapter and not a benchmark; DOTA proper stays `manual`. **The cost is the licence: AGPL-3.0**, weights
+and package alike, recorded in `constants/licences.py` - a hosted AERIS that keeps this detector must
+publish its source or buy Ultralytics' commercial licence. That is a product decision, flagged, not made.
+
+**Not built, and why**: `grounding-dino-sam` and `rs-vlm` are 1.7's (both load through `transformers`,
+and the fleet records are in place with `offline` and a refusal naming the gap). The LEVIR-CD licence
+page was unreachable from the build machine, so the dataset stays `UNVERIFIED` - which blocks training,
+not evaluation, and no training was planned. The S13 *node* is 1.10's composition; the 1.5 builder
+already turns any mask the detector produces into both representations and claims.
 
 ## 1.7 — VLM and constrained answer generation · S14, S16
 
@@ -588,6 +599,37 @@ given the claim objects and asked to phrase them — and then tested for.
 
 **Gate** — single-image question and answer in the CLI. A test that seeds a claim with a known number and
 asserts the number in the answer text is exactly that number.
+
+**Problem-statement check (2026-09-12), before 1.7 starts.** The SIH statement (SatQuery AI) was read
+against this plan. What it makes *mandatory* that the plan already carries: single-image VQA (1.7),
+captioning or grounding (1.7: both), change description or change-VQA from a bi-temporal pair (1.10 over
+the 1.6 detector, phrased by 1.7), optical-SAR complementary extraction (1.11), agentic model selection
+with an auditable execution summary (1.8/1.9 over the 1.5 provenance record), GeoTIFF/TIFF input with
+PNG/JPEG for benchmarks only (1.2, 1.1). What it changes:
+
+- **"A generic LLM or VLM without remote-sensing adaptation will not satisfy the requirements"**, and
+  "at least one visual or vision-language component must be fine-tuned or otherwise adapted using
+  BigEarthNet.txt or any open-source training data". The deferral "fine-tune only where a gate fails" is
+  withdrawn for the VLM: 1.7 **fine-tunes** it. **`rs-vlm` = Qwen3-VL-2B-Instruct (Apache-2.0, 4.0 GB in
+  bf16, native multi-image input and grounding, transformers-native) with a LoRA trained on
+  BigEarthNet.txt** - the statement's named dataset: 464,044 co-registered S1/S2 pairs with captions,
+  VQA and referring expressions (CDLA-Permissive-1.0, text on the Hub as one 0.43 GB parquet; images from
+  BigEarthNet v2.0, a 10% subset suffices). Training is not possible on the 4 GB laptop; it is run on a
+  16 GB cloud GPU (a free T4 is enough at rank 16-64, 448 px) and the adapter (~70 MB) is what the fleet
+  loads, 4-bit, beside the base. Served on the 3050 it is `degraded`-eligible and measured before declared.
+  The alternatives weighed and not chosen: EarthDial-4B (MIT, RS-adapted, SAR and temporal aware - but
+  7.7 GB, `internvl_chat` custom code pinned to an old transformers, and not adapted *by us*); GeoChat
+  (7B LLaVA, same objections, larger).
+- **CDVQA** is the statement's change-VQA benchmark and was not in the catalogue; it is now, `manual`,
+  unlocked in 1.10 and scored in 1.14 beside LEVIR-CD. Its pairs are SECOND's - the change detector must
+  not be fine-tuned on SECOND if CDVQA is to mean anything.
+- **BigEarthNet.txt** is in the catalogue as its own record, distinct from BigEarthNet-MM.
+- **The final evaluation set is Cartosat-2S optical with RISAT SAR, pre-georeferenced and co-registered.**
+  Neither sensor is Sentinel. The 1.3 SAR chain assumes Sentinel-1 GRD calibration constants; for a
+  pre-calibrated RISAT product S8 must be skippable with the skip *recorded*, and the 1.9 co-registration
+  residual must still be measured on the pair rather than trusted. A resolution the VLM has never seen
+  (0.6 m pan-sharpened) is the reason the LoRA data should include VRSBench-resolution imagery too, not
+  BigEarthNet.txt's 10 m alone.
 
 ## 1.8 — Query understanding and routing
 
