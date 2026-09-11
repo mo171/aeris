@@ -29,6 +29,7 @@ from app.config import settings
 from app.constants.raster import BandRole, ProcessingLevel
 from app.constants.storage import Bucket
 from app.lib.exceptions import ConflictError, InvalidRequestError
+from app.lib.tiles import tilejson_url, viewer_url
 from app.services.imagery.cog import convert_to_cog, upload_cog, write_cog_from_array
 from app.services.imagery.math.indices import normalised_difference, to_surface_reflectance
 from app.services.imagery.metadata import RasterMetadata, inspect_raster
@@ -126,7 +127,7 @@ async def execute_ingest(path: Path, console: Console) -> bool:
     result = await upload_cog(destination, object_key=object_key, bucket=Bucket.COG)
 
     console.print(f"  [green]uploaded[/green] {escape(result.storage_uri)}  ({result.size_bytes / 1e6:.1f} MB)")
-    console.print(f"  tiles: {escape(_tilejson_url(result.storage_uri))}")
+    console.print(f"  tiles: {escape(tilejson_url(result.storage_uri))}")
     return True
 
 
@@ -184,8 +185,8 @@ async def execute_index(
 
     console.print(f"  [green]uploaded[/green] {escape(result.storage_uri)}  ({result.size_bytes / 1e6:.1f} MB)")
     console.print("\n  Render it:")
-    console.print(f"    tilejson  {escape(_tilejson_url(result.storage_uri))}")
-    console.print(f"    viewer    {escape(_viewer_url(result.storage_uri))}")
+    console.print(f"    tilejson  {escape(tilejson_url(result.storage_uri))}")
+    console.print(f"    viewer    {escape(viewer_url(result.storage_uri))}")
     return True
 
 
@@ -242,11 +243,3 @@ def _compute_ndvi_synchronously(red: RasterMetadata, nir: RasterMetadata) -> np.
     return normalised_difference(nir_reflectance, red_reflectance)
 
 
-def _tilejson_url(storage_uri: str) -> str:
-    """The TileJSON document for a COG. Carries `bounds`, `minzoom` and `maxzoom` - the 1.2 gate."""
-    return f"{settings.tile_server}/cog/WebMercatorQuad/tilejson.json?url={storage_uri}"
-
-
-def _viewer_url(storage_uri: str) -> str:
-    """TiTiler's built-in map viewer, for looking at the result without writing a page."""
-    return f"{settings.tile_server}/cog/viewer?url={storage_uri}"

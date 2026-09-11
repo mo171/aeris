@@ -187,3 +187,8 @@ def terms_for(licence: Licence) -> LicenceTerms:
     here instead of an edit at every dataset that uses it.
     """
     return LICENCE_TERMS[licence]
+
+# The attribution line the Copernicus licence asks for, as ESA words it. Carried on every layer and figure
+# drawn from Sentinel data (`evidenceLayerSchema.attribution`), because the licence grants the data on
+# that condition and a layer is where an operator reads where the pixels came from.
+COPERNICUS_ATTRIBUTION: Final[str] = "Contains modified Copernicus Sentinel data"

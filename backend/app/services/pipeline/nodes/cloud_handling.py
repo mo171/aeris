@@ -15,6 +15,13 @@ how   : The mask source is the L2A product's own scene classification layer - th
 
         The mask is an artefact (S7 `producesArtefact: true`), so it is stored and the state carries its
         path and key. S12 reads it back through the same artefact store a resumed run would.
+
+        **No layer, and no `artefactLayerId`, when the mask came from the SCL.** A layer must name the
+        model that produced it (`layerProvenanceSchema.modelId`), and the fleet vocabulary has no entry for
+        Sen2Cor - the classifier ESA ran to make the SCL. Claiming `s2cloudless` would be a false
+        attribution, which is the one thing a provenance field must never carry. The artefact is still
+        retained and recorded with its object key in the provenance record (S19); what is owed is a
+        vocabulary entry, and `memory.md` says so. The s2cloudless path (an L1C scene) gets its layer.
 """
 
 import logging
@@ -51,7 +58,10 @@ async def handle_clouds(state: IndexQueryState) -> dict[str, object]:
             f"no cloud mask: {scene_directory.name} carries no scene classification layer; "
             f"{index.value.upper()} will be reported unmasked"
         )
-        return {"cloud_mask_path": None, "cloud_mask_object_key": None, "obscured_fraction": None}
+        return {
+            "cloud_mask_path": None, "cloud_mask_object_key": None, "cloud_mask_storage_uri": None,
+            "obscured_fraction": None,
+        }
 
     mask = await mask_from_scene_classification(scene_classification)
     encoded = await encode_mask_raster(mask)
@@ -72,5 +82,6 @@ async def handle_clouds(state: IndexQueryState) -> dict[str, object]:
     return {
         "cloud_mask_path": str(artefact.path),
         "cloud_mask_object_key": artefact.object_key,
+        "cloud_mask_storage_uri": artefact.storage_uri,
         "obscured_fraction": mask.obscured_fraction,
     }

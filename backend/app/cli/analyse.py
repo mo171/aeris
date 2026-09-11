@@ -92,7 +92,34 @@ async def execute_analyse(
             if status is RunStatus.COMPLETE:
                 snapshot = await read_thread_state(graph, handle.run_id)
                 _print_measurement(snapshot.values, console)
+                _print_evidence(snapshot.values, console)
             return status
+
+
+def _print_evidence(values: dict[str, object], console: Console) -> None:
+    """The claims, what each rests on, and where the run's record went."""
+    claims = values.get("claims") or []
+    layers = {layer["id"]: layer for layer in values.get("layers") or []}
+    evidence = {item["id"]: item for item in values.get("evidence_items") or []}
+    if claims:
+        console.print()
+    for claim in claims:
+        marker = "primary" if claim["isPrimary"] else "supporting"
+        console.print(f"  [bold]claim[/bold] {escape(claim['id'])}  {marker}  {escape(claim['kind'])}")
+        console.print(f"    {escape(claim['text'])}")
+        for evidence_id in claim["evidenceIds"]:
+            item = evidence.get(evidence_id)
+            if item is None:
+                continue
+            layer = layers.get(item["layerId"] or "")
+            where = (
+                f"{len(item['featureIds'])} features on {escape(layer['title'])}" if layer else "a statistic, no layer"
+            )
+            console.print(f"    evidence {escape(evidence_id)}  {escape(item['kind'])}  {where}")
+    for key, label in (("provenance_path", "provenance"), ("evidence_graph_path", "evidence")):
+        path = values.get(key)
+        if path:
+            console.print(f"  {label:10s} {escape(str(path))}")
 
 
 def _print_measurement(values: dict[str, object], console: Console) -> None:

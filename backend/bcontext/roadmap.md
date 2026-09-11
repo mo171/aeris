@@ -441,7 +441,7 @@ carries a number yet; the query→index table is the deterministic half of routi
 phrase match with a classifier; and a windowed multi-band fetch that would put a real SCL under the local
 gate scene is 1.1 territory, so the real-data demonstration of S7 is recorded as owed.
 
-## 1.5 — Evidence, confidence and provenance · S15, S18, S19
+## 1.5 — Evidence, confidence and provenance · S15, S18, S19 — **done (2026-09-11)**
 
 **Research:** PDF p.38 (evidence-grounded answers, the answer object) and pp.38–39 (auditable trace).
 
@@ -465,6 +465,49 @@ stretch" is answerable from the run record alone. A figure with no stage behind 
 **Gate** — every claim in a run resolves to pixels; every trace step that produced an intermediate carries
 its artefact URI; **every figure resolves to a trace step**; the run's JSONL validates against the vendored
 contracts.
+
+**Result — the gate passed, all four statements, each as a test and each on the real scene.** The index-
+query graph grew to **S7 → S12 → S15 → S16 → S18 → S19**; the two events 1.0 recorded as owed -
+`layer-ready` and `claim` - are emitted, and `EVENT_TYPES_NOT_YET_EMITTED` is empty by earning it. On the
+Mumbai scene, `aeris analyse --query "unhealthy vegetation"`:
+
+    S12   layer-ready   raster-tiles  NDVI over the retained COG (TiTiler, server-side stretch and ramp)
+    S15   layer-ready   raster-mask   every pixel of the mask, as tiles
+          layer-ready   polygon-vector  844 of 7,691 regions as features, each with hectares and mean NDVI
+          claim         primary, quantitative: 2,471.0 ha, 21.2% of 11,651.6 ha observed, 7,691 regions
+          claim         supporting, spatial: the largest region, 112.0 ha, mean NDVI 0.29
+    S16   the claims, spoken            S18  minimum-of-stated: none stated -> confidence None
+    S19   provenance.json (2 inputs hashed, 2 artefact URIs, 2 engines, the rule) + evidence-graph.json
+
+Walked back mechanically: every claim → evidence → layer → feature → ring → rasterised onto the S15 mask,
+845 feature footprints, each containing every pixel its region measured; S12 and S15's completed trace
+steps carry the `artefactLayerId` of the layer that draws their artefact; all three figures name a step and
+the primary one carries both claim ids; 66 of 66 parseable journal lines and the whole evidence graph
+validate against the vendored Zod. 40 new tests, **471 green**, ruff and `uv lock --check` clean.
+
+Measured rather than assumed:
+
+- **Vectorisation is exact and simplification is free; holes are the whole difference.** The largest real
+  region has 658 interior rings. Rasterising its full polygon back covers exactly its pixels; its *outer
+  ring* encloses 33% ground the mask never marked - and `featureGeometrySchema` is a single ring, so
+  holes cannot travel. The feature therefore carries the true, holed area and its outline, and the
+  invariant tested is containment, not equality. **A coordinated change to ask for: `holes` on the
+  polygon geometry.**
+- **The S7 mask from an L2A product has no fleet model.** `layerProvenanceSchema.modelId` is required and
+  the twelve ids have no entry for Sen2Cor; `s2cloudless` did not run and is not claimed. S7's trace step
+  carries no layer, the artefact is retained and its URI is in the provenance record. **A coordinated
+  change to ask for: a thirteenth id for the product's own classification.**
+- **The vector payload is the run's largest artefact.** 844 features made a 5.5 MB journal line; with
+  coordinates at seven decimals (a centimetre) and a compact evidence graph, 11.6 MB became 5.6 MB.
+  `MINIMUM_FEATURE_REGION_PIXELS` bounds what is drawn; the hectares are always the whole mask's.
+- **Every number the answer speaks is on a claim.** The cloud caveat quoted an obscured fraction no claim
+  carried until it became a metric on the primary claim (invariant 15), and a test now strips the claim
+  texts out of the answer and checks what remains.
+
+**Not built, deliberately**: persistence to the `evidence`, `claims` and `trace_steps` tables - a run row
+needs an investigation row, which is 1.9's session persistence; the JSON records and the journal are the
+Phase 1 audit trail and are the columns 1.9 writes. The confidence rule is `minimum-of-stated` with every
+stage declining; 1.6 supplies the first stated score and 1.7 the validation checks PDF §20 folds in.
 
 ## 1.6 — Specialist models · S13
 

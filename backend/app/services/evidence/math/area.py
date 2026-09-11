@@ -1,8 +1,8 @@
 """Measures how much ground a mask covers - in hectares, from an equal-area projection, never from the raster's own units.
 
 what  : `measure_area()` - pixel count, square metres and hectares of a boolean mask on a georeferenced
-        grid; `count_regions()` - how many connected regions the mask has; `local_equal_area_crs()` - the
-        projection both are measured in.
+        grid; `polygon_area()` - the same measurement for a vector outline; `count_regions()` - how many
+        connected regions the mask has; `local_equal_area_crs()` - the projection all three use.
 where : Called by `services/evidence/spatial.py` through `asyncio.to_thread`. The number it returns is
         the one a report quotes, which is why it is the most carefully bounded function in Phase 1.4.
 how   : **Pure, sync; NumPy, pyproj and SciPy** (`architecture-context.md` §12). Knows a grid as six
@@ -33,9 +33,11 @@ from dataclasses import dataclass
 
 import numpy as np
 from pyproj import CRS, Transformer
-from scipy import ndimage
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform as transform_geometry
 
 from app.constants.geo import AREA_BLOCK_SIZE_PIXELS, LOCAL_EQUAL_AREA_PROJ, SQUARE_METRES_PER_HECTARE
+from app.services.segmentation.math.vectorize import label_regions
 
 type AffineTransform = tuple[float, float, float, float, float, float]
 
@@ -102,9 +104,21 @@ def measure_area(
 
 def count_regions(mask: np.ndarray) -> RegionCount:
     """Connected regions of the mask, eight-connected: two pixels touching at a corner are one region."""
-    labels, count = ndimage.label(mask, structure=np.ones((3, 3), dtype=int))
-    sizes = ndimage.sum_labels(np.ones_like(mask, dtype=np.int64), labels, index=np.arange(1, count + 1))
-    return RegionCount(region_count=int(count), region_pixel_counts=tuple(int(size) for size in sizes))
+    labels, count = label_regions(mask)
+    sizes = np.bincount(labels.ravel(), minlength=count + 1)[1:]
+    return RegionCount(region_count=count, region_pixel_counts=tuple(int(size) for size in sizes))
+
+
+def polygon_area(geometry: BaseGeometry, *, crs: str, equal_area_crs: str) -> float:
+    """Square metres of a geometry given in `crs`, measured in the equal-area projection the raster used.
+
+    The same projection as `measure_area`, so a region's polygon and its pixel count agree to the straight-
+    edge approximation of a 10 m pixel edge - which is nothing - rather than by a projection's worth.
+    """
+    to_equal_area = Transformer.from_crs(
+        CRS.from_user_input(crs), CRS.from_proj4(equal_area_crs), always_xy=True
+    )
+    return float(transform_geometry(to_equal_area.transform, geometry).area)
 
 
 def _block_pixel_areas(

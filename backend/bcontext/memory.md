@@ -1,3 +1,80 @@
+## Session — 2026-09-11 (1.5) · Evidence, claims and provenance. **A claim is a thing you can walk back to pixels.**
+
+Phase 1.5 closed the loop 1.0 opened: the two analysis events recorded as owed since the spine —
+`layer-ready` and `claim` — are emitted, `EVENT_TYPES_NOT_YET_EMITTED` is empty by earning it, and the
+index-query graph is **S7 → S12 → S15 → S16 → S18 → S19**. 40 new tests, **471 green**, ruff and lock
+clean; the two reds are still the 1.2 tile tests wanting the Ghaziabad COG.
+
+### The gate, four statements, each a test and each on the real scene
+
+1. **Every claim resolves to pixels.** Walked mechanically: claim → `evidenceIds` → evidence → `layerId`
+   + `featureIds` → feature → ring → rasterised back onto the S15 mask. 845 feature footprints on the
+   Mumbai run, each containing every pixel its region measured. The builder mints the whole chain in one
+   place (`services/evidence/builder.py`), and a mutation that drops a claim's evidence fails two tests.
+2. **Every artefact stage carries its artefact.** S12 and S15's completed trace steps carry the
+   `artefactLayerId` of the layer that draws their COG (`attach_artefact_layer()` on the node decorator);
+   the provenance record carries all three object keys and `s3://` URIs, S7's included.
+3. **Every figure resolves to a trace step**, and the primary overlay carries both claim ids.
+4. **The journal and the evidence graph validate.** 66 of 66 parseable lines; `evidence-graph.json`
+   validates against `evidenceGraphSchema` whole.
+
+### Measured rather than assumed
+
+- **Holes.** Vectorisation is exact (rasterising the full polygon back reproduces the mask) and Douglas-
+  Peucker at 5 m changes nothing measurable - but the largest real region has **658 interior rings**, and
+  `featureGeometrySchema` is a single ring. Its outline encloses 33% ground the mask never marked. So the
+  feature carries the *true* holed area, the invariant is containment, and the raster-mask layer is the
+  exact picture. **Coordinated change to ask for: `holes` on the polygon geometry.**
+- **The S7 mask has no fleet model when it came from the SCL.** `layerProvenanceSchema.modelId` is required
+  and there is no id for Sen2Cor; claiming `s2cloudless` would be the one thing a provenance field must
+  never do. S7 emits no layer on an L2A scene; the artefact is retained and in the record. **Coordinated
+  change to ask for: a thirteenth model id for the product's own classification.**
+- **The frontend's Zod has moved past the vendored contracts.** `analysis.schema.ts` now carries
+  `ui-command`, `speech` and a minimal `figure-ready`; `bcontext/contracts/schemas.json` is still the 0.7
+  export. Built against the vendored file, deliberately - re-exporting is a coordinated step that would
+  also change `EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` (the staleness test will say so). **Owed: run
+  `pnpm run contracts:export` and reconcile, before Phase 2.**
+- **Size.** 844 features made a 5.5 MB `layer-ready` line and an 11.6 MB pretty-printed evidence graph.
+  Seven-decimal coordinates (a centimetre) and compact JSON halve it. `MINIMUM_FEATURE_REGION_PIXELS = 25`
+  bounds what is *drawn*; nothing bounds what is *measured*.
+- **Every number the answer speaks is on a claim.** S16's cloud caveat quoted an obscured fraction no claim
+  carried. It is now a metric on the primary claim, and a test strips the claim texts out of the answer and
+  checks the remainder against that metric.
+- **An async fixture on a function-scoped loop closes the storage client under the next test.** The
+  aiobotocore client is a process-wide singleton bound to the loop that opened it; a fixture that runs a
+  graph must be `@pytest_asyncio.fixture(loop_scope="session")`. The symptom is
+  `'NoneType' object has no attribute 'connect'` inside S7, three tests in.
+
+### Decisions worth not relitigating
+
+- **An empty mask is a `NEGATIVE` claim with evidence**, not an empty result. "No sparse vegetation was
+  detected in the 11,651.6 hectares observed" points at what was searched.
+- **Confidence: `minimum-of-stated`, `None` when nothing was stated**, named in `constants/evidence.py`
+  and written into the record (PDF §21.2). Every 1.4/1.5 engine declines, so every run so far reports
+  `None`; S18 exists now so 1.6's first stated score changes the inputs, not the graph.
+- **`comparatorSide` is emitted as `both`** for a single-scene run. It was `FRONTEND_ONLY` ("the backend
+  has no opinion") but the layer schema requires it; it is a shared vocabulary now.
+- **Layers, evidence and claims ride the state in wire form** (`CamelCaseModel.to_wire()`), so S16 reads
+  `claim["text"]`, S19 writes the graph unchanged, and no Pydantic object is checkpointed.
+- **The evidence graph is written compact and the provenance record indented** - a machine reads one, a
+  person the other.
+- **Persistence to the `evidence`/`claims`/`trace_steps` tables is 1.9's**, with the run and investigation
+  rows it needs; the JSON records are those columns, written to disk.
+
+### Mutation: 2 applied, 2 caught
+
+Holes filled in vectorisation: 2 unit tests fail. Primary claim with no evidence ids: 2 integration tests
+fail. Both restored and byte-compared.
+
+### Next — Phase 1.6
+
+Specialist models, S13. 1.5 hands it: `build_region_evidence` for any boolean mask a model produces (a
+change mask, a segmentation class), `attach_artefact_layer` for its trace step, `ModelRecord` with a
+*stated* confidence for S18 to aggregate, and `EvidenceKind.CHANGE_MASK` / `DETECTION` waiting for a
+producer.
+
+---
+
 ## Session — 2026-09-11 (1.4) · The index engine and the first hectare. **Three tools, one number.**
 
 Phase 1.4 built the first end-to-end vertical slice: `aeris analyse --scene <dir> --query "unhealthy

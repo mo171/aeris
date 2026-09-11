@@ -54,6 +54,11 @@ POINT_GEOMETRY: Final[str] = "POINT"
 SQUARE_METRES_PER_HECTARE: Final[float] = 10_000.0
 SQUARE_METRES_PER_SQUARE_KILOMETRE: Final[float] = 1_000_000.0
 
+# Decimals a geographic coordinate is written to on the wire. Seven is about a centimetre on the ground;
+# a ring vertex on a 10 m pixel edge carries nothing below that, and full double precision doubles the
+# size of every vector layer for digits that describe rounding error.
+GEOGRAPHIC_COORDINATE_DECIMALS: Final[int] = 7
+
 # The only sanctioned way to measure a stored geometry's area in SQL. Written as a template so that the
 # expression appears once: a second hand-written `ST_Area` somewhere in a repository is exactly how square
 # degrees get into a report.

@@ -32,12 +32,20 @@ from app.lib.exceptions import AerisError, to_error_payload
 
 
 class CamelCaseModel(BaseModel):
-    """Base class for every model that crosses the boundary. Serialise with `model_dump(by_alias=True)`."""
+    """Base class for every model that crosses the boundary. Serialise with `to_wire()`."""
 
     model_config = ConfigDict(
         alias_generator=to_camel,
         populate_by_name=True,
     )
+
+    def to_wire(self) -> dict[str, Any]:
+        """The wire form: aliases on, JSON mode. Sync - it maps fields already in memory (code-standards §7).
+
+        The two keyword arguments a call site forgets are the two that make the frontend reject the whole
+        payload (0.7 measured both), so no producer calls `model_dump` for the wire directly.
+        """
+        return self.model_dump(by_alias=True, mode="json")
 
 
 class CursorPage[TItem](CamelCaseModel):

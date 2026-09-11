@@ -51,3 +51,27 @@ class MetricDirection(StrEnum):
 DETECTION_MASK_NOT_DETECTED: Final[int] = 0
 DETECTION_MASK_DETECTED: Final[int] = 1
 DETECTION_MASK_UNOBSERVED: Final[int] = 255
+
+# --- Building evidence from a mask (Phase 1.5) ------------------------------------------------------------
+
+# Vertices closer than this to the line that replaces them are removed when a region polygon is simplified.
+# Half a 10 m pixel: the raster's staircase edge is not a property of the ground, and keeping it multiplies
+# the vertex count of every feature by the pixel perimeter. Douglas-Peucker with topology preserved.
+POLYGON_SIMPLIFICATION_TOLERANCE_METRES: Final[float] = 5.0
+
+# Regions smaller than this are measured and counted but not drawn as individual features. The claim's
+# hectares are the whole mask - nothing is dropped from the number - and the raster-mask layer shows every
+# pixel; what the floor bounds is the vector payload, which otherwise carries thousands of one-pixel rings.
+MINIMUM_FEATURE_REGION_PIXELS: Final[int] = 25
+
+# How many decimals each metric is meaningful to (`claimMetricSchema.precision`). Hectares to one decimal:
+# a 10 m pixel is 0.01 ha, so the second decimal is one pixel and the third is noise.
+HECTARES_PRECISION: Final[int] = 1
+PERCENTAGE_PRECISION: Final[int] = 1
+COUNT_PRECISION: Final[int] = 0
+INDEX_VALUE_PRECISION: Final[int] = 2
+
+# The rule S18 applies and S19 records (PDF §21.2: "aggregation rule recorded, not just shown"). The run's
+# confidence is the weakest stated stage confidence; a stage that declines to state one does not lower
+# it, and a run where no stage states one has none. Named so the record can say which rule produced it.
+CONFIDENCE_AGGREGATION_RULE: Final[str] = "minimum-of-stated"

@@ -2,7 +2,8 @@
 
 what  : `pipeline_node`, the decorator every stage function wears. It mints the step id, emits the step
         twice, times it, and checks abandonment on the way in and on the way out. Plus
-        `current_trace_step_id()` and `describe_trace_step()`, the two things a node body may ask of it.
+        `current_trace_step_id()`, `describe_trace_step()` and `attach_artefact_layer()`, the three things
+        a node body may ask of it.
 where : Applied in `services/pipeline/nodes/` (one stage each) and in `graphs/probe.py`. Nothing else
         wraps a node.
 how   : Two obligations sit on every node, and both are the kind that get forgotten in the fourteenth one.
@@ -36,7 +37,9 @@ how   : Two obligations sit on every node, and both are the kind that get forgot
         body asks `current_trace_step_id()` rather than the decorator changing every node's signature.
         `describe_trace_step()` is the other direction: the completion detail an operator reads is often
         computed ("NDVI over 1066x1120, 2.3% obscured"), and a node that sets it has it emitted on the
-        terminal step instead of the static one.
+        terminal step instead of the static one. `attach_artefact_layer()` is the third: an artefact-
+        producing stage names the layer that draws its intermediate, and the completed step carries it
+        (`api-contract.md` §1 rule 10 - the operator clicks the step and sees what the machine saw).
 """
 
 import functools
@@ -65,10 +68,11 @@ NodeUpdate = dict[str, Any] | None
 
 @dataclass(slots=True)
 class _StepContext:
-    """What the running node may read (its id) and write (its completion detail)."""
+    """What the running node may read (its id) and write (its completion detail and artefact layer)."""
 
     step_id: str
     detail: str | None = None
+    artefact_layer_id: str | None = None
 
 
 _CURRENT_STEP: ContextVar[_StepContext] = ContextVar("aeris_current_trace_step")
@@ -92,6 +96,14 @@ def describe_trace_step(detail: str) -> None:
         _CURRENT_STEP.get().detail = detail
     except LookupError as error:
         raise RuntimeError("describe_trace_step() called outside a @pipeline_node body.") from error
+
+
+def attach_artefact_layer(layer_id: str) -> None:
+    """Name the layer that draws this stage's intermediate; the completed trace step carries it."""
+    try:
+        _CURRENT_STEP.get().artefact_layer_id = layer_id
+    except LookupError as error:
+        raise RuntimeError("attach_artefact_layer() called outside a @pipeline_node body.") from error
 
 
 def pipeline_node(
@@ -129,6 +141,7 @@ def pipeline_node(
                 _emit_step(
                     run_id, step_id, stage, step_state,
                     detail=text, duration_ms=duration_ms, model_id=model_id, model_version=model_version,
+                    artefact_layer_id=context.artefact_layer_id,
                 )
 
             emit_step(TraceStepState.RUNNING, text=detail, duration_ms=None)
@@ -214,6 +227,7 @@ def _emit_step(
     duration_ms: int | None,
     model_id: ModelId | None,
     model_version: str | None,
+    artefact_layer_id: str | None,
 ) -> None:
     """One trace-step emission. Private because a node emits through the decorator, never directly."""
     emit(
@@ -227,6 +241,7 @@ def _emit_step(
                 duration_ms=duration_ms,
                 model_id=model_id.value if model_id is not None else None,
                 model_version=model_version,
+                artefact_layer_id=artefact_layer_id,
             ),
         )
     )

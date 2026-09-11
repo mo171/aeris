@@ -12,11 +12,11 @@ how   : `api-contract.md` §3 says these events are "exactly the objects the CLI
         and asserts these enums equal them.
 
         **`EVENT_TYPES_NOT_YET_EMITTED` is the same idea as `FRONTEND_ONLY_VOCABULARIES` in
-        `constants/contracts.py`.** Phase 1.0 can honestly produce five of the seven analysis events; the
-        other two carry a layer and a claim, and no subsystem builds either yet. Declaring a model for them
-        now would be a claim about the system that nothing verifies. Recording them here instead keeps the
-        gap mechanical: the test that pairs this enum against the frontend union passes only because every
-        member it cannot emit is listed, with the sub-phase that will.
+        `constants/contracts.py`.** Phase 1.0 could honestly produce five of the seven analysis events; the
+        other two carried a layer and a claim, and were listed here with the phase that would build them
+        until 1.5 did. The test that pairs this enum against the frontend union passes only because every
+        member the backend cannot emit is listed, with the sub-phase that will - so the map is empty by
+        earning it, not by default.
 """
 
 from enum import StrEnum
@@ -55,16 +55,10 @@ class AssistantEventType(StrEnum):
 # Events the frontend already parses that no backend subsystem can populate yet, each with the sub-phase
 # that will. Not a to-do list: `tests/contracts/test_stream_events.py` fails if an entry here names an event
 # the frontend does not define, or if an event is neither modelled nor listed.
-EVENT_TYPES_NOT_YET_EMITTED: Final[dict[AnalysisEventType, str]] = {
-    AnalysisEventType.LAYER_READY: (
-        "Carries a layer and the evidence records drawn on it. Phase 1.5 builds evidence and Phase 1.2.1 "
-        "builds layers; until one of them exists there is nothing to put in the payload."
-    ),
-    AnalysisEventType.CLAIM: (
-        "Carries a validated claim object. Phase 1.5 - `evidence/` - is what produces one, and a claim "
-        "model written before the subsystem that fills it would be a shape nothing verifies."
-    ),
-}
+#
+# Empty since Phase 1.5, when `layer-ready` and `claim` gained the evidence subsystem that fills them. Kept
+# as the seam rather than deleted: an event the frontend adds next lands here first, with a phase.
+EVENT_TYPES_NOT_YET_EMITTED: Final[dict[AnalysisEventType, str]] = {}
 
 # The mirror of the map above: events the **backend** emits that the **frontend** does not parse yet.
 #

@@ -1,58 +1,55 @@
-"""S16 - says what was measured, in words that contain only the numbers S15 produced.
+"""S16 - says what the claims say, in words that contain only the numbers the claims carry.
 
 what  : `generate_answer`, the S16 node of the index-query graph.
-where : Last node of `graphs/index_query.py`. Phase 1.7 replaces the sentence templates with the
+where : After S15 in `graphs/index_query.py`. Phase 1.7 replaces the sentence assembly with the
         constrained generator - language from the structured result, numbers injected, never generated -
-        and this node is the shape that generator has to keep.
-how   : No model, no inference, no confidence. Every quantity in the text is read from the state S15
-        wrote, formatted for a reader, and nothing else; the rounding is presentation and the underlying
-        value in the state is what a claim will carry (`api-contract.md` §5 applies the same rule to
-        speech). `confidence` is `None` because a deterministic measurement has no probability to report
-        and `0.0` would claim it has none (§1 rule 2).
+        and this node is the shape that generator has to keep: claims in, tokens out.
+how   : No model, no inference, no confidence. The answer is the claims' own text, primary first, then
+        the caveats the run recorded about its inputs: whether a cloud mask was applied, and how much of
+        the ground the formula refused. Nothing in the text comes from anywhere but the state, and every
+        number in it is on a claim the frontend already holds (PDF §20: every numeric claim traceable to
+        a computation).
 
-        Streamed as word-sized tokens (`api-contract.md` §3.1), which is how the terminal and, later, the
-        frontend both draw an answer arriving.
+        A run with no claims - a map-only question - describes the map from the distribution S15
+        recorded, which is a description rather than an assertion and carries no claim for that reason.
+
+        Streamed as word-sized tokens (`api-contract.md` §3.1). `confidence` is not decided here: S18
+        aggregates it, and the completion event reads it from the checkpoint.
 """
 
 from app.constants.spectral import SpectralIndex
 from app.constants.stages import PipelineStage
-from app.services.pipeline.node import pipeline_node
+from app.services.pipeline.node import describe_trace_step, pipeline_node
 from app.services.pipeline.state import IndexQueryState
 from app.services.pipeline.stream import emit_answer_token
 
 
-@pipeline_node(PipelineStage.S16, detail="Composing the answer from the measurement")
+@pipeline_node(PipelineStage.S16, detail="Composing the answer from the claims")
 async def generate_answer(state: IndexQueryState) -> dict[str, object]:
-    """S16. Sentences from the state, nothing from anywhere else."""
+    """S16. Sentences from the claims, nothing from anywhere else."""
     text = _compose(state)
     tokens = text.split(" ")
     for token in tokens:
         emit_answer_token(state["run_id"], token)
-    return {"answer_tokens": tokens, "confidence": None}
+    describe_trace_step(f"{len(state.get('claims', []))} claims spoken in {len(tokens)} tokens")
+    return {"answer_tokens": tokens}
 
 
 def _compose(state: IndexQueryState) -> str:
-    index = SpectralIndex(state["index"]).value.upper()
-    scene = state["scene_id"]
+    claims = state.get("claims", [])
     sentences: list[str] = []
 
-    measurement = state.get("measurement")
-    if measurement is None:
-        fractions = state.get("band_fractions", {})
-        leading = max(fractions, key=fractions.__getitem__) if fractions else None
-        sentences.append(f"{index} was computed over {scene}.")
-        if leading is not None:
-            sentences.append(
-                f"Of the observed ground, {fractions[leading]:.1%} reads as {leading.lower()}."
-            )
+    if claims:
+        primary = [claim["text"] for claim in claims if claim["isPrimary"]]
+        supporting = [claim["text"] for claim in claims if not claim["isPrimary"]]
+        sentences.extend(primary + supporting)
     else:
-        lower, upper = state["target_lower"], state["target_upper"]
-        sentences.append(
-            f"{state['target_label']} ({index} {lower:.2f} to {upper:.2f}) covers "
-            f"{measurement['areaHectares']:,.1f} hectares of {scene}: "
-            f"{measurement['coverageFraction']:.1%} of the {measurement['observedHectares']:,.1f} hectares "
-            f"observed, in {measurement['regionCount']:,} regions."
-        )
+        index = SpectralIndex(state["index"]).value.upper()
+        fractions = state.get("band_fractions", {})
+        sentences.append(f"{index} was computed over {state['scene_id']}.")
+        if fractions:
+            leading = max(fractions, key=fractions.__getitem__)
+            sentences.append(f"Of the observed ground, {fractions[leading]:.1%} reads as {leading.lower()}.")
 
     obscured = state.get("obscured_fraction")
     if state.get("index_mask_applied") and obscured is not None:

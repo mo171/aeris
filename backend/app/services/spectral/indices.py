@@ -98,6 +98,8 @@ class BandOnGrid:
     reflectance: np.ndarray
     native_resolution_metres: int | None
     resampled: bool
+    # The file the values were read from, before any resampling: what provenance hashes.
+    source: RasterMetadata
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +198,7 @@ async def read_scene_bands(
             reflectance=reflectance,
             native_resolution_metres=metadata.band.native_resolution_metres,
             resampled=resampled,
+            source=metadata,
         )
 
     logger.info(

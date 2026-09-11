@@ -366,9 +366,10 @@ async def test_the_gate_the_graph_measures_the_sparse_region_and_says_so(
 
     assert status is RunStatus.COMPLETE
     assert [s.step.stage_code for s in recorder.steps(TraceStepState.COMPLETED)] == [
-        PipelineStage.S7, PipelineStage.S12, PipelineStage.S15, PipelineStage.S16
+        PipelineStage.S7, PipelineStage.S12, PipelineStage.S15, PipelineStage.S16,
+        PipelineStage.S18, PipelineStage.S19,
     ]
-    assert len(recorder.steps(TraceStepState.RUNNING)) == 4
+    assert len(recorder.steps(TraceStepState.RUNNING)) == 6
 
     by_stage = {s.step.stage_code: s.step for s in recorder.steps(TraceStepState.COMPLETED)}
     assert "SCL mask" in (by_stage[PipelineStage.S7].detail or "")
@@ -428,7 +429,9 @@ async def test_the_journal_validates_against_the_frontend_union(scene: Path, iso
             continue
         errors = [error.message for error in UNION_VALIDATOR.iter_errors(payload)]
         assert not errors, f"line {index + 1} ({payload['type']}): {errors}"
-    assert {payload["type"] for payload in lines} >= {"run-start", "trace-step", "figure-ready", "answer-token", "run-complete"}
+    assert {payload["type"] for payload in lines} >= {
+        "run-start", "trace-step", "layer-ready", "claim", "figure-ready", "answer-token", "run-complete"
+    }
 
 
 @pytest.mark.integration
@@ -463,7 +466,9 @@ async def test_a_run_resumed_after_s12_reads_the_retained_index_rather_than_memo
         resumed = await read_thread_state(graph, run_id)
 
     assert status is RunStatus.COMPLETE
-    assert [s.step.stage_code for s in recorder.steps(TraceStepState.COMPLETED)] == [PipelineStage.S15, PipelineStage.S16]
+    assert [s.step.stage_code for s in recorder.steps(TraceStepState.COMPLETED)] == [
+        PipelineStage.S15, PipelineStage.S16, PipelineStage.S18, PipelineStage.S19
+    ]
     assert await asyncio.to_thread(index_path.exists), "the artefact was restored from storage through S15"
     assert resumed.values["measurement"]["pixelCount"] == 32 * 64
 

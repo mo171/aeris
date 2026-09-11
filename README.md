@@ -62,8 +62,9 @@ uv run aeris doctor
 If the command outputs an `ok` status for all services, your backend is perfectly configured and ready to use!
 
 ### 8. Run an analysis (`aeris analyse`)
-With the stack green, ask an index question over the bundled Sentinel-2 subset. The run streams its S7–S16
-trace, writes three figures under `backend/runs/<run_id>/figures/`, and prints the measured area:
+With the stack green, ask an index question over the bundled Sentinel-2 subset. The run streams its S7–S19
+trace, writes three figures under `backend/runs/<run_id>/figures/`, prints the measured area and the claims
+it rests on, and leaves `provenance.json` and `evidence-graph.json` beside the journal:
 
 ```bash
 uv run aeris analyse --scene notebooks/01_remote_sensing/data --query "unhealthy vegetation" --level L2A
@@ -72,3 +73,18 @@ uv run aeris analyse --scene notebooks/01_remote_sensing/data --query "unhealthy
 `--level L2A` is needed for that subset because its files carry no product name; a scene fetched with
 `aeris dataset fetch` states its level in the path and does not need it. Other questions the phrase table
 answers: `"vegetation"`, `"water"`, `"flood extent"`, `"built-up"`, or a bare index name such as `"ndwi"`.
+
+---
+
+## Local Database & GUI Connection Details
+
+If you are connecting a GUI client (such as pgAdmin, DBeaver, TablePlus, or VSCode Database Client) to the local PostgreSQL database, use the following settings:
+
+| Setting | Value to Enter | Notes |
+| :--- | :--- | :--- |
+| **Host** | `localhost` *(or `127.0.0.1`)* | Bound to localhost |
+| **Port** | `5433` | Host port is `5433` (mapped from container port `5432` to avoid host collisions) |
+| **User** | `aeris` | Application user |
+| **Password** | `aeris_local_development` | Local development password |
+| **Database** | `aeris` | Primary database name |
+

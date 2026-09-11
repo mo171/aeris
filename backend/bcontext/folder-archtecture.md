@@ -71,6 +71,7 @@ backend/
 │   │   └── report_controller.py
 │   │
 │   ├── schemas/                         # Pydantic. camelCase on the wire (api-contract.md §1).
+│   │   ├── geo.py                       # GeoPoint, GeoBoundingBox - WGS 84 degrees, bounded  DONE (1.5)
 │   │   ├── requests/
 │   │   │   ├── investigation.py
 │   │   │   ├── imagery.py
@@ -85,8 +86,8 @@ backend/
 │   │   └── events/                      # The stream event union. Survived ADR-002; it IS the frontend contract.
 │   │       ├── run.py                   # run-start, run-complete, run-error
 │   │       ├── trace.py                 # trace-step
-│   │       ├── layer.py                 # layer-ready
-│   │       ├── claim.py                 # claim
+│   │       ├── layer.py                 # layer-ready + EvidenceLayer/Feature/Item  DONE (1.5)
+│   │       ├── claim.py                 # claim + Claim/ClaimMetric  DONE (1.5)
 │   │       ├── answer.py                # answer-token
 │   │       ├── figure.py                # figure-ready + legend + renderSpec  DONE (1.2.1)
 │   │       ├── speech.py                # speech        (NEW - api-contract.md §5)
@@ -123,8 +124,11 @@ backend/
 │   │   │   │   │                         #   sets its completion line with `describe_trace_step()` (node.py).
 │   │   │   │   ├── cloud_handling.py        # S7  DONE (1.4). SCL -> mask artefact, or "no mask" said aloud.
 │   │   │   │   ├── feature_extraction.py    # S12 DONE (1.4). Mask the bands, then the formula; artefact + figure.
-│   │   │   │   ├── evidence_localisation.py # S15 DONE (1.4). Threshold, measure vs OBSERVED ground, overlay.
-│   │   │   │   ├── answer_generation.py     # S16 DONE (1.4). Sentences from the state's numbers only.
+│   │   │   │   ├── evidence_localisation.py # S15 DONE (1.4, 1.5). Threshold, measure vs OBSERVED ground,
+│   │   │   │   │                            #   then BOTH representations, evidence items, claims, overlay.
+│   │   │   │   ├── answer_generation.py     # S16 DONE (1.5). The claims' text, then the recorded caveats.
+│   │   │   │   ├── confidence_estimation.py # S18 DONE (1.5). minimum-of-stated; None when nothing stated.
+│   │   │   │   ├── provenance_logging.py    # S19 DONE (1.5). provenance.json + evidence-graph.json from state.
 │   │   │   │   ├── input_validation.py
 │   │   │   │   ├── metadata_analysis.py
 │   │   │   │   ├── query_interpretation.py
@@ -133,13 +137,11 @@ backend/
 │   │   │   │   ├── temporal_check.py
 │   │   │   │   ├── mission_planning.py
 │   │   │   │   ├── model_routing.py
-│   │   │   │   ├── inference.py
-│   │   │   │   ├── confidence.py
-│   │   │   │   └── trace_generation.py
+│   │   │   │   └── inference.py
 │   │   │   │
 │   │   │   └── graphs/                  # StateGraph composition + add_conditional_edges routing tables
 │   │   │       ├── probe.py             # DONE (1.0). Two nodes, no imagery - "is the spine broken?"
-│   │   │       ├── index_query.py       # DONE (1.4). S7 -> S12 -> S15 -> S16 over one optical scene.
+│   │   │       ├── index_query.py       # DONE (1.4, 1.5). S7 -> S12 -> S15 -> S16 -> S18 -> S19.
 │   │   │       ├── investigation_graph.py
 │   │   │       ├── single_image_graph.py
 │   │   │       ├── temporal_graph.py
@@ -156,6 +158,7 @@ backend/
 │   │   │       ├── windowing.py         # tile grid + overlap arithmetic + blend weights
 │   │   │       ├── indices.py           # normalised difference + reflectance scaling. Carries the
 │   │   │       │                        #   post-condition that caught the NDVI-of-347 bug
+│   │   │       ├── web_mercator.py      # DONE (1.5). Geographic bounds + the zoom range a raster layer needs.
 │   │   │       └── quality_statistics.py# nodata fraction, histogram sanity, resolution report
 │   │   │
 │   │   │   NOTE: `ingestion.py` was planned here and is not needed - `metadata.py` reads and
@@ -198,12 +201,13 @@ backend/
 │   │   │       ├── box_operations.py    # iou, nms, box <-> polygon
 │   │   │       └── geometry.py
 │   │   │
-│   │   ├── segmentation/                # S13
+│   │   ├── segmentation/                # S13. 1.5 built the mask -> polygons kernel first.
 │   │   │   ├── segmenter.py
 │   │   │   ├── postprocess.py
 │   │   │   └── math/
 │   │   │       ├── morphology.py        # opening/closing, small-object removal
-│   │   │       └── vectorize.py         # raster mask -> polygons -> simplified geometry
+│   │   │       └── vectorize.py         # DONE (1.5). Eight-connected labels -> one polygon per region,
+│   │   │                                #   holes kept; per-region means. The labelling every count uses.
 │   │   │
 │   │   ├── change_detection/            # S13
 │   │   │   ├── detector.py
@@ -235,21 +239,24 @@ backend/
 │   │   │   └── math/
 │   │   │       └── box_operations.py
 │   │   │
-│   │   ├── evidence/                    # S15, S18, S19. 1.4 built the measurement half; 1.5 the rest.
+│   │   ├── evidence/                    # S15, S18, S19.  DONE (1.4, 1.5)
 │   │   │   ├── artefacts.py             # DONE (1.4). A stage's array -> COG on disk + `artefacts` bucket;
 │   │   │   │                            #   the state carries the path and key, never the array.
 │   │   │   ├── spatial.py               # DONE (1.4). The geospatial-engine: hectares, coverage of OBSERVED
 │   │   │   │                            #   ground, region count and density. Refuses a detection over
 │   │   │   │                            #   unobserved pixels - the structural proof S12 masked first.
-│   │   │   ├── builder.py               # evidence + claim objects
-│   │   │   ├── confidence.py            # float | None. Never 0.0 by default.
-│   │   │   ├── trace.py                 # trace steps + artefact URIs
+│   │   │   ├── builder.py               # DONE (1.5). A mask -> raster-mask layer AND polygon layer, the
+│   │   │   │                            #   evidence items, the claims. Mints the whole chain in one place
+│   │   │   │                            #   so a claim cannot exist without pixels behind it.
+│   │   │   ├── trace.py                 # DONE (1.5). ProvenanceRecord + EvidenceGraph and their writers.
+│   │   │   │                            #   Input hashes, parameters, artefact URIs, versions, the rule.
 │   │   │   └── math/
-│   │   │       ├── area.py              # DONE (1.4). Pixel FOOTPRINTS projected into a local LAEA and
-│   │   │       │                        #   summed; the mask is never resampled. Checked against pyproj's
-│   │   │       │                        #   geodesic integral and PostGIS geography.
-│   │   │       ├── simplification.py
-│   │   │       └── confidence_aggregation.py
+│   │   │       ├── area.py              # DONE (1.4, 1.5). Pixel FOOTPRINTS projected into a local LAEA and
+│   │   │       │                        #   summed; the mask is never resampled. `polygon_area` measures a
+│   │   │       │                        #   region's outline in the same projection - one number.
+│   │   │       ├── simplification.py    # DONE (1.5). Douglas-Peucker in metres, topology kept; then the
+│   │   │       │                        #   outer ring in degrees. Holes cannot travel on the wire.
+│   │   │       └── confidence_aggregation.py  # DONE (1.5). minimum-of-stated. None is absent, not 0.
 │   │   │
 │   │   ├── rendering/                   # Array -> finished image. product-truth.md §1.5, api-contract.md §6.
 │   │   │   ├── figures.py               # async. Chooses the ramp/stretch, composes, writes to storage, emits figure-ready.
@@ -327,7 +334,7 @@ backend/
 │   │   ├── inngest.py                   # the Inngest client + health probe. The FUNCTIONS live in
 │   │   │                                #   app/inngest/ (Phase 2.5) and import from here - same split
 │   │   │                                #   as database.py vs app/db/models/.
-│   │   ├── tiles.py                     # TiTiler URLs, TileJSON
+│   │   ├── tiles.py                     # DONE (1.5). TiTiler TileJSON, viewer and XYZ template URLs.
 │   │   ├── websocket.py                 # (Phase 2)
 │   │   ├── telemetry.py
 │   │   └── security.py                  # (Phase 2)

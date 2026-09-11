@@ -102,6 +102,12 @@ rather than waiting for the run to finish. The frontend's own note calls this "t
 line in the analysis contract". It carries the layer *and* the evidence records it draws, so nothing ever
 renders unattributed.
 
+Emitted from Phase 1.5. Two limits of the current layer schema, found by emitting real ones and recorded
+here as coordinated changes to ask for: `featureGeometrySchema`'s polygon is a single ring, so a region
+with holes travels as its outline (the feature's `areaHectares` is the true, holed area); and
+`layerProvenanceSchema.modelId` has no value for a mask read from the product's own scene classification,
+so an S7 layer is not emitted for an L2A scene and the artefact is recorded in the provenance file instead.
+
 **`figure-ready` follows the same principle for images** — a rendered figure is shown the moment it exists,
 never batched to the end of the run.
 
