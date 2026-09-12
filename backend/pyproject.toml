@@ -78,6 +78,11 @@ dependencies = [
     # torchvision comes from the same CUDA index as torch so the two match.
     "ultralytics>=8.3",
     "torchvision>=0.29",
+    # Phase 1.7 - the VLM. peft attaches the BigEarthNet.txt LoRA; bitsandbytes serves it 4-bit; accelerate
+    # is what transformers' device_map needs.
+    "peft>=0.20",
+    "bitsandbytes>=0.50",
+    "accelerate>=1.15",
 ]
 
 [tool.uv.sources]
@@ -97,12 +102,9 @@ explicit = true
 dev = [
     "pytest>=9.0",
     "pytest-asyncio>=1.0",
-
     # Phase 0.7 validates every backend fixture against the JSON Schema exported from the frontend's Zod.
     "jsonschema>=4.26",
-
     "ruff>=0.14",
-
     # The notebook surface. Some notebooks are the product owner's, most are research instruments - see
     # bcontext/README.md on when writing one is justified.
     "jupyter>=1.1",
@@ -111,6 +113,8 @@ dev = [
     "ipywidgets>=8.1",
     "xarray>=2026.7",
     "rioxarray>=0.23",
+    "lmdb>=2.3.0",
+    "kaggle>=2.2.4",
 ]
 
 # The `aeris` command. Phase 1 is a CLI application, so this is the product's entry point, not a convenience

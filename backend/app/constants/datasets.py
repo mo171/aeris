@@ -128,6 +128,10 @@ class LayoutKind(StrEnum):
     # One directory per scene, holding its bands and metadata. What `aeris dataset fetch` writes.
     SCENE_DIRECTORIES = "scene-directories"
 
+    # One table of text rows (parquet) keyed to another dataset's images. BigEarthNet.txt: the pictures
+    # are BigEarthNet v2.0's and live in their own archive; a "sample" here is a row.
+    TEXT_TABLE = "text-table"
+
 
 @dataclass(frozen=True, slots=True)
 class DatasetLayout:
@@ -606,23 +610,24 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
         resolution="10 m (120 x 120 px patches)",
         scale="464,044 S1/S2 pairs, ~9.6 M text rows; 1,082-pair manually verified benchmark split",
         unlocked_in="1.7",
-        licence=Licence.UNVERIFIED,
+        # Read 2026-09-12 (the operator's confirmation) - the Hub page states CDLA-Permissive-1.0.
+        licence=Licence.CDLA_PERMISSIVE_1_0,
         licence_url="https://huggingface.co/datasets/BIFOLD-BigEarthNetv2-0/BigEarthNet.txt",
-        licence_verified=False,
+        licence_verified=True,
         source_url="https://huggingface.co/datasets/BIFOLD-BigEarthNetv2-0/BigEarthNet.txt/resolve/main/BigEarthNet.txt.parquet",
         acquisition="download",
         layout=DatasetLayout(
-            kind=LayoutKind.IMAGE_SIDECAR,
+            kind=LayoutKind.TEXT_TABLE,
             split_directories={DatasetSplit.ALL: "."},
-            image_directories=("images",),
+            image_directories=(),
             label_file="BigEarthNet.txt.parquet",
         ),
         approximate_size="0.43 GB of text; the images are BigEarthNet v2.0 (~120 GB, or a 10% subset)",
         quirks=(
             "The parquet is text only - `patch_id` and `s1_name` key into BigEarthNet v2.0 (reBEN) patches, "
             "which are not in the file. The images must be fetched separately and joined on `patch_id`.",
-            "The stated licence is CDLA-Permissive-1.0 (the Hub page); recorded UNVERIFIED until read. "
-            "It is the problem statement's named dataset for remote-sensing adaptation.",
+            "CDLA-Permissive-1.0 per the Hub page. It is the problem statement's named dataset for "
+            "remote-sensing adaptation.",
             "Rows carry `split` (train/validation/test) and `type`/`category`; the benchmark split is the "
             "manually verified subset and is what 1.14 scores, never the LLM-augmented rows.",
         ),
@@ -635,9 +640,10 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
         resolution="10 m",
         scale="~77,000 question-answer pairs",
         unlocked_in="1.7",
-        licence=Licence.UNVERIFIED,
+        # Read 2026-09-12 (the operator's confirmation) - Zenodo record 6344334 states CC-BY-4.0.
+        licence=Licence.CC_BY_4_0,
         licence_url="https://rsvqa.sylvainlobry.com/",
-        licence_verified=False,
+        licence_verified=True,
         source_url="https://zenodo.org/records/6344334",
         acquisition="download",
         layout=DatasetLayout(

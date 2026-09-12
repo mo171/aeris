@@ -39,6 +39,13 @@ SENTINEL1_IW_GRD_EQUIVALENT_LOOKS: Final[float] = 4.4
 # above 0 dB, so nothing of interest saturates.
 SAR_BACKSCATTER_DECIBEL_DOMAIN: Final[tuple[float, float]] = (-25.0, 5.0)
 
+# The three windows of the VV / VH / VV-VH false-colour composite the VLM is shown (Phase 1.7), in dB.
+# Cross-pol sits ~7 dB below co-pol, so VH gets its own window; the ratio separates water (large) from
+# built-up and vegetation (small) where VV alone does not.
+SAR_FALSE_COLOUR_DOMAINS: Final[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = (
+    SAR_BACKSCATTER_DECIBEL_DOMAIN, (-30.0, -5.0), (0.0, 15.0)
+)
+
 # Sentinel-2 L2A scene classification (SCL) classes, as ESA numbers them. The mask an L2A scene already
 # carries at 20 m, and the S7 path that actually runs on our data: s2cloudless needs B10, which L2A
 # products do not publish, so the ten-band cube can only be assembled from an L1C scene.

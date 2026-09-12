@@ -38,7 +38,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
-from app.constants.fleet import FLEET, LATENCY_WINDOW, LEARNED_MODELS, UNAVAILABLE_VERSION, FleetRecord
+from app.constants.fleet import FLEET, LATENCY_WINDOW, UNAVAILABLE_VERSION, FleetRecord
 from app.constants.model_ids import ModelId
 from app.constants.statuses import ModelHealth
 from app.lib.exceptions import ConflictError, ResourceNotFoundError
@@ -80,21 +80,30 @@ class ModelManager:
         device: Device,
         loaders: Mapping[ModelId, Loader],
         lock_factory: LockFactory | None = None,
+        records: Mapping[ModelId, FleetRecord] = FLEET,
     ) -> None:
         self.device = device
         self._loaders = dict(loaders)
+        # The fleet this process serves. `FLEET` by default; `registry.resolved_fleet()` swaps in the
+        # configured VLM variant, whose base and footprint are a setting rather than a constant.
+        self._records = dict(records)
         self._lock_factory = lock_factory or _redis_lock
         self._decisions = asyncio.Lock()
         self._resident: OrderedDict[ModelId, Resident] = OrderedDict()
-        self._telemetry: dict[ModelId, _Telemetry] = {model_id: _Telemetry() for model_id in FLEET}
+        self._telemetry: dict[ModelId, _Telemetry] = {model_id: _Telemetry() for model_id in self._records}
         self._waiting: Counter[ModelId] = Counter()
-        for model_id, record in FLEET.items():
-            if model_id not in LEARNED_MODELS and record.version != UNAVAILABLE_VERSION:
+        for model_id, record in self._records.items():
+            if record.weights is None and record.version != UNAVAILABLE_VERSION:
                 self._telemetry[model_id].health = ModelHealth.ONLINE
 
     @classmethod
-    async def create(cls, loaders: Mapping[ModelId, Loader], lock_factory: LockFactory | None = None) -> ModelManager:
-        return cls(device=await detect_device(), loaders=loaders, lock_factory=lock_factory)
+    async def create(
+        cls,
+        loaders: Mapping[ModelId, Loader],
+        lock_factory: LockFactory | None = None,
+        records: Mapping[ModelId, FleetRecord] = FLEET,
+    ) -> ModelManager:
+        return cls(device=await detect_device(), loaders=loaders, lock_factory=lock_factory, records=records)
 
     # --- Leasing -------------------------------------------------------------------------------------
 
@@ -115,7 +124,7 @@ class ModelManager:
             self._resident.move_to_end(model_id)
 
     async def _ensure_resident(self, model_id: ModelId) -> Resident:
-        record = FLEET.get(model_id)
+        record = self._records.get(model_id)
         if record is None:
             raise ResourceNotFoundError(f"No fleet record for {model_id}.", details={"modelId": model_id})
         if record.weights is None:
@@ -219,7 +228,7 @@ class ModelManager:
     async def status(self) -> ModelStatusCollection:
         """The fleet as the frontend's strip draws it: one row per model id, engines included."""
         rows = []
-        for model_id, record in FLEET.items():
+        for model_id, record in self._records.items():
             telemetry = self._telemetry[model_id]
             latencies = telemetry.latencies_ms
             rows.append(
@@ -267,9 +276,9 @@ async def get_manager() -> ModelManager:
     """The process-wide manager, built on first use with the fleet's loaders."""
     global _manager
     if _manager is None:
-        from app.models.registry import LOADERS
+        from app.models.registry import LOADERS, resolved_fleet
 
-        _manager = await ModelManager.create(LOADERS)
+        _manager = await ModelManager.create(LOADERS, records=resolved_fleet())
     return _manager
 
 

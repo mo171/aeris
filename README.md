@@ -124,3 +124,20 @@ uv run aeris dataset fetch dota8
 ```bash
 uv run aeris models evaluate --model dota-detector
 ```
+
+### 10. The vision-language model (`aeris ask`)
+Phase 1.7 serves Qwen3-VL (2B by default, `VLM_SIZE=4b` on an 8 GB card) 4-bit through the fleet, and puts
+the constrained answer generator into S16: the model phrases the claims, and any number it writes that no
+specialist computed rejects the phrasing. The first call downloads the 4 GB base into `backend/data/models/`.
+
+```bash
+uv run aeris ask --image backend/data/datasets/dota8/dota8/images/val/P1470__1024__3296___1648.jpg --question "How many basketball courts are visible?"
+```
+
+```bash
+uv run aeris ask --image before.png --image after.png --question "What changed between the two dates?"
+```
+
+Without an adapter the version reads `qwen3-vl-2b-unadapted`. The remote-sensing adaptation - a LoRA
+trained on BigEarthNet.txt and RSVQA-LR on a Kaggle T4 - is `backend/notebooks/08_vlm_finetuning/`
+(read its README first); set `VLM_ADAPTER_REPOSITORY` to the pushed adapter and the fleet loads it.

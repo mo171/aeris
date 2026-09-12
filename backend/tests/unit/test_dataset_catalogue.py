@@ -137,6 +137,9 @@ async def test_a_layout_is_loadable(dataset_id: DatasetId) -> None:
     layout = DATASET_CATALOGUE[dataset_id].layout
 
     assert layout.split_directories, f"{dataset_id.value} declares no splits."
+    if layout.kind is LayoutKind.TEXT_TABLE:
+        assert layout.label_file, f"{dataset_id.value} is a text table and names no file."
+        return
     assert layout.image_directories, f"{dataset_id.value} declares no image directory."
     assert layout.image_suffixes, f"{dataset_id.value} declares no image suffixes."
 
@@ -193,7 +196,9 @@ async def test_the_sentinel_licences_are_the_ones_that_are_actually_verified() -
     verified = {
         record.dataset_id for record in DATASET_CATALOGUE.values() if record.licence_verified
     }
-    assert verified == {DatasetId.SENTINEL2_L2A, DatasetId.SENTINEL1_GRD}, (
+    # 2026-09-12: BigEarthNet.txt (Hub page, CDLA-Permissive-1.0) and RSVQA (Zenodo 6344334, CC-BY-4.0)
+    # confirmed by the operator before the Phase 1.7 LoRA was trained on them.
+    assert verified == {DatasetId.SENTINEL2_L2A, DatasetId.SENTINEL1_GRD, DatasetId.BIGEARTHNET_TXT, DatasetId.RSVQA_LR}, (
         "The set of verified licences changed. If someone read a licence page and confirmed the terms, "
         "update this test and say which page and when. If not, the record is wrong."
     )

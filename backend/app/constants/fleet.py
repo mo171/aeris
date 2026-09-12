@@ -24,9 +24,11 @@ how   : `constants/model_ids.py` deferred the model-to-capability mapping to "wh
         the original wgcban architecture under `CD_model.` - and `segformer-landcover` is a SegFormer-B2
         fine-tuned on LoveDA. `dota-detector` is Ultralytics' YOLO11s-OBB trained on DOTA v1.0, **AGPL-3.0**
         (weights and the `ultralytics` package alike; the network copyleft is recorded in
-        `constants/licences.py` and is a product decision before any hosted deployment). `grounding-dino-sam`
-        and `rs-vlm` are 1.7's. A model with no weights source reports `offline` and refuses to load, which
-        is louder than a placeholder.
+        `constants/licences.py` and is a product decision before any hosted deployment). `rs-vlm` is Qwen3-VL
+        (Apache-2.0) at the size `settings.vlm_size` names, with the BigEarthNet.txt LoRA adapter of
+        `settings.vlm_adapter_repository` attached - `constants/vlm.py` has the variants. `grounding-dino-sam`
+        is still owed. A model with no weights source reports `offline` and refuses to load, which is
+        louder than a placeholder.
 """
 
 from enum import StrEnum
@@ -34,6 +36,7 @@ from typing import Final, NamedTuple
 
 from app.constants.model_ids import ModelCapability, ModelId
 from app.constants.stages import PipelineStage
+from app.constants.vlm import VLM_VARIANTS, VlmSize
 
 
 class VramProfile(StrEnum):
@@ -151,8 +154,15 @@ FLEET: Final[dict[ModelId, FleetRecord]] = {
     ModelId.GROUNDING_DINO_SAM: FleetRecord(
         ModelId.GROUNDING_DINO_SAM, "0.0.0", ModelCapability.GROUNDING, (PipelineStage.S13,), None, 0, None
     ),
+    # The 2B base as the default record; `models/registry.py` swaps in the configured variant and adapter.
     ModelId.REMOTE_SENSING_VLM: FleetRecord(
-        ModelId.REMOTE_SENSING_VLM, "0.0.0", ModelCapability.VISION_LANGUAGE, (PipelineStage.S16,), None, 0, None
+        model_id=ModelId.REMOTE_SENSING_VLM,
+        version=VLM_VARIANTS[VlmSize.SMALL_2B].version,
+        capability=ModelCapability.VISION_LANGUAGE,
+        stages=(PipelineStage.S14, PipelineStage.S16),
+        weights=WeightsSource(VLM_VARIANTS[VlmSize.SMALL_2B].repository, None, VLM_VARIANTS[VlmSize.SMALL_2B].revision),
+        vram_megabytes=VLM_VARIANTS[VlmSize.SMALL_2B].vram_megabytes,
+        tile_size=None,
     ),
 }
 

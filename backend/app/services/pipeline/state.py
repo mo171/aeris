@@ -69,6 +69,8 @@ class PipelineState(TypedDict, total=False):
     # The written answer, in the word-sized chunks that were streamed. Joined for the report; kept as
     # chunks so a replayed journal reproduces the same stream the operator saw.
     answer_tokens: Annotated[list[str], add]
+    # `vlm` or `template`: which generator phrased the claims (S16).
+    answer_source: str
 
     # --- Terminal. Set by at most one node. --------------------------------------------------------------
 

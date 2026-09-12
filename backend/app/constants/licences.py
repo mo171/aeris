@@ -45,6 +45,8 @@ class Licence(StrEnum):
     APACHE_2_0 = "apache-2.0"
     # Copyleft that reaches over the network: serving the covered work as a service obliges source release.
     AGPL_3_0 = "agpl-3.0"
+    # The Linux Foundation's permissive data agreement: use, modify, share; keep the agreement text with it.
+    CDLA_PERMISSIVE_1_0 = "cdla-permissive-1.0"
 
     # Published for academic use with commercial use reserved or requiring permission. Common for the
     # change-detection and grounding datasets, and the reason the roadmap warns about redistribution.
@@ -166,6 +168,14 @@ LICENCE_TERMS: Final[dict[Licence, LicenceTerms]] = {
             "Any use, but a service that runs the covered work over a network must offer its own source "
             "under the same licence. Ultralytics sells a commercial licence as the alternative."
         ),
+    ),
+    Licence.CDLA_PERMISSIVE_1_0: LicenceTerms(
+        licence=Licence.CDLA_PERMISSIVE_1_0,
+        redistribution=Redistribution.PERMITTED_WITH_ATTRIBUTION,
+        commercial_use=CommercialUse.PERMITTED,
+        training_permitted=True,
+        attribution_required=True,
+        summary="Any use of the data and of results computed from it; redistribute with the agreement text.",
     ),
     Licence.RESEARCH_ONLY: LicenceTerms(
         licence=Licence.RESEARCH_ONLY,

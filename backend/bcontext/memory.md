@@ -1,3 +1,69 @@
+## Session — 2026-09-12 (1.7) · The VLM, the constrained generator, and a baseline of 0.27. **The first phrasing was rejected for copying the specialists' own number.**
+
+Phase 1.7 built the VLM path end to end - serving, the S14 readings, the S16 constrained generator,
+`aeris ask`, the evaluation harness, the whole fine-tuning pipeline and its teaching notebooks - and ran
+everything that a 4 GB laptop can run. What it cannot run is the training itself; that is one command
+(`training/vlm/kaggle.py push`) away from the operator's Kaggle and Hub credentials.
+
+### Decided, after reading the problem statement
+
+- **`rs-vlm` = Qwen3-VL-2B-Instruct (4B at 8 GB) + a LoRA we train on BigEarthNet.txt.** The statement
+  rules out a generic VLM and names BigEarthNet.txt; EarthDial/GeoChat/EarthGPT are adapted by others,
+  larger, and carry custom code. A public `satquery-qwen3vl-bigearthnet-txt-lora` (another team, same
+  base) confirmed the route runs. The two datasets the statement names that we lacked - BigEarthNet.txt
+  and CDVQA - are in the catalogue now; a `TEXT_TABLE` layout kind enumerates a text-only parquet.
+- **Colab cannot be driven from a terminal; Kaggle can** (`kaggle kernels push/status/output`), so
+  training goes there. Credentials are the operator's to place; none pass through this repo.
+
+### Measured rather than assumed
+
+- **Baseline, 189 human-verified rows:** yes/no 0.539, MCQ 0.394, boxes 0.000, captions ROUGE-L 0.162,
+  overall 0.274, stated confidence 0.83. Boxes are zero because the base answers `[0, 0, 99, 99]`.
+- **The numeral guard rejected a correct phrasing** - the model copied "NDVI 0.20-0.40" from the fact.
+  Numerals a fact already carries are now permitted; anything else is still fatal. Then it produced
+  "2,471.0 ha hectares": a hole is now filled with exactly the string it replaced.
+- **BigEarthNet v2.0's S1 is already in dB** (VV median -18); the renderer takes `already_decibels`.
+  **Its S2 at a linear 0-2500 window is nearly black over forest** (98th-percentile red ~900); gamma 0.6
+  chosen against 0-1800/0.7 and 0-3000/0.5 on eight patches. Fixed windows, never per-image percentiles.
+- **Lithuania-summer is one country, one season**: `country`, `season`, `climate zone` are constants
+  there and are dropped from training, or the model learns "Lithuania" for every picture on Earth.
+- **The LMDB subset holds 189 of the 15,029 bench rows.** Small, but the only verified rows we can score
+  with pictures; template `test` rows are reported beside them with that caveat.
+- **QLoRA at batch 1 fits the 3050 (6.1 GB peak with WDDM spill); batch 2 OOMs.** The notebook's dataset,
+  label masking (`-100` on the prompt), collate and LoRA regex (language model only, 17.4 M trainable,
+  none in `visual`) were executed here before being trusted on Kaggle; the first collate indexed
+  `pixel_values[0]` and lost every patch but one.
+- **Footprint:** 2B NF4 is 1,505 MB resident, 1,726 MB peak through a two-image prompt; declared 2,048.
+- **`ultralytics` ships a top-level `tests` package**; `tests/` became a regular package (1.6 addendum).
+
+### Decisions worth not relitigating
+
+- **The generator phrases holes, never numbers.** Facts go in with `{m1}`; the output is checked, then
+  filled. A rejected phrasing falls back to the template *with the rejection recorded* on the answer
+  and in the trace step, not silently.
+- **`answer_generator = "vlm"` is the default; pipeline tests set `template`.** A machine without the
+  model gets the template and a version that says so.
+- **Training and serving share one rendering module** (`services/vlm/math/rendering.py`) and one
+  image size (`VLM_IMAGE_PIXELS = 448`); the notebook restates both by value and says it must match.
+- **The fleet record for `rs-vlm` is resolved from settings** (`registry.resolved_fleet()`), so the
+  manager admits by the configured variant's footprint; `FLEET` stays a constant.
+- **RSVQA-LR questions carry no question mark; VRSBench wraps each question in one of a dozen
+  templates.** Both are normalised so the model is taught a question and one answer-format sentence.
+
+### Owed
+
+- The Kaggle run (2B first, then 4B), the adapter on the Hub, `VLM_ADAPTER_REPOSITORY` set, notebook 04.
+- `licence_verified=True` on `bigearthnet-txt` and `rsvqa-lr` after a human reads the terms.
+- `grounding-dino-sam`: try Qwen3-VL's native grounding with the LoRA's box rows before adding a model.
+- The S14 nodes and the single-image / pair graphs - 1.10.
+
+### Next — Phase 1.8
+
+Query understanding and routing: the classifier that replaces the 1.4 phrase table, so "what changed
+here" reaches the temporal graph and "describe this" reaches S14.
+
+---
+
 ## Session — 2026-09-12 (1.6) · The first learned models. **The paper's convention scored 0.21; the checkpoint's scored 0.82.**
 
 Phase 1.6 put real weights behind two of the twelve model ids and built the residency they live in. Both

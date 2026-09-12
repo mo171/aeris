@@ -163,6 +163,10 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
         "Internal. Which residency tier a machine measured as. The frontend sees each model's health "
         "(`modelHealthSchema`), never the card it runs on."
     ),
+    "vlm.VlmSize": (
+        "Internal. Which Qwen3-VL base a machine is configured to serve. The frontend sees the model's "
+        "version string on `modelStatusSchema`, which names the size and whether an adapter is attached."
+    ),
     "spectral.SpectralIndex": (
         "Shared in substance, not in Zod: the frontend declares `SPECTRAL_INDEX_IDS` in "
         "`lib/constants/overlays/spectral-indices.ts` as a constants array rather than a schema, so the "
