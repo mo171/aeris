@@ -23,8 +23,14 @@ import { PIPELINE_STAGE_CODES } from "@/lib/constants/pipeline-stages";
 
 import { claimSchema, evidenceItemSchema, insufficientEvidenceSchema } from "./evidence.schema";
 import { evidenceLayerSchema } from "./layer.schema";
+import { parameterValueSchema } from "@/lib/constants/parameters";
 
 export const pipelineStageCodeSchema = z.enum(PIPELINE_STAGE_CODES);
+
+export const nodeRefSchema = z.object({
+  kind: z.enum(["scene", "region", "layer", "figure", "claim", "step"]),
+  id: z.string().min(1),
+});
 
 export const traceStepStateSchema = z.enum([
   "pending",
@@ -34,15 +40,26 @@ export const traceStepStateSchema = z.enum([
   "skipped",
 ]);
 
-export const analysisTraceStepSchema = z.object({
+export const analysisStepSchema = z.object({
   id: z.string().min(1),
-  /** Looked up in lib/constants/pipeline-stages.ts for its label; the wire carries the code only. */
+  /** Catalogue operation, when the step corresponds to one. Null for infrastructure stages (S1–S11). */
+  operationId: z.string().nullable(),
   stageCode: pipelineStageCodeSchema,
+  inputs: z.array(nodeRefSchema),
+  /** Resolved values the step ran (or will run) with — never the request, always the truth. */
+  parameters: z.record(z.string(), parameterValueSchema),
+  outputs: z.array(nodeRefSchema),
+  model: z.object({ id: z.string(), version: z.string() }).nullable(),
+  /** Why this step / this model, authored by the planner. Catalogue rationale is the fallback. */
+  rationale: z.string().nullable(),
+  /** Step ids this step consumes. THE GRAPH. Without it the trace is a list; with it, a canvas. */
+  dependsOn: z.array(z.string()),
+});
+
+export const analysisTraceStepSchema = analysisStepSchema.extend({
   detail: z.string().nullable(),
   state: traceStepStateSchema,
   durationMs: z.number().int().nonnegative().nullable(),
-  modelId: z.string().nullable(),
-  modelVersion: z.string().nullable(),
   /**
    * The intermediate product this stage generated, if it produced one worth inspecting.
    * Clicking the step loads this onto the scene as a temporary layer — the cloud mask, the registration
@@ -87,14 +104,13 @@ export const analysisRunRequestSchema = z.object({
    * question and intent classification is the right first stage.
    */
   operationId: z.string().nullable(),
+  parameterOverrides: z.record(z.string(), z.record(z.string(), parameterValueSchema)).nullable().optional(),
+  rerunFromStepId: z.string().nullable().optional(),
 });
 
-export const analysisPlanStepSchema = z.object({
-  id: z.string().min(1),
+export const analysisPlanStepSchema = analysisStepSchema.extend({
   title: z.string().min(1),
   description: z.string().min(1),
-  modelId: z.string().min(1),
-  stageCode: pipelineStageCodeSchema,
   /** The operator can strike a step out before the plan runs. A fixed plan is just a script. */
   isEnabled: z.boolean(),
 });
@@ -166,8 +182,8 @@ export const analysisStreamEventSchema = z.discriminatedUnion("type", [
     runId: z.string().min(1),
     figureId: z.string().min(1),
     isPrimary: z.boolean().optional(),
-    legend: z.any(),
-    renderSpec: z.any(),
+    legend: z.record(z.string(), z.any()),
+    renderSpec: z.record(z.string(), z.any()),
   }),
 ]);
 

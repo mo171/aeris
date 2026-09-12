@@ -76,7 +76,7 @@ export function InvestigatePlanSheet({
                 {step.description}
               </span>
               <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground/70">
-                {step.stageCode} · {getPipelineStage(step.stageCode).label} · {step.modelId}
+                {step.stageCode} · {getPipelineStage(step.stageCode).label} {step.model ? `· ${step.model.id}` : ""}
               </span>
             </label>
           </li>

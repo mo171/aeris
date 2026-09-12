@@ -68,7 +68,7 @@ export function TraceStepNode({
   }
 
   const canPeek = step.artefactLayerId !== null;
-  const model = getModel(step.modelId);
+  const model = step.model ? getModel(step.model.id) : null;
 
   return (
     <div
@@ -96,7 +96,7 @@ export function TraceStepNode({
             className="shrink-0 truncate rounded-sm font-mono text-[10px] text-muted-foreground/70 transition-colors duration-fast hover:text-aeris-teal focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             {model.id}
-            {step.modelVersion ? `@${step.modelVersion}` : ""}
+            {step.model?.version ? `@${step.model.version}` : ""}
           </Link>
         ) : null}
 

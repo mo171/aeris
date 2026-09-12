@@ -27,7 +27,9 @@
 
 import { CROSS_MODAL_STAGE } from "./cross-modal";
 import { SPECTRAL_INDICES, type SpectralIndexId } from "./overlays/spectral-indices";
+import type { ParameterValue } from "./parameters";
 import type { PipelineStageCode } from "./pipeline-stages";
+import { z } from "zod";
 
 /**
  * What has to be true before an operation can run.
@@ -44,6 +46,9 @@ export type AnalysisRequirement = "pair" | "optical" | "sar" | "evidence";
  * already there and touches no model at all — see the note at the top of this file.
  */
 export type AnalysisOperationKind = "run" | "lens";
+
+/** Intent-level grouping for the Toolbox and the palette. */
+export type OperationGroup = "ANALYSIS" | "TEMPORAL" | "MULTIMODAL" | "AI" | "MEASURE";
 
 export interface AnalysisOperation {
   id: string;
@@ -68,6 +73,14 @@ export interface AnalysisOperation {
    * single pixel arrives. Null for operations that measure existing evidence rather than draw anything.
    */
   producesOverlayId: string | null;
+  /** Tunable inputs. A Zod object: one schema renders the form, validates a re-run, and is emitted as
+   *  JSON Schema to the agent. z.object({}) for operations with no knobs. */
+  parameters: z.ZodObject<z.ZodRawShape>;
+  defaultParameters: Record<string, ParameterValue>;
+  /** Search vocabulary — what an operator might type when they want this. */
+  keywords: readonly string[];
+  /** Intent-level grouping for the Toolbox and the palette. */
+  group: OperationGroup;
 }
 
 /**
@@ -89,6 +102,10 @@ function indexOperation(indexId: SpectralIndexId, requires: readonly AnalysisReq
     stageCode: "S12",
     prompt: index.typicalQuery,
     producesOverlayId: indexId,
+    parameters: z.object({}),
+    defaultParameters: {},
+    keywords: ["vegetation", "water", "burn", "soil", "index", indexId],
+    group: "ANALYSIS",
   };
 }
 
@@ -103,6 +120,12 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     stageCode: "S13",
     prompt: "What changed between these two observations?",
     producesOverlayId: "change-mask",
+    parameters: z.object({
+      threshold: z.number().min(0).max(1).describe("Sensitivity threshold for change detection"),
+    }),
+    defaultParameters: { threshold: 0.35 },
+    keywords: ["change", "difference", "compare", "loss", "gain", "construction", "destruction"],
+    group: "ANALYSIS",
   },
   {
     id: "object-detection",
@@ -114,6 +137,12 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     stageCode: "S13",
     prompt: "What objects are present, and how many of each?",
     producesOverlayId: "detected-objects",
+    parameters: z.object({
+      targetClass: z.string().describe("Class of object to detect"),
+    }),
+    defaultParameters: { targetClass: "building" },
+    keywords: ["find", "count", "objects", "buildings", "vehicles", "vessels"],
+    group: "ANALYSIS",
   },
   {
     id: "segmentation",
@@ -125,6 +154,10 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     stageCode: "S13",
     prompt: "Classify land cover across this area and give the proportions.",
     producesOverlayId: "land-cover",
+    parameters: z.object({}),
+    defaultParameters: {},
+    keywords: ["land cover", "classify", "segment", "area", "share", "proportion"],
+    group: "ANALYSIS",
   },
   indexOperation("ndvi", ["optical"]),
   indexOperation("ndwi", ["optical"]),
@@ -141,6 +174,12 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     stageCode: "S13",
     prompt: "What does the radar observation show over this area?",
     producesOverlayId: "backscatter",
+    parameters: z.object({
+      polarization: z.enum(["VV", "VH", "HH", "HV"]).describe("Radar polarization to analyze"),
+    }),
+    defaultParameters: { polarization: "VV" },
+    keywords: ["sar", "radar", "backscatter", "roughness", "structure"],
+    group: "MULTIMODAL",
   },
   {
     /**
@@ -161,6 +200,10 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     stageCode: CROSS_MODAL_STAGE,
     prompt: "Do the optical and radar observations agree over this area?",
     producesOverlayId: null,
+    parameters: z.object({}),
+    defaultParameters: {},
+    keywords: ["cross-modal", "compare", "agree", "conflict", "radar vs optical", "fusion"],
+    group: "MULTIMODAL",
   },
   {
     id: "area-statistics",
@@ -172,6 +215,10 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     stageCode: "S15",
     prompt: "Summarise the measured area and counts of the current evidence.",
     producesOverlayId: null,
+    parameters: z.object({}),
+    defaultParameters: {},
+    keywords: ["measure", "area", "statistics", "counts", "distribution", "summary"],
+    group: "MEASURE",
   },
 ];
 
