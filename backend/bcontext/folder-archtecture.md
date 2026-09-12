@@ -39,14 +39,19 @@ backend/
 │   │   ├── main.py                      # Typer app. The only place asyncio.run() is called.
 │   │   ├── doctor.py                    # `aeris doctor` - the dependency table (Phase 0.6) DONE
 │   │   ├── dataset.py                   # `aeris dataset list|show|fetch|search`  DONE (1.1)
-│   │   ├── ingest.py                    # `aeris ingest <path>`
-│   │   ├── analyse.py                   # `aeris analyse --scene --query`
+│   │   ├── ingest.py                    # `aeris ingest inspect|scene|index`  DONE (1.2)
+│   │   ├── preprocess.py                # `aeris preprocess coregister|sar`  DONE (1.3)
+│   │   ├── analyse.py                   # `aeris analyse --scene --query`  DONE (1.4). Runs the
+│   │   │                                 #   index-query graph through the same session as `run`.
 │   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
 │   │   │                                 #   points it at the three real graphs; the flags do not change.
+│   │   ├── models.py                    # `aeris models status|warm|evaluate`  DONE (1.6). The fleet strip,
+│   │   │                                 #   the watchable eviction, the LEVIR-CD score.
 │   │   ├── voice.py                     # `aeris voice` - the spoken loop
 │   │   └── renderers/                   # Consumers of the LangGraph stream. Not a protocol - just consumers.
 │   │       ├── trace_renderer.py        # draws the live S1-S20 trace in the terminal  DONE (1.0)
-│   │       ├── figure_writer.py         # writes figure-ready images to runs/<run_id>/figures/ and prints the path
+│   │       ├── figure_writer.py         # DONE (1.2.1). FETCHES each figure back out of storage - the same
+│   │       │                            #   thing the frontend does with imageUrl - so a bad key fails here
 │   │       └── journal_writer.py        # appends runs/<run_id>.jsonl, replayable through the frontend's Zod  DONE (1.0)
 │   │
 │   ├── routes/                          # (Phase 2) Declaration only. No logic, no database, no model.
@@ -68,6 +73,7 @@ backend/
 │   │   └── report_controller.py
 │   │
 │   ├── schemas/                         # Pydantic. camelCase on the wire (api-contract.md §1).
+│   │   ├── geo.py                       # GeoPoint, GeoBoundingBox - WGS 84 degrees, bounded  DONE (1.5)
 │   │   ├── requests/
 │   │   │   ├── investigation.py
 │   │   │   ├── imagery.py
@@ -82,10 +88,10 @@ backend/
 │   │   └── events/                      # The stream event union. Survived ADR-002; it IS the frontend contract.
 │   │       ├── run.py                   # run-start, run-complete, run-error
 │   │       ├── trace.py                 # trace-step
-│   │       ├── layer.py                 # layer-ready
-│   │       ├── claim.py                 # claim
+│   │       ├── layer.py                 # layer-ready + EvidenceLayer/Feature/Item  DONE (1.5)
+│   │       ├── claim.py                 # claim + Claim/ClaimMetric  DONE (1.5)
 │   │       ├── answer.py                # answer-token
-│   │       ├── figure.py                # figure-ready  (NEW - api-contract.md §6) + legend + renderSpec
+│   │       ├── figure.py                # figure-ready + legend + renderSpec  DONE (1.2.1)
 │   │       ├── speech.py                # speech        (NEW - api-contract.md §5)
 │   │       └── ui_command.py            # ui-command    (NEW - api-contract.md §4)
 │   │
@@ -116,6 +122,15 @@ backend/
 │   │   │   ├── memory_store.py           # BaseStore for long-term memory, selected from config (§1.6)
 │   │   │   │
 │   │   │   ├── nodes/                   # One stage each. async def(state) -> state update. No retry, no maths.
+│   │   │   │   │                         #   A node reads its own step id with `current_trace_step_id()` and
+│   │   │   │   │                         #   sets its completion line with `describe_trace_step()` (node.py).
+│   │   │   │   ├── cloud_handling.py        # S7  DONE (1.4). SCL -> mask artefact, or "no mask" said aloud.
+│   │   │   │   ├── feature_extraction.py    # S12 DONE (1.4). Mask the bands, then the formula; artefact + figure.
+│   │   │   │   ├── evidence_localisation.py # S15 DONE (1.4, 1.5). Threshold, measure vs OBSERVED ground,
+│   │   │   │   │                            #   then BOTH representations, evidence items, claims, overlay.
+│   │   │   │   ├── answer_generation.py     # S16 DONE (1.5). The claims' text, then the recorded caveats.
+│   │   │   │   ├── confidence_estimation.py # S18 DONE (1.5). minimum-of-stated; None when nothing stated.
+│   │   │   │   ├── provenance_logging.py    # S19 DONE (1.5). provenance.json + evidence-graph.json from state.
 │   │   │   │   ├── input_validation.py
 │   │   │   │   ├── metadata_analysis.py
 │   │   │   │   ├── query_interpretation.py
@@ -124,46 +139,62 @@ backend/
 │   │   │   │   ├── temporal_check.py
 │   │   │   │   ├── mission_planning.py
 │   │   │   │   ├── model_routing.py
-│   │   │   │   ├── inference.py
-│   │   │   │   ├── evidence_generation.py
-│   │   │   │   ├── confidence.py
-│   │   │   │   ├── response_synthesis.py
-│   │   │   │   └── trace_generation.py
+│   │   │   │   └── inference.py
 │   │   │   │
 │   │   │   └── graphs/                  # StateGraph composition + add_conditional_edges routing tables
+│   │   │       ├── probe.py             # DONE (1.0). Two nodes, no imagery - "is the spine broken?"
+│   │   │       ├── index_query.py       # DONE (1.4, 1.5). S7 -> S12 -> S15 -> S16 -> S18 -> S19.
 │   │   │       ├── investigation_graph.py
 │   │   │       ├── single_image_graph.py
 │   │   │       ├── temporal_graph.py
 │   │   │       └── cross_modal_graph.py
 │   │   │
-│   │   ├── imagery/                     # S1-S6, S11
-│   │   │   ├── ingestion.py
-│   │   │   ├── metadata.py
-│   │   │   ├── validation.py
-│   │   │   ├── cog.py                   # COG conversion into MinIO
-│   │   │   ├── tiling.py
-│   │   │   └── math/
-│   │   │       ├── windowing.py         # tile grid + overlap arithmetic
-│   │   │       ├── resampling.py        # the kernels; method choice by dtype stays in the service
+│   │   ├── imagery/                     # S1-S6, S11  DONE (1.2)
+│   │   │   ├── metadata.py              # S1-S3. Driver, CRS, bands, processing level - all READ, never
+│   │   │   │                            #   inferred from a filename
+│   │   │   ├── validation.py            # S4-S5. Severity, not a boolean: WARNS is carried into the
+│   │   │   │                            #   trace, REFUSES stops the run
+│   │   │   ├── cog.py                   # S6. COG conversion into MinIO. Predictor follows dtype
+│   │   │   ├── tiling.py                # S11. Overlapping windows + weighted stitching
+│   │   │   └── math/                    # pure, sync, no I/O, no policy
+│   │   │       ├── windowing.py         # tile grid + overlap arithmetic + blend weights
+│   │   │       ├── indices.py           # normalised difference + reflectance scaling. Carries the
+│   │   │       │                        #   post-condition that caught the NDVI-of-347 bug
+│   │   │       ├── web_mercator.py      # DONE (1.5). Geographic bounds + the zoom range a raster layer needs.
 │   │   │       └── quality_statistics.py# nodata fraction, histogram sanity, resolution report
 │   │   │
-│   │   ├── preprocessing/               # S7-S10 and the SAR branch
-│   │   │   ├── cloud_masking.py
-│   │   │   ├── reprojection.py
+│   │   │   NOTE: `ingestion.py` was planned here and is not needed - `metadata.py` reads and
+│   │   │   `validation.py` decides, and a third module between them had nothing left to do.
+│   │   │   `resampling.py` arrives with 1.3, which is the first phase that actually resamples.
+│   │   │
+│   │   ├── preprocessing/               # S7-S10 and the SAR branch.  DONE (1.3)
+│   │   │   ├── cloud_masking.py         # s2cloudless -> threshold -> projected shadow. Reports
+│   │   │   │                            #   obscuredFraction, counting UNJUDGED pixels as unread.
+│   │   │   ├── reprojection.py          # S8/S10. Resampling follows the data type, never the dtype.
 │   │   │   ├── coregistration.py        # runs it, reports the residual, REFUSES above tolerance
-│   │   │   ├── sar_calibration.py       # order is fixed: calibrate -> speckle -> terrain
+│   │   │   ├── elevation.py             # Copernicus DEM GLO-30, windowed, on the scene's own grid.
+│   │   │   │                            #   Terrain correction without a DEM is not terrain correction.
+│   │   │   ├── sar_calibration.py       # order is fixed: calibrate -> speckle -> terrain. Calibration
+│   │   │   │                            #   is SKIPPABLE (`None`): an RTC product calibrated twice is
+│   │   │   │                            #   the square of the truth and opens cleanly.
 │   │   │   └── math/
 │   │   │       ├── cloud_probability.py
-│   │   │       ├── registration_residual.py  # phase correlation / tie points -> residual in pixels
+│   │   │       ├── registration_residual.py  # phase correlation -> residual in pixels. Nodata is filled
+│   │   │       │                             #   with the tile MEAN; zero-fill is an edge it locks onto.
 │   │   │       ├── grid_alignment.py
-│   │   │       ├── speckle_filters.py
-│   │   │       └── terrain_flattening.py     # layover + shadow masks retained, not discarded
+│   │   │       ├── speckle_filters.py        # Lee (1980) on the coefficient of variation. Speckle is
+│   │   │       │                             #   multiplicative, and that IS the formula.
+│   │   │       └── terrain_flattening.py     # layover + shadow retained. The sign convention is the
+│   │   │                                     #   whole file - it was inverted once and looked fine.
 │   │   │
-│   │   ├── spectral/                    # S12 - the reference example of rule 3
-│   │   │   ├── indices.py               # async. Picks the index, maps bands per sensor, masks, returns a result.
+│   │   ├── spectral/                    # S12 - the reference example of rule 3.  DONE (1.4)
+│   │   │   ├── indices.py               # async. Phrase -> index + range; bands by ROLE onto the finest grid
+│   │   │   │                            #   (SWIR resampled before it meets a 10 m band); L1C and unknown
+│   │   │   │                            #   levels refused; the mask applied to the INPUTS, then the formula.
 │   │   │   └── math/
-│   │   │       ├── index_formulae.py    # sync, pure. ndvi/evi/savi/ndwi/mndwi/ndbi/nbr over arrays.
-│   │   │       └── thresholds.py        # sync, pure. Otsu, fixed cut-offs, histogram statistics.
+│   │   │       ├── index_formulae.py    # sync, pure. ndvi/evi/savi/ndwi/mndwi/ndbi/nbr. Imports the one
+│   │   │       │                        #   normalised-difference kernel from imagery/math (written once).
+│   │   │       └── thresholds.py        # sync, pure. Range masks (NaN never detected), Otsu, summary.
 │   │   │
 │   │   ├── detection/                   # S13
 │   │   │   ├── detector.py
@@ -172,21 +203,39 @@ backend/
 │   │   │       ├── box_operations.py    # iou, nms, box <-> polygon
 │   │   │       └── geometry.py
 │   │   │
-│   │   ├── segmentation/                # S13
+│   │   ├── segmentation/                # S13. 1.5 built the mask -> polygons kernel first.
 │   │   │   ├── segmenter.py
 │   │   │   ├── postprocess.py
 │   │   │   └── math/
 │   │   │       ├── morphology.py        # opening/closing, small-object removal
-│   │   │       └── vectorize.py         # raster mask -> polygons -> simplified geometry
+│   │   │       └── vectorize.py         # DONE (1.5). Eight-connected labels -> one polygon per region,
+│   │   │                                #   holes kept; per-region means. The labelling every count uses.
 │   │   │
-│   │   ├── change_detection/            # S13
-│   │   │   ├── detector.py
-│   │   │   ├── comparison.py            # gated by the co-registration residual
+│   │   ├── change_detection/            # S13  DONE (1.6)
+│   │   │   ├── detector.py              # leases `changeformer`, thresholds its probability, states the
+│   │   │   │                            #   model's own mean certainty as the confidence
+│   │   │   ├── comparison.py            # the residual gate (§8 rule 2) IN FRONT of the detector; the
+│   │   │   │                            #   S13 node calls this and never the detector directly
+│   │   │   ├── sar_change.py            # `sar-change`: log-ratio on the 1.3 chain's output, increase and
+│   │   │   │                            #   decrease kept apart, layover/shadow unobserved not unchanged
 │   │   │   ├── classification.py
 │   │   │   └── math/
 │   │   │       ├── differencing.py      # optical difference / ratio
-│   │   │       ├── log_ratio.py         # SAR change
-│   │   │       └── change_statistics.py # magnitude, class transitions
+│   │   │       ├── log_ratio.py         # DONE (1.6). 10 log10(after/before), two-sided dB threshold.
+│   │   │       └── change_statistics.py # DONE (1.6). Change-class P/R/F1/IoU as counts; no accuracy.
+│   │   │
+│   │   ├── detection/                   # S13/S15 oriented-object detection  DONE (1.6)
+│   │   │   ├── detector.py              # leases `dota-detector`; mean box score as the stated confidence
+│   │   │   ├── labels.py                # YOLO-OBB (normalised) and DOTA labelTxt readers -> OrientedBox
+│   │   │   └── math/
+│   │   │       └── oriented_boxes.py    # polygon IoU (shapely), class-aware rotated NMS, greedy matching,
+│   │   │                                #   DetectionScore as counts
+│   │   │
+│   │   ├── evaluation/                  # Scores a model against a benchmark. 1.6 seeds, 1.14 completes.
+│   │   │   ├── change_detection.py      # DONE (1.6). The detector over a paired-mask split through the
+│   │   │   │                            #   single loader; counts summed before ratios; nominal hectares.
+│   │   │   └── object_detection.py      # DONE (1.6). Box P/R/F1 at IoU 0.5 over an annotation split at the
+│   │   │                                #   pipeline's own threshold; mAP is 1.14's.
 │   │   │
 │   │   ├── optical_sar/                 # S13, S15 - late fusion only (PDF §9, p.19)
 │   │   │   ├── per_sensor_runs.py       # two independent runs
@@ -209,15 +258,24 @@ backend/
 │   │   │   └── math/
 │   │   │       └── box_operations.py
 │   │   │
-│   │   ├── evidence/                    # S15, S18, S19
-│   │   │   ├── builder.py               # evidence + claim objects
-│   │   │   ├── spatial.py
-│   │   │   ├── confidence.py            # float | None. Never 0.0 by default.
-│   │   │   ├── trace.py                 # trace steps + artefact URIs
+│   │   ├── evidence/                    # S15, S18, S19.  DONE (1.4, 1.5)
+│   │   │   ├── artefacts.py             # DONE (1.4). A stage's array -> COG on disk + `artefacts` bucket;
+│   │   │   │                            #   the state carries the path and key, never the array.
+│   │   │   ├── spatial.py               # DONE (1.4). The geospatial-engine: hectares, coverage of OBSERVED
+│   │   │   │                            #   ground, region count and density. Refuses a detection over
+│   │   │   │                            #   unobserved pixels - the structural proof S12 masked first.
+│   │   │   ├── builder.py               # DONE (1.5). A mask -> raster-mask layer AND polygon layer, the
+│   │   │   │                            #   evidence items, the claims. Mints the whole chain in one place
+│   │   │   │                            #   so a claim cannot exist without pixels behind it.
+│   │   │   ├── trace.py                 # DONE (1.5). ProvenanceRecord + EvidenceGraph and their writers.
+│   │   │   │                            #   Input hashes, parameters, artefact URIs, versions, the rule.
 │   │   │   └── math/
-│   │   │       ├── area.py              # equal-area CRS reprojection, then hectares. Never from degrees.
-│   │   │       ├── simplification.py
-│   │   │       └── confidence_aggregation.py
+│   │   │       ├── area.py              # DONE (1.4, 1.5). Pixel FOOTPRINTS projected into a local LAEA and
+│   │   │       │                        #   summed; the mask is never resampled. `polygon_area` measures a
+│   │   │       │                        #   region's outline in the same projection - one number.
+│   │   │       ├── simplification.py    # DONE (1.5). Douglas-Peucker in metres, topology kept; then the
+│   │   │       │                        #   outer ring in degrees. Holes cannot travel on the wire.
+│   │   │       └── confidence_aggregation.py  # DONE (1.5). minimum-of-stated. None is absent, not 0.
 │   │   │
 │   │   ├── rendering/                   # Array -> finished image. product-truth.md §1.5, api-contract.md §6.
 │   │   │   ├── figures.py               # async. Chooses the ramp/stretch, composes, writes to storage, emits figure-ready.
@@ -246,15 +304,24 @@ backend/
 │   │       ├── analyst.py
 │   │       └── synthesis.py
 │   │
-│   ├── models/                          # ML model residency, not SQLAlchemy models.
-│   │   ├── registry.py                  # the twelve model ids - vocabulary shared with the frontend
-│   │   ├── loader.py
-│   │   ├── manager.py                   # VRAM profile, lazy load, LRU eviction under an async lock
+│   ├── models/                          # ML model residency, not SQLAlchemy models.  DONE (1.6)
+│   │   ├── registry.py                  # `LOADERS`: which of the twelve ids this process can build, bound
+│   │   │                                #   to the fleet facts in constants/fleet.py
+│   │   ├── loader.py                    # the device, MEASURED (`mem_get_info`); Hub downloads and
+│   │   │                                #   SHA-256-pinned release assets into data/models; memory release;
+│   │   │                                #   the `aeris doctor` row. torch is imported inside functions.
+│   │   ├── manager.py                   # `lease()`: lazy load under the 0.3 Redis lock, LRU eviction of
+│   │   │                                #   IDLE models to a declared budget, offline/warming/online/
+│   │   │                                #   degraded, queueDepth, medianLatencyMs -> modelStatusSchema
+│   │   ├── change.py                    # ChangeFormerV6 adapter: [0, 1] RGB (measured), 256 windows, stitched
+│   │   ├── segmentation.py              # SegFormer-B2 LoveDA adapter via transformers, 512 windows
+│   │   ├── detection.py                 # YOLO11s-OBB (DOTA v1.0) adapter via ultralytics, AGPL-3.0; RGB->BGR
+│   │   │                                #   at the boundary, 1024 windows, seam-cut boxes dropped, rotated NMS
+│   │   ├── vendor/
+│   │   │   └── changeformer_v6.py       # wgcban's architecture, verbatim, MIT, licence in the header
 │   │   ├── vqa.py
 │   │   ├── grounding.py
-│   │   ├── segmentation.py
 │   │   ├── detection.py
-│   │   ├── change.py
 │   │   └── fusion.py
 │   │
 │   ├── db/                              # SQLAlchemy persistence shape. Carries no business logic.
@@ -295,7 +362,7 @@ backend/
 │   │   ├── inngest.py                   # the Inngest client + health probe. The FUNCTIONS live in
 │   │   │                                #   app/inngest/ (Phase 2.5) and import from here - same split
 │   │   │                                #   as database.py vs app/db/models/.
-│   │   ├── tiles.py                     # TiTiler URLs, TileJSON
+│   │   ├── tiles.py                     # DONE (1.5). TiTiler TileJSON, viewer and XYZ template URLs.
 │   │   ├── websocket.py                 # (Phase 2)
 │   │   ├── telemetry.py
 │   │   └── security.py                  # (Phase 2)
@@ -314,6 +381,13 @@ backend/
 │       ├── logs.py                      # JSON field names, format strings, third-party noise floor
 │       ├── pagination.py                # default and maximum page size (named for what it bounds, not `limits.py`)
 │       ├── color_ramps.py               # (Phase 1.2.1) named ramps + their domains. Shared vocabulary with the frontend's legends.
+│       ├── fleet.py                     # (Phase 1.6) what each of the twelve ids IS here: capability, stages,
+│       │                                #   weights source, measured VRAM footprint, tile size; the
+│       │                                #   VRAM profile tiers (4 GB is a tier); engine vs learned.
+│       ├── change.py                    # (Phase 1.6) the change threshold and the SAR log-ratio dB threshold
+│       ├── spectral.py                  # (Phase 1.4) the seven indices, their band roles, coefficients,
+│       │                                #   interpretation bands and the phrase -> target table. Transcribed
+│       │                                #   from the frontend's overlays/spectral-indices.ts (PDF §3.3).
 │       ├── ui_commands.py               # (deferred) mirrors frontend/lib/constants/commands.ts - written when `ui-command` is first emitted
 │       └── tasks.py                     # (Phase 0.5) Inngest event names + the `aeris/<domain>.<action>` convention
 │
@@ -377,7 +451,7 @@ backend/
 
 | You are writing… | It goes in |
 |---|---|
-| A formula, a transform, a statistic, a threshold | `services/<subsystem>/math/` — sync, pure, no project imports beyond `constants/` |
+| A formula, a transform, a statistic, a threshold | `services/<subsystem>/math/` — sync, pure, no project imports beyond `constants/` and a sibling `math/` |
 | The choice of *which* formula to apply | The async service file above that `math/` folder |
 | One stage of S1–S20 | `services/pipeline/nodes/` — `async def`, no maths, no retry, no database |
 | The order stages run in, or a branch between them | `services/pipeline/graphs/` — a `StateGraph`, not an `if` chain in a service |
@@ -391,6 +465,9 @@ backend/
 | Drawing a tile for the globe | Nowhere here. Tiles are TiTiler's, via `lib/tiles.py`. Tiles are not figures (`api-contract.md` §8) |
 | Something both the CLI and a future route need | A service. Never in `cli/`, never in `routes/` |
 | A hardcoded list of anything | `constants/` |
+| A stage's intermediate output (a mask, an index array) | `services/evidence/artefacts.py` writes it; the state carries its path and key. Never the array itself |
+| A model's weights, footprint or version | `constants/fleet.py`. A service leases the model from `app/models/manager.py` and never loads it |
+| A third-party model architecture | `app/models/vendor/`, verbatim, with its licence; an adapter beside it wraps it |
 | A URL, credential, path, threshold default or timeout | `.env` → `config.py` |
 
 ## Folders that were deliberately removed

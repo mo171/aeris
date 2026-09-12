@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AERIS 1.2 tile gate</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, monospace; background:#111; color:#ddd; padding:24px; }
+  #out { white-space: pre; } img, canvas { border:1px solid #333; margin-right:8px; }
+  .ok { color:#7c7 } .bad { color:#f77 }
+</style>
+<h3>Phase 1.2 gate — NDVI COG through TiTiler, in a real browser</h3>
+<div><img id="plain" width="256" height="256"><canvas id="cv" width="256" height="256"></canvas></div>
+<div id="out">running…</div>
+<script>
+const COG = "s3://aeris-cog/S2B_MSIL2A_20240319T052649_R105_T43RGM_20240319T094507/ndvi.tif";
+const BASE = "http://127.0.0.1:8000";
+const TILE = z => `${BASE}/cog/tiles/WebMercatorQuad/${z.z}/${z.x}/${z.y}@1x.png`
+  + `?url=${COG}&rescale=-1,1&colormap_name=rdylgn`;
+const CENTRE = { z: 11, x: 1465, y: 855 };
+const EDGE   = { z: 9,  x: 365,  y: 213 };
+const log = [];
+const say = (ok, msg) => log.push(`${ok ? "PASS" : "FAIL"}  ${msg}`);
+
+(async () => {
+  // 1. TileJSON — the contract the frontend reads bounds/zoom from.
+  const tj = await (await fetch(`${BASE}/cog/WebMercatorQuad/tilejson.json?url=${COG}`)).json();
+  say(tj.scheme === "xyz", `scheme is xyz (${tj.scheme})`);
+  say(tj.bounds?.length === 4, `bounds present: [${tj.bounds?.map(n => n.toFixed(3))}]`);
+  say(Number.isInteger(tj.minzoom) && Number.isInteger(tj.maxzoom),
+      `minzoom ${tj.minzoom} maxzoom ${tj.maxzoom}`);
+
+  // 2. A plain <img> needs no CORS at all — this is NOT the test, it is the control.
+  document.getElementById("plain").src = TILE(CENTRE);
+
+  // 3. THE test. Cesium draws tiles into a WebGL texture, which is a cross-origin read —
+  //    exactly what a plain <img> does not exercise. fetch + canvas + getImageData is the
+  //    same permission, and it throws where the tag silently succeeds.
+  const response = await fetch(TILE(EDGE), { mode: "cors" });
+  say(response.ok, `fetch cross-origin: HTTP ${response.status}`);
+  const bitmap = await createImageBitmap(await response.blob());
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0);
+
+  let pixels;
+  try {
+    pixels = ctx.getImageData(0, 0, 256, 256).data;
+    say(true, "canvas not tainted — getImageData succeeded (the Cesium path)");
+  } catch (error) {
+    say(false, `canvas TAINTED: ${error.name} — CORS headers missing or wrong`);
+    document.getElementById("out").innerHTML = log.map(fmt).join("\n");
+    return;
+  }
+
+  // 4. Alpha must be transparent over nodata, or the globe shows black squares off-scene.
+  let transparent = 0, opaque = 0;
+  for (let i = 3; i < pixels.length; i += 4) (pixels[i] === 0 ? transparent++ : opaque++);
+  say(transparent > 0, `alpha transparent over nodata: ${transparent} of ${transparent + opaque} px`);
+  say(opaque > 0, `and opaque over data: ${opaque} px`);
+
+  document.getElementById("out").innerHTML = log.map(fmt).join("\n");
+  window.__gate = { passed: log.every(l => l.startsWith("PASS")), log };
+})().catch(e => {
+  document.getElementById("out").textContent = "ERROR " + e;
+  window.__gate = { passed: false, log: ["ERROR " + e] };
+});
+function fmt(line) {
+  return `<span class="${line.startsWith("PASS") ? "ok" : "bad"}">${line}</span>`;
+}
+</script>

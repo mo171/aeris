@@ -132,6 +132,68 @@ services:
       retries: 10
       start_period: 10s
 
+  titiler:
+    # Phase 1.2. Serves the COGs this pipeline writes into MinIO as EPSG:3857 XYZ tiles, which is what the
+    # frontend's globe consumes. Pinned like every other service.
+    #
+    # **Why a tile server at all, when the backend already renders figures (ADR-004).** They answer different
+    # questions and neither substitutes for the other (`api-contract.md` §8): a tile is a fragment of a large
+    # raster, reprojected to Web Mercator and composited by the browser at whatever zoom the camera is at; a
+    # figure is one self-contained picture carrying its own legend. Draping a 10980x10980 scene on a globe is
+    # the tile server's job, and reimplementing it would mean writing a reprojecting, caching XYZ pyramid.
+    image: ghcr.io/developmentseed/titiler:0.24.0
+    container_name: aeris-titiler
+    restart: unless-stopped
+    environment:
+      # TiTiler reads COGs through GDAL's /vsis3/ driver, so it needs the same credentials and endpoint
+      # app/lib/storage.py uses. These are the MinIO root credentials from the `minio` service above; a
+      # deployed TiTiler would get a read-only key instead.
+      AWS_ACCESS_KEY_ID: aeris_local_development
+      AWS_SECRET_ACCESS_KEY: aeris_local_development_secret
+      # The in-network endpoint, not 127.0.0.1: this is one container talking to another, and `localhost`
+      # inside a container is that container.
+      AWS_S3_ENDPOINT: minio:9000
+      AWS_HTTPS: "NO"
+      AWS_VIRTUAL_HOSTING: "FALSE"
+      AWS_DEFAULT_REGION: us-east-1
+      # GDAL tuning that decides whether a tile request is one range read or forty. A COG's header holds the
+      # tile offsets; without a header cache GDAL re-reads it for every tile, which turns a pan across the
+      # globe into thousands of round trips to MinIO.
+      GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
+      GDAL_CACHEMAX: "200"
+      VSI_CACHE: "TRUE"
+      VSI_CACHE_SIZE: "5000000"
+      # CORS. The frontend fetches tiles from a different origin, and Cesium draws them into a WebGL texture -
+      # which, unlike a plain <img>, requires the response to permit the origin. Named by the frontend's own
+      # notes as "the most common first-day failure", which is why the 1.2 gate tests it in a real browser.
+      #
+      # **The origin is named, not `*`.** TiTiler's default is `*` *and* `allow-credentials: true`, which
+      # was measured on the first tile this project served. That pair is rejected outright by every browser,
+      # so the permissive-looking default is in fact the broken one - and where it does apply, it lets any
+      # page on the internet read these tiles. Same reasoning as MINIO_API_CORS_ALLOW_ORIGIN above, and the
+      # same `${...}` so the allowed origin is stated once in backend/.env.
+      # The prefix is `TITILER_API_`, not bare - read off the running container's own `ApiSettings`
+      # after the bare names were set and measured to have no effect at all.
+      TITILER_API_CORS_ORIGINS: ${STORAGE_BROWSER_ORIGIN:-http://localhost:3000}
+      TITILER_API_CORS_ALLOW_METHODS: "GET,OPTIONS"
+    ports:
+      # The container listens on **80**, not 8000 - measured from its own startup log ("Listening at:
+      # http://0.0.0.0:80"), after assuming 8000 and getting a health check that never went green. Published
+      # on 8000 so the host-facing URL matches what the tests and the frontend use.
+      - "127.0.0.1:8000:80"
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      # TiTiler's own health endpoint. `python` is in this image; curl and wget are not - measured, the same
+      # way the Inngest healthcheck was in 0.5.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:80/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   inngest:
     # The dev server, not a worker. AERIS registers **no functions** with it until Phase 2.5 (ADR-002):
     # Phase 1 runs the whole engine as a CLI, where durability is the LangGraph checkpointer and a killed

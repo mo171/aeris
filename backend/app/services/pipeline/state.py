@@ -28,7 +28,7 @@ how   : **A `TypedDict`, not a Pydantic model.** LangGraph reads the annotations
 """
 
 from operator import add
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 
 
 class PipelineState(TypedDict, total=False):
@@ -75,3 +75,85 @@ class PipelineState(TypedDict, total=False):
     # `None` means AERIS declines to state one, and is different from `0.0`, which claims no confidence.
     # `api-contract.md` §1 rule 2 - the frontend renders the two very differently.
     confidence: NotRequired[float | None]
+
+
+class MeasurementState(TypedDict):
+    """What S15 measured, as the numbers a claim will carry. Keys are the wire's names (camelCase), because
+    1.5 lifts this dictionary into claim metrics and a rename across that boundary is the bug
+    `code-standards.md` §3 forbids."""
+
+    areaHectares: float
+    observedHectares: float
+    coverageFraction: float
+    pixelCount: int
+    regionCount: int
+    regionDensityPerSquareKilometre: float
+    largestRegionPixels: int
+    equalAreaCrs: str
+
+
+class IndexQueryState(PipelineState, total=False):
+    """`PipelineState` plus what an index query carries between S7, S12, S15, S16, S18 and S19.
+
+    Every value is data: paths and object keys stand in for arrays, which are read back through
+    `services/evidence/artefacts.py`. That is what makes a resumed S15 see the same index S12 wrote.
+    Layers, evidence and claims are carried in their **wire form** - the camelCase dictionaries
+    `serialise_event` produces - because S16 reads a claim's text, S19 writes them into the evidence
+    graph unchanged, and a checkpoint that held the Pydantic objects would depend on our module layout.
+    """
+
+    # Set by the caller.
+    scene_directory: str
+    scene_id: str
+    # A `ProcessingLevel` value, or `None` to trust what the scene path says. A human's statement, never a
+    # guess (§8 rule 5).
+    declared_level: str | None
+    # A `SpectralIndex` value and the target range resolved from the question. `None` bounds mean a map
+    # with no mask was asked for.
+    index: str
+    target_lower: float | None
+    target_upper: float | None
+    target_label: str
+    target_phrase: str
+
+    # S7. `None` paths mean no mask source was available, which the trace states and S12 records.
+    cloud_mask_path: str | None
+    cloud_mask_object_key: str | None
+    cloud_mask_storage_uri: str | None
+    obscured_fraction: float | None
+
+    # S12.
+    index_path: str
+    index_object_key: str
+    index_storage_uri: str
+    index_band_ids: list[str]
+    index_mask_applied: bool
+    index_unphysical_fraction: float
+    index_figure_id: str
+    # The tile layer over the index artefact - what the S12 trace step's `artefactLayerId` names.
+    index_layer_id: str
+    # `InputFileRecord`s in wire form: every band file read, with its hash (PDF §21.2).
+    input_files: list[dict[str, Any]]
+
+    # S15.
+    mask_path: str | None
+    mask_object_key: str | None
+    mask_storage_uri: str | None
+    # The raster-mask layer over the mask artefact; the polygon layer is what the trace step names.
+    mask_layer_id: str | None
+    measurement: MeasurementState | None
+    band_fractions: dict[str, float]
+    composite_figure_id: str | None
+    mask_figure_id: str | None
+
+    # --- Accumulated across stages, in wire form. `add`, because S12 and S15 each contribute. -------------
+    layers: Annotated[list[dict[str, Any]], add]
+    evidence_items: Annotated[list[dict[str, Any]], add]
+    claims: Annotated[list[dict[str, Any]], add]
+    # `ModelRecord`s: which engine ran at which stage and what confidence it stated, for S18 and S19.
+    stage_models: Annotated[list[dict[str, Any]], add]
+
+    # S18 and S19.
+    confidence_aggregation_rule: str
+    provenance_path: str
+    evidence_graph_path: str

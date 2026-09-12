@@ -34,6 +34,7 @@ from rich.table import Table
 
 from app.config import MASKED_URL_PROPERTIES, Settings, settings
 from app.lib import database, inngest, redis, storage
+from app.models import loader as fleet_loader
 
 # What a masked value prints as. Short, and obviously not a value that was truncated.
 MASKED_VALUE = "***"
@@ -104,6 +105,10 @@ async def collect_report(read_only: bool = False) -> DoctorReport:
 
     if not read_only:
         rows.append(await _event_delivery_row(await inngest.check_event_delivery()))
+
+    # Last, and not gathered with the others: importing torch costs seconds, and a failure here is a
+    # missing accelerator rather than a broken stack - reported, never fatal to the exit code.
+    rows.append(await _fleet_row(await fleet_loader.check_health()))
 
     return DoctorReport(
         rows=tuple(rows),
@@ -205,6 +210,27 @@ async def _inngest_row(health: inngest.InngestHealth) -> DependencyRow:
         version=health.server_version,
         latency_ms=health.latency_ms,
         detail=health.failure_reason or "no functions bound until Phase 2.5 (ADR-002)",
+    )
+
+
+async def _fleet_row(health: fleet_loader.FleetHealth) -> DependencyRow:
+    """The specialist fleet's device. Healthy on a CPU too - degraded is a state the fleet reports itself."""
+    if health.device is None:
+        return DependencyRow(
+            name="Model device", is_healthy=False, version=None, latency_ms=None,
+            detail=f"torch could not measure a device: {health.failure_reason}",
+        )
+    device = health.device
+    return DependencyRow(
+        name="Model device",
+        is_healthy=True,
+        version=f"torch {health.torch_version}, {device.name}",
+        latency_ms=health.latency_ms,
+        detail=(
+            f"profile {device.profile.value}, budget {device.budget_megabytes} MB, "
+            f"{health.cached_checkpoints} checkpoints cached"
+            + ("" if device.has_accelerator else "; no CUDA - models will run degraded on the CPU")
+        ),
     )
 
 

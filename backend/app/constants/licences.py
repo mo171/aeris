@@ -43,6 +43,8 @@ class Licence(StrEnum):
     CC_BY_NC_SA_4_0 = "cc-by-nc-sa-4.0"
     MIT = "mit"
     APACHE_2_0 = "apache-2.0"
+    # Copyleft that reaches over the network: serving the covered work as a service obliges source release.
+    AGPL_3_0 = "agpl-3.0"
 
     # Published for academic use with commercial use reserved or requiring permission. Common for the
     # change-detection and grounding datasets, and the reason the roadmap warns about redistribution.
@@ -154,6 +156,17 @@ LICENCE_TERMS: Final[dict[Licence, LicenceTerms]] = {
         attribution_required=True,
         summary="Any use, with the notice and a statement of changes.",
     ),
+    Licence.AGPL_3_0: LicenceTerms(
+        licence=Licence.AGPL_3_0,
+        redistribution=Redistribution.PERMITTED_SHARE_ALIKE,
+        commercial_use=CommercialUse.PERMITTED,
+        training_permitted=True,
+        attribution_required=True,
+        summary=(
+            "Any use, but a service that runs the covered work over a network must offer its own source "
+            "under the same licence. Ultralytics sells a commercial licence as the alternative."
+        ),
+    ),
     Licence.RESEARCH_ONLY: LicenceTerms(
         licence=Licence.RESEARCH_ONLY,
         redistribution=Redistribution.FORBIDDEN,
@@ -187,3 +200,8 @@ def terms_for(licence: Licence) -> LicenceTerms:
     here instead of an edit at every dataset that uses it.
     """
     return LICENCE_TERMS[licence]
+
+# The attribution line the Copernicus licence asks for, as ESA words it. Carried on every layer and figure
+# drawn from Sentinel data (`evidenceLayerSchema.attribution`), because the licence grants the data on
+# that condition and a layer is where an operator reads where the pixels came from.
+COPERNICUS_ATTRIBUTION: Final[str] = "Contains modified Copernicus Sentinel data"

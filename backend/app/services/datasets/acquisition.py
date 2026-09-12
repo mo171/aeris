@@ -4,12 +4,15 @@ what  : `search_scenes()`, `fetch_scene()`, `download_archive()`, and `Acquisiti
         prints for a dataset it cannot fetch itself.
 where : Called by `aeris dataset fetch`. Phase 1.2's catalogue search reuses `search_scenes` directly -
         the STAC query behind `POST /catalogue/search` is this one.
-how   : Three acquisition routes, named on each record in `constants/datasets.py`, because they are
+how   : Four acquisition routes, named on each record in `constants/datasets.py`, because they are
         genuinely different problems and pretending otherwise produces a `fetch` that lies:
 
         - **`stac`** - Sentinel-1 and Sentinel-2, searched and fetched from a STAC API. Real, and the only
           imagery this project acquires rather than downloads.
         - **`download`** - a direct archive URL. Real.
+        - **`huggingface`** (1.6) - a benchmark republished on the Hub as parquet. One file per split,
+          the image columns written out into the record's declared layout, so the single loader and the
+          enumeration behind `aeris dataset list` serve it like anything unpacked by hand.
         - **`manual`** - behind a registration form, a Google Drive link or an email request. **The CLI
           prints instructions and does not pretend.** Roughly half of the PDF's Table 5 is in this state,
           and a `fetch` command that silently did nothing for those would be worse than one that refuses.
@@ -33,9 +36,15 @@ from typing import Any
 import aiohttp
 
 from app.config import settings
-from app.constants.datasets import DATASET_CATALOGUE, DatasetId
+from app.constants.datasets import (
+    DATASET_CATALOGUE,
+    DOWNLOAD_ATTEMPTS,
+    DOWNLOAD_RETRY_BACKOFF_SECONDS,
+    DatasetId,
+    DatasetSplit,
+)
 from app.lib.exceptions import InvalidRequestError, UpstreamUnavailableError
-from app.services.datasets.loader import dataset_directory
+from app.services.datasets.loader import dataset_directory, split_directory
 
 logger = logging.getLogger(__name__)
 
@@ -243,26 +252,46 @@ async def download_archive(dataset_id: DatasetId) -> Path:
 
 
 async def _download_to(session: aiohttp.ClientSession, url: str, destination: Path) -> None:
-    """Stream one URL to a file.
+    """Stream one URL to a file, retrying a transfer the remote end drops.
 
     Written to a `.partial` and renamed on success, so an interrupted download never leaves a file that
-    looks complete. `aeris dataset list` measures what is on disk, and a truncated GeoTIFF that reports the
+    looks complete. `aeris dataset list` measures what is on disk, and a truncated GeoTIFF reporting the
     right size is exactly the failure that check exists to catch.
+
+    **Retried, because a long download being reset is normal rather than exceptional.** Measured: a 245 MB
+    band was cut off by the remote host after four minutes and 375 KB of a 239 MB body, failing the whole
+    fetch. A client that cannot survive that cannot acquire a scene reliably.
+
+    Each attempt restarts from zero rather than resuming with a `Range` header. Resuming would be faster
+    and would need the server's `ETag` to prove the object had not changed underneath us - and a scene
+    silently stitched from two versions of a file is a worse failure than a slow retry.
     """
     partial = destination.with_suffix(destination.suffix + ".partial")
-    try:
-        async with session.get(url) as response:
-            response.raise_for_status()
-            with partial.open("wb") as handle:
-                async for chunk in response.content.iter_chunked(DOWNLOAD_CHUNK_BYTES):
-                    handle.write(chunk)
-    except aiohttp.ClientError as error:
-        partial.unlink(missing_ok=True)
-        raise UpstreamUnavailableError(
-            f"Could not download {url}: {error}", details={"url": url}
-        ) from error
+    last_error: Exception | None = None
 
-    partial.replace(destination)
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            async with session.get(url) as response:
+                response.raise_for_status()
+                with partial.open("wb") as handle:
+                    async for chunk in response.content.iter_chunked(DOWNLOAD_CHUNK_BYTES):
+                        handle.write(chunk)
+            partial.replace(destination)
+            return
+        except (aiohttp.ClientError, TimeoutError) as error:
+            last_error = error
+            partial.unlink(missing_ok=True)
+            if attempt < DOWNLOAD_ATTEMPTS:
+                logger.warning(
+                    "download failed; retrying",
+                    extra={"url": url, "attempt": attempt, "of": DOWNLOAD_ATTEMPTS, "error": str(error)},
+                )
+                await asyncio.sleep(DOWNLOAD_RETRY_BACKOFF_SECONDS * attempt)
+
+    raise UpstreamUnavailableError(
+        f"Could not download {url} after {DOWNLOAD_ATTEMPTS} attempts: {last_error}",
+        details={"url": url, "attempts": DOWNLOAD_ATTEMPTS},
+    ) from last_error
 
 
 def acquisition_plan(dataset_id: DatasetId) -> AcquisitionPlan:
@@ -286,3 +315,64 @@ def acquisition_plan(dataset_id: DatasetId) -> AcquisitionPlan:
             f"  Approximate size: {record.approximate_size}"
         ),
     )
+
+
+async def fetch_hub_split(dataset_id: DatasetId, split: DatasetSplit) -> Path:
+    """Fetch one split of a Hub parquet mirror and write its images into the declared layout.
+
+    Returns the split directory. Idempotent: a split already on disk with the expected count is left alone,
+    so re-running `fetch` is cheap and a partial write is finished rather than duplicated.
+    """
+    record = DATASET_CATALOGUE[dataset_id]
+    mirror = record.hub_parquet
+    if mirror is None or split not in mirror.files:
+        raise InvalidRequestError(
+            f"{record.title} has no Hub parquet for its {split.value} split.",
+            details={"datasetId": dataset_id.value, "split": split.value},
+        )
+    destination = split_directory(dataset_id, split)
+    parquet = await asyncio.to_thread(_download_hub_file, mirror.repository, mirror.files[split], mirror.revision)
+    written = await asyncio.to_thread(_materialise_parquet, parquet, destination, mirror.columns, record.layout.image_suffixes[0])
+    logger.info(
+        "hub split materialised",
+        extra={"dataset_id": dataset_id.value, "split": split.value, "samples": written, "directory": str(destination)},
+    )
+    return destination
+
+
+def _download_hub_file(repository: str, filename: str, revision: str) -> Path:
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.errors import HfHubHTTPError
+
+    try:
+        return Path(
+            hf_hub_download(
+                repo_id=repository, filename=filename, revision=revision, repo_type="dataset",
+                cache_dir=settings.model_weights_path,
+            )
+        )
+    except (HfHubHTTPError, OSError) as error:
+        raise UpstreamUnavailableError(
+            f"Could not fetch {filename} from {repository}: {error}",
+            details={"upstream": "huggingface-hub", "repository": repository},
+        ) from error
+
+
+def _materialise_parquet(parquet: Path, destination: Path, columns: dict[str, str], suffix: str) -> int:
+    """Write each image column of the parquet into its layout directory, one file per row, zero-padded."""
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(parquet, columns=list(columns))
+    for directory in columns.values():
+        (destination / directory).mkdir(parents=True, exist_ok=True)
+    row_count = table.num_rows
+    width = len(str(row_count))
+    for column, directory in columns.items():
+        values = table.column(column).to_pylist()
+        for index, value in enumerate(values):
+            # The `image` feature is a struct of `bytes` and `path`; the bytes are the encoded PNG as-is.
+            payload = value["bytes"] if isinstance(value, dict) else value
+            target = destination / directory / f"{index:0{width}d}{suffix}"
+            if not target.exists():
+                target.write_bytes(payload)
+    return row_count

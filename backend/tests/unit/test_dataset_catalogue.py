@@ -36,7 +36,7 @@ from app.constants.licences import LICENCE_TERMS, CommercialUse, Licence, Redist
 # because the roadmap grows and a test that has to be edited every time it does gets deleted instead.
 PHASE_PATTERN = re.compile(r"^\d+\.\d+(\.\d+)?$")
 
-ACQUISITION_ROUTES = {"stac", "download", "manual"}
+ACQUISITION_ROUTES = {"stac", "download", "huggingface", "manual"}
 
 
 async def test_every_dataset_id_has_a_record() -> None:
@@ -116,7 +116,7 @@ async def test_a_record_names_the_phase_that_unlocks_it(dataset_id: DatasetId) -
 
 @pytest.mark.parametrize("dataset_id", sorted(DATASET_CATALOGUE))
 async def test_a_record_declares_how_it_is_acquired(dataset_id: DatasetId) -> None:
-    """One of three routes, because `aeris dataset fetch` branches on exactly these and nothing else.
+    """One of four routes, because `aeris dataset fetch` branches on exactly these and nothing else.
 
     An unrecognised route would fall through the CLI's branches and do nothing at all - a fetch that exits
     zero and downloads nothing, which is the worst available outcome.
@@ -174,7 +174,9 @@ async def test_the_datasets_the_roadmap_names_are_all_catalogued() -> None:
         DatasetId.SENTINEL2_L2A, DatasetId.SENTINEL1_GRD, DatasetId.LEVIR_CD, DatasetId.S2LOOKING,
         DatasetId.SECOND, DatasetId.DOTA, DatasetId.DIOR, DatasetId.LOVEDA, DatasetId.OPEN_EARTH_MAP,
         DatasetId.RSVQA_LR, DatasetId.RSVQA_HR, DatasetId.VRSBENCH, DatasetId.DIOR_RSVG,
-        DatasetId.RRSIS_D, DatasetId.SEN12MS, DatasetId.BIGEARTHNET_MM, DatasetId.EUROSAT,
+        DatasetId.RRSIS_D, DatasetId.SEN12MS, DatasetId.BIGEARTHNET_MM, DatasetId.EUROSAT, DatasetId.DOTA8,
+        # Named by the problem statement itself, 2026-09-12.
+        DatasetId.BIGEARTHNET_TXT, DatasetId.CDVQA,
     }
     assert required <= set(DATASET_CATALOGUE), (
         f"roadmap.md 1.1 names these and the catalogue lacks them: {sorted(required - set(DATASET_CATALOGUE))}"
@@ -249,3 +251,17 @@ async def test_scene_directory_datasets_publish_one_undivided_split() -> None:
 #
 # D is the human version of the same failure: ticking a box without changing the licence. Three separate
 # tests catch it, which is the level of redundancy that particular mistake deserves.
+
+
+async def test_a_hub_mirrored_record_names_a_file_per_split_it_declares() -> None:
+    """A `huggingface` route with no mirror, or a mirror missing a split the layout declares, would make
+    `aeris dataset fetch` exit zero having fetched nothing for that split."""
+    for dataset_id, record in DATASET_CATALOGUE.items():
+        if record.acquisition != "huggingface":
+            assert record.hub_parquet is None, f"{dataset_id.value} carries a Hub mirror it does not use"
+            continue
+        assert record.hub_parquet is not None, f"{dataset_id.value} is fetched from the Hub but names no mirror"
+        assert set(record.hub_parquet.files) <= set(record.layout.split_directories), dataset_id.value
+        assert set(record.hub_parquet.columns.values()) == {
+            *record.layout.image_directories, record.layout.label_directory
+        }, f"{dataset_id.value}'s parquet columns do not cover its layout directories"

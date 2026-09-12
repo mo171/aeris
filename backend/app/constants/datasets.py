@@ -32,6 +32,19 @@ from typing import Final
 
 from app.constants.licences import Licence
 
+# How many times a scene download is retried, and how long it waits between attempts.
+#
+# **Measured by it happening.** A 245 MB band over a domestic connection was reset mid-transfer by the
+# remote host - `ContentLengthError: received 375864 of 239268081 bytes` - which failed the whole fetch
+# after four minutes of successful transfer. That is not an error condition worth surfacing to an operator;
+# it is the normal behaviour of a long download, and a client that cannot survive it cannot acquire a
+# scene reliably at all.
+#
+# Three attempts with a growing pause: enough to ride out a reset and a brief outage, few enough that a
+# genuinely unreachable host fails in under a minute rather than retrying into the evening.
+DOWNLOAD_ATTEMPTS: Final[int] = 3
+DOWNLOAD_RETRY_BACKOFF_SECONDS: Final[float] = 3.0
+
 
 class DatasetId(StrEnum):
     """Every dataset this project uses. The id is also its directory name under the datasets root."""
@@ -50,15 +63,20 @@ class DatasetId(StrEnum):
     # Object detection - 1.6.
     DOTA = "dota"
     DIOR = "dior"
+    # Ultralytics' eight-image sample of DOTA v1.0 - the detector's smoke test, not its benchmark.
+    DOTA8 = "dota8"
 
     # Land-cover segmentation - 1.6.
     LOVEDA = "loveda"
     OPEN_EARTH_MAP = "open-earth-map"
 
-    # Vision-language - 1.7 and the 1.14 benchmark.
+    # Vision-language - 1.7 and the 1.14 benchmark. The problem statement names the first four by name:
+    # BigEarthNet.txt to adapt, VRSBench and RSVQA to evaluate single-image tasks, CDVQA for change VQA.
+    BIGEARTHNET_TXT = "bigearthnet-txt"
     RSVQA_LR = "rsvqa-lr"
     RSVQA_HR = "rsvqa-hr"
     VRSBENCH = "vrsbench"
+    CDVQA = "cdvqa"
 
     # Grounding - 1.6.
     DIOR_RSVG = "dior-rsvg"
@@ -139,6 +157,30 @@ class DatasetLayout:
 
     image_suffixes: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".tif", ".tiff")
 
+    def for_split(self, split: DatasetSplit) -> DatasetLayout:
+        """The directories with `{split}` filled in - the YOLO arrangement `images/<split>`, `labels/<split>`
+        puts the split *inside* each directory rather than above them."""
+        return DatasetLayout(
+            kind=self.kind,
+            split_directories=self.split_directories,
+            image_directories=tuple(d.format(split=split.value) for d in self.image_directories),
+            label_directory=self.label_directory.format(split=split.value) if self.label_directory else None,
+            label_file=self.label_file,
+            image_suffixes=self.image_suffixes,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class HubParquetMirror:
+    """A dataset republished on the Hugging Face Hub as parquet, split by split."""
+
+    repository: str
+    revision: str
+    # Split -> the parquet file inside the repository.
+    files: dict[DatasetSplit, str]
+    # Parquet column -> the layout directory its images are written to (`A`, `B`, `label`).
+    columns: dict[str, str]
+
 
 @dataclass(frozen=True, slots=True)
 class DatasetRecord:
@@ -182,6 +224,15 @@ class DatasetRecord:
     # the roadmap asks for a notebook per dataset that "records its quirks", and this is where the
     # one-line version of each quirk lives so the loader's caller sees it without opening a notebook.
     quirks: tuple[str, ...] = field(default_factory=tuple)
+
+    # For `acquisition="huggingface"`: a Hub mirror published as one parquet file per split, whose image
+    # columns are written out into the declared layout so the single loader serves it like every other.
+    hub_parquet: HubParquetMirror | None = None
+
+    # The ground sample distance a benchmark's pixels nominally have, for area statistics over samples
+    # that carry no georeference. `None` where the record's `resolution` is a range or the data is
+    # georeferenced and measured properly (`evidence/math/area.py`).
+    pixel_size_metres: float | None = None
 
 
 # The catalogue. Ordered by the phase that unlocks each entry, so reading it top to bottom is the
@@ -287,7 +338,20 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
         licence_url="https://chenhao.in/LEVIR/",
         licence_verified=False,
         source_url="https://chenhao.in/LEVIR/",
-        acquisition="manual",
+        # The 256-crop republication the fleet's ChangeFormer checkpoint was trained on - the same
+        # crops, so a score here is comparable with the checkpoint's published one. Fetched split by
+        # split and written into the paired-mask layout; the original 1024 tiles stay a manual download.
+        acquisition="huggingface",
+        hub_parquet=HubParquetMirror(
+            repository="ericyu/LEVIRCD_Cropped256",
+            revision="main",
+            files={
+                DatasetSplit.TRAIN: "data/train-00000-of-00001-737f96f51caac8cd.parquet",
+                DatasetSplit.VALIDATION: "data/val-00000-of-00001-d09d88a7419f2427.parquet",
+                DatasetSplit.TEST: "data/test-00000-of-00001-31d7c3e3444e5b5d.parquet",
+            },
+            columns={"imageA": "A", "imageB": "B", "label": "label"},
+        ),
         layout=DatasetLayout(
             kind=LayoutKind.PAIRED_MASK,
             split_directories={
@@ -299,12 +363,17 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
             label_directory="label",
             image_suffixes=(".png",),
         ),
-        approximate_size="~2 GB",
+        pixel_size_metres=0.5,
+        approximate_size="~400 MB as 256 crops (73 MB for the test split); ~2 GB as the original 1024 tiles",
         quirks=(
             "The change class is a small fraction of pixels. Accuracy is meaningless here; the metric is "
             "F1 or IoU on the change class alone, which is what the PDF's evaluation section specifies.",
             "1024x1024 tiles - most published results crop to 256, and a model compared against them "
-            "without the same cropping is not being compared against them.",
+            "without the same cropping is not being compared against them. The Hub mirror IS the 256 "
+            "crops, 16 per tile, in an order that does not name the tile they came from.",
+            "The licence page at chenhao.in was unreachable from the build machine on 2026-09-11, so the "
+            "terms are still unverified. Evaluation on the test split does not train on it; training "
+            "stays refused until someone has read the page.",
         ),
     ),
     DatasetId.S2LOOKING: DatasetRecord(
@@ -419,6 +488,37 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
             "published result and must be recorded with any number this project quotes.",
         ),
     ),
+    DatasetId.DOTA8: DatasetRecord(
+        dataset_id=DatasetId.DOTA8,
+        title="DOTA8",
+        task="oriented object detection",
+        sensor="aerial",
+        resolution="various",
+        scale="8 crops of 1,024 px from DOTA v1.0, 15 classes",
+        unlocked_in="1.6",
+        licence=Licence.AGPL_3_0,
+        licence_url="https://github.com/ultralytics/ultralytics/blob/main/LICENSE",
+        licence_verified=False,
+        source_url="https://github.com/ultralytics/assets/releases/download/v0.0.0/dota8.zip",
+        acquisition="download",
+        layout=DatasetLayout(
+            kind=LayoutKind.IMAGE_ANNOTATION,
+            split_directories={DatasetSplit.TRAIN: "dota8", DatasetSplit.VALIDATION: "dota8"},
+            image_directories=("images/{split}",),
+            label_directory="labels/{split}",
+            image_suffixes=(".jpg",),
+        ),
+        approximate_size="~1 MB",
+        quirks=(
+            "Labels are YOLO-OBB, not DOTA's labelTxt: `class x1 y1 x2 y2 x3 y3 x4 y4` with coordinates "
+            "normalised to the image, and no difficulty flag. `services/detection/labels.py` reads both.",
+            "The crops come from DOTA's own train and val images, which the pretrained detector saw; a "
+            "score on them is a smoke test of the adapter, not a benchmark. The published DOTA v1.0 test "
+            "mAP50 for YOLO11s-OBB is 79.5.",
+            "The archive's bundled LICENSE file is the GPL-3.0 text while Ultralytics states AGPL-3.0 for "
+            "its assets; recorded as AGPL, the stricter of the two.",
+        ),
+    ),
     DatasetId.DIOR: DatasetRecord(
         dataset_id=DatasetId.DIOR,
         title="DIOR",
@@ -497,6 +597,35 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
         ),
         approximate_size="~5 GB",
         quirks=("Source imagery is mixed-provenance, so the per-region licence is not uniform.",),
+    ),
+    DatasetId.BIGEARTHNET_TXT: DatasetRecord(
+        dataset_id=DatasetId.BIGEARTHNET_TXT,
+        title="BigEarthNet.txt",
+        task="image-text adaptation: captions, VQA and referring expressions over co-registered S1/S2",
+        sensor="Sentinel-1 GRD + Sentinel-2 L2A",
+        resolution="10 m (120 x 120 px patches)",
+        scale="464,044 S1/S2 pairs, ~9.6 M text rows; 1,082-pair manually verified benchmark split",
+        unlocked_in="1.7",
+        licence=Licence.UNVERIFIED,
+        licence_url="https://huggingface.co/datasets/BIFOLD-BigEarthNetv2-0/BigEarthNet.txt",
+        licence_verified=False,
+        source_url="https://huggingface.co/datasets/BIFOLD-BigEarthNetv2-0/BigEarthNet.txt/resolve/main/BigEarthNet.txt.parquet",
+        acquisition="download",
+        layout=DatasetLayout(
+            kind=LayoutKind.IMAGE_SIDECAR,
+            split_directories={DatasetSplit.ALL: "."},
+            image_directories=("images",),
+            label_file="BigEarthNet.txt.parquet",
+        ),
+        approximate_size="0.43 GB of text; the images are BigEarthNet v2.0 (~120 GB, or a 10% subset)",
+        quirks=(
+            "The parquet is text only - `patch_id` and `s1_name` key into BigEarthNet v2.0 (reBEN) patches, "
+            "which are not in the file. The images must be fetched separately and joined on `patch_id`.",
+            "The stated licence is CDLA-Permissive-1.0 (the Hub page); recorded UNVERIFIED until read. "
+            "It is the problem statement's named dataset for remote-sensing adaptation.",
+            "Rows carry `split` (train/validation/test) and `type`/`category`; the benchmark split is the "
+            "manually verified subset and is what 1.14 scores, never the LLM-augmented rows.",
+        ),
     ),
     DatasetId.RSVQA_LR: DatasetRecord(
         dataset_id=DatasetId.RSVQA_LR,
@@ -581,6 +710,34 @@ DATASET_CATALOGUE: Final[dict[DatasetId, DatasetRecord]] = {
             "The PDF makes this the primary VLM benchmark, so its numbers are the ones that get quoted. "
             "Human-verified, which is why it is trusted, and non-commercial, which is why nothing derived "
             "from it can be sold.",
+        ),
+    ),
+    DatasetId.CDVQA: DatasetRecord(
+        dataset_id=DatasetId.CDVQA,
+        title="CDVQA",
+        task="change-based visual question answering over bi-temporal pairs",
+        sensor="aerial (SECOND imagery)",
+        resolution="0.5-3 m",
+        scale="2,968 pairs at 512 x 512, ~122,000 QA pairs, 19 answer categories",
+        unlocked_in="1.10",
+        licence=Licence.UNVERIFIED,
+        licence_url="https://github.com/YZHJessica/CDVQA",
+        licence_verified=False,
+        source_url="https://github.com/YZHJessica/CDVQA",
+        acquisition="manual",
+        layout=DatasetLayout(
+            kind=LayoutKind.IMAGE_SIDECAR,
+            split_directories={DatasetSplit.ALL: "."},
+            image_directories=("A", "B"),
+            label_file="CDVQA.json",
+        ),
+        approximate_size="~2 GB",
+        quirks=(
+            "Built on SECOND's image pairs, so the same pairs must not be used to train the change "
+            "detector and to evaluate change VQA - a leak that would look like generalisation.",
+            "Questions are template-generated with a closed answer set (change type, increase/decrease, "
+            "largest/smallest change, change ratio); accuracy per question type is the published metric.",
+            "The problem statement's named benchmark for multitemporal change-based VQA.",
         ),
     ),
     DatasetId.DIOR_RSVG: DatasetRecord(

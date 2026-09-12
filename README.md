@@ -19,6 +19,15 @@ cd backend
 uv sync
 ```
 
+If downloading the Matplotlib wheel times out on a slower connection, increase uv's HTTP timeout for that shell and retry:
+
+```powershell
+$env:UV_HTTP_TIMEOUT = "120"
+uv sync --refresh --refresh-package matplotlib
+```
+
+The lock file already selects a CPython 3.14 Windows wheel for Matplotlib, so no source build or dependency downgrade is needed.
+
 ### 3. Activate the Virtual Environment
 You must activate the virtual environment so your terminal uses the correct Python instance:
 - **Windows (PowerShell):** `.venv\Scripts\activate`
@@ -51,3 +60,67 @@ Finally, run the diagnostic tool. It will check every dependency (database, cach
 uv run aeris doctor
 ```
 If the command outputs an `ok` status for all services, your backend is perfectly configured and ready to use!
+
+### 8. Run an analysis (`aeris analyse`)
+With the stack green, ask an index question over the bundled Sentinel-2 subset. The run streams its S7–S19
+trace, writes three figures under `backend/runs/<run_id>/figures/`, prints the measured area and the claims
+it rests on, and leaves `provenance.json` and `evidence-graph.json` beside the journal:
+
+```bash
+uv run aeris analyse --scene notebooks/01_remote_sensing/data --query "unhealthy vegetation" --level L2A
+```
+
+`--level L2A` is needed for that subset because its files carry no product name; a scene fetched with
+`aeris dataset fetch` states its level in the path and does not need it. Other questions the phrase table
+answers: `"vegetation"`, `"water"`, `"flood extent"`, `"built-up"`, or a bare index name such as `"ndwi"`.
+
+---
+
+## Local Database & GUI Connection Details
+
+If you are connecting a GUI client (such as pgAdmin, DBeaver, TablePlus, or VSCode Database Client) to the local PostgreSQL database, use the following settings:
+
+| Setting | Value to Enter | Notes |
+| :--- | :--- | :--- |
+| **Host** | `localhost` *(or `127.0.0.1`)* | Bound to localhost |
+| **Port** | `5433` | Host port is `5433` (mapped from container port `5432` to avoid host collisions) |
+| **User** | `aeris` | Application user |
+| **Password** | `aeris_local_development` | Local development password |
+| **Database** | `aeris` | Primary database name |
+
+
+### 9. The specialist fleet (`aeris models`)
+Phase 1.6 adds the first learned models. `uv sync` installs torch from the CUDA 13.0 index (about 3 GB);
+without a CUDA device everything still runs, on the CPU, and reports itself `degraded`. Checkpoints are
+fetched from the Hugging Face Hub into `backend/data/models/` on first use.
+
+```bash
+uv run aeris models status
+```
+
+```bash
+uv run aeris models warm changeformer segformer-landcover --budget 700
+```
+
+```bash
+uv run aeris dataset fetch levir-cd --split test
+```
+
+```bash
+uv run aeris models evaluate --limit 256
+```
+
+The second command loads two models within a budget that fits one, so you watch the first go
+`warming → online` and then get evicted for the second. The last two fetch LEVIR-CD's 256-crop test split
+(73 MB) and score the change detector on it: change-class F1 and IoU, and the predicted and true areas.
+
+The oriented-object detector (YOLO11s-OBB on DOTA, **AGPL-3.0** - see `constants/licences.py`) has its own
+smoke test on Ultralytics' eight-crop DOTA8 sample: fetch the archive, unpack it in place, then score.
+
+```bash
+uv run aeris dataset fetch dota8
+```
+
+```bash
+uv run aeris models evaluate --model dota-detector
+```

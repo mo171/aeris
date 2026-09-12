@@ -49,13 +49,21 @@ SHARED_VOCABULARIES: Final[dict[str, tuple[str, str]]] = {
         "features/investigation/schemas/investigation.schema.ts",
         "workspaceModeSchema",
     ),
+    "layers.ComparatorSide": ("features/investigation/schemas/layer.schema.ts", "comparatorSideSchema"),
     "layers.LayerKind": ("features/investigation/schemas/layer.schema.ts", "layerKindSchema"),
+    "color_ramps.ColorRampId": ("features/investigation/schemas/layer.schema.ts", "colorRampIdSchema"),
     "layers.LayerRenderMode": ("features/investigation/schemas/layer.schema.ts", "layerRenderModeSchema"),
     "model_ids.ModelId": ("features/missionCommand/schemas/model.schema.ts", "modelIdSchema"),
     "reports.ReportSection": ("features/investigation/schemas/report.schema.ts", "reportSectionKindSchema"),
     "scenes.SceneModality": (
         "features/investigation/schemas/investigation.schema.ts",
         "acquisitionModalitySchema",
+    ),
+    # Discharged in Phase 1.3. It sat in `FRONTEND_ONLY_VOCABULARIES` reading "Phase 1.3 - the SAR
+    # branch" until the SAR branch existed to meet it, which is exactly what that map is for.
+    "scenes.Polarisation": (
+        "features/crossModal/schemas/cross-modal.schema.ts",
+        "polarisationSchema",
     ),
     "scenes.SceneRole": ("features/investigation/schemas/investigation.schema.ts", "sceneRoleSchema"),
     "scenes.TemporalRole": ("features/missionCommand/schemas/imagery.schema.ts", "temporalRoleSchema"),
@@ -134,7 +142,34 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     ),
     "licences.Redistribution": "Internal, with the same note as `Licence`.",
     "licences.CommercialUse": "Internal, with the same note as `Licence`.",
+    "raster.BandRole": (
+        "Internal. What a band is *for*, so `math/` can ask for RED rather than being told B04 - the "
+        "indirection that keeps the arithmetic sensor-agnostic. **Note for Phase 1.3**: the frontend's "
+        "`polarisationSchema` is {VV, VH, ratio} in upper case, while the SAR members here are lower case "
+        "and sit alongside the optical roles. 1.3 needs a separate `Polarisation` enum matching the "
+        "frontend exactly; `BandRole` is not it and must not be put on the wire."
+    ),
+    "raster.ProcessingLevel": (
+        "Internal today. L1C/L2A/GRD gates whether band arithmetic is permitted at all "
+        "(architecture-context.md §8 rule 5); the frontend shows a scene's modality, not its correction "
+        "level. A candidate for the wire if an operator ever needs to see why an index was refused."
+    ),
+    "raster.SpectralBand": (
+        "Internal. Sentinel-2 band identifiers. The wire carries what a band *means* - an index name, a "
+        "layer kind - never which instrument channel produced it."
+    ),
     "redis_keys.KeyNamespace": "Internal. A Redis key prefix never crosses the boundary.",
+    "fleet.VramProfile": (
+        "Internal. Which residency tier a machine measured as. The frontend sees each model's health "
+        "(`modelHealthSchema`), never the card it runs on."
+    ),
+    "spectral.SpectralIndex": (
+        "Shared in substance, not in Zod: the frontend declares `SPECTRAL_INDEX_IDS` in "
+        "`lib/constants/overlays/spectral-indices.ts` as a constants array rather than a schema, so the "
+        "exporter never sees it. The seven values are transcribed from that file and the layer schema "
+        "carries them as a plain string. A candidate for a Zod enum on the frontend, at which point this "
+        "moves up to `SHARED_VOCABULARIES`."
+    ),
     "storage.Bucket": "Internal. A bucket role never crosses the boundary; the frontend sees signed URLs.",
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",
 }
@@ -145,10 +180,7 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
 FRONTEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     "agreementStateSchema": "Phase 1.11 - the cross-modal agreement ledger.",
     "fusionRefusalIdSchema": "Phase 1.11 - the stated reasons fusion refuses.",
-    "polarisationSchema": "Phase 1.3 - the SAR branch.",
     "sensorIdSchema": "Phase 1.11 - names a sensor within a cross-modal comparison.",
-    "colorRampIdSchema": "Phase 1.2.1 - becomes `app/constants/color_ramps.py`.",
-    "comparatorSideSchema": "Interface state. The backend has no opinion on which pane a layer is drawn in.",
     "reportExportFormatSchema": "Phase 1.12 - JSON and GeoJSON; PDF is deferred to Phase 2.",
     "assistantRoleSchema": "Phase 1.13 - the spoken loop's turn-taking.",
     "missionAnalysisKindSchema": "Deferred with continuous monitoring (`roadmap.md`, explicitly deferred).",

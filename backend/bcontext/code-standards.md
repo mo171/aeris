@@ -173,6 +173,8 @@ services/spectral/
 **The dividing line:** `math/` knows arrays, numbers, geometries and CRS codes. It does **not** know what a
 scene, a claim, a run, an investigation or a model id is, and it does no I/O. If a `math/` function needs a
 `Scene`, the split was made in the wrong place — move the lookup up into the service and pass arrays down.
+A `math/` module may import another `math/` module — a kernel one subsystem guards is not rewritten in the
+next (1.4's `spectral/math` imports the normalised difference from `imagery/math`) — and nothing above them.
 
 Why this is a rule and not a preference:
 

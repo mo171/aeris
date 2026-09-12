@@ -29,24 +29,44 @@ import pytest
 from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
+from app.constants.color_ramps import ColorRampId
 from app.constants.contracts import CONTRACT_SCHEMAS_FILE
-from app.constants.events import EVENT_TYPES_NOT_YET_EMITTED, AnalysisEventType, AssistantEventType
+from app.constants.events import (
+    EVENT_TYPES_NOT_YET_EMITTED,
+    EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND,
+    AnalysisEventType,
+    AssistantEventType,
+)
+from app.constants.evidence import ClaimKind, EvidenceKind, MetricDirection
 from app.constants.intents import Intent
+from app.constants.layers import ComparatorSide, LayerKind, LayerRenderMode
+from app.constants.model_ids import ModelId
 from app.constants.stages import PipelineStage
 from app.constants.statuses import TraceStepState
 from app.schemas.events import (
     ANALYSIS_STREAM_EVENT_ADAPTER,
     AnalysisTraceStep,
     AnswerTokenEvent,
+    Claim,
+    ClaimEvent,
+    ClaimMetric,
+    EvidenceFeature,
+    EvidenceItem,
+    EvidenceLayer,
     InsufficientEvidence,
     InsufficientEvidenceRemedy,
+    LayerProvenance,
+    LayerReadyEvent,
+    PolygonGeometry,
     RunCompleteEvent,
     RunErrorEvent,
     RunStartEvent,
     TraceStepEvent,
+    ValueDomain,
     parse_event,
     serialise_event,
 )
+from app.schemas.geo import GeoBoundingBox, GeoPoint
 
 CONTRACTS: dict[str, dict[str, Any]] = json.loads(CONTRACT_SCHEMAS_FILE.read_text(encoding="utf-8"))
 
@@ -85,6 +105,83 @@ MODELLED_EVENTS = {
             artefact_layer_id="lyr_01J000000000000000000000",
         ),
     ),
+    AnalysisEventType.LAYER_READY: LayerReadyEvent(
+        run_id=RUN_ID,
+        layer=EvidenceLayer(
+            id="lyr_01J000000000000000000000",
+            kind=LayerKind.POLYGON_VECTOR,
+            render_mode=LayerRenderMode.EXTRUDED,
+            title="Sparse vegetation",
+            overlay_id=None,
+            value_domain=ValueDomain(minimum=0.2, maximum=0.4),
+            color_ramp_id=ColorRampId.MASK_AMBER,
+            opacity=0.6,
+            is_visible=True,
+            comparator_side=ComparatorSide.BOTH,
+            tile_url_template=None,
+            attribution=None,
+            bounds=GeoBoundingBox(west=72.80, south=19.00, east=72.90, north=19.10),
+            minimum_zoom=None,
+            maximum_zoom=None,
+            features=[
+                EvidenceFeature(
+                    id="ftr_01J000000000000000000000",
+                    label="Region 1",
+                    geometry=PolygonGeometry(
+                        ring=[
+                            GeoPoint(latitude=19.01, longitude=72.81),
+                            GeoPoint(latitude=19.01, longitude=72.82),
+                            GeoPoint(latitude=19.02, longitude=72.82),
+                        ]
+                    ),
+                    magnitude=1.0,
+                    confidence=None,
+                    area_hectares=112.1,
+                    value=0.31,
+                    class_id=None,
+                )
+            ],
+            provenance=LayerProvenance(
+                model_id=ModelId.GEOSPATIAL_ENGINE.value,
+                model_version="1.4.0",
+                trace_step_id=STEP_ID,
+                confidence=None,
+            ),
+        ),
+        evidence=[
+            EvidenceItem(
+                id="ev_01J000000000000000000000",
+                kind=EvidenceKind.INDEX_MAP,
+                title="Sparse vegetation regions",
+                layer_id="lyr_01J000000000000000000000",
+                feature_ids=["ftr_01J000000000000000000000"],
+                area_hectares=2471.0,
+                magnitude=0.21,
+                confidence=None,
+                source_scene_ids=["scn_01J000000000000000000000"],
+            )
+        ],
+    ),
+    AnalysisEventType.CLAIM: ClaimEvent(
+        run_id=RUN_ID,
+        claim=Claim(
+            id="clm_01J000000000000000000000",
+            run_id=RUN_ID,
+            text="Sparse vegetation covers 2,471.0 hectares.",
+            kind=ClaimKind.QUANTITATIVE,
+            confidence=None,
+            metrics=[
+                ClaimMetric(
+                    label="Area", value=2471.0057, unit="ha", direction=MetricDirection.NEUTRAL, precision=1
+                )
+            ],
+            evidence_ids=["ev_01J000000000000000000000"],
+            model_id=ModelId.GEOSPATIAL_ENGINE,
+            model_version="1.4.0",
+            trace_step_id=STEP_ID,
+            is_primary=True,
+        ),
+    ),
     AnalysisEventType.ANSWER_TOKEN: AnswerTokenEvent(run_id=RUN_ID, text="Built-up"),
     AnalysisEventType.RUN_COMPLETE: RunCompleteEvent(
         run_id=RUN_ID, confidence=0.91, insufficient_evidence=None, total_duration_ms=42_000
@@ -99,13 +196,42 @@ def validator_for(member: dict[str, Any]) -> Draft202012Validator:
 
 
 async def test_the_backend_event_names_are_the_frontend_union_exactly() -> None:
-    """`AnalysisEventType` equals the union's discriminators - not a subset, not a superset.
+    """`AnalysisEventType` equals the union's discriminators, once the agreed-but-unimplemented ones are set
+    aside - not a subset, not a superset.
 
     A missing member means an event the frontend can render and the backend can never send. An extra one is
     worse: the backend emits something the frontend's Zod has never heard of, the parse throws at the
     boundary, and the operator sees a blank surface rather than an error naming the field.
+
+    **The exclusion is narrow on purpose.** `api-contract.md` marks three events agreed and not yet
+    implemented on the frontend (§4 `ui-command`, §5 `speech`, §6 `figure-ready`), and the backend
+    implements them ahead of it - 1.2.1 built `figure-ready`. Excluding exactly those, by name and with a
+    reason, keeps the equality check on everything else rather than weakening it to a subset.
     """
-    assert {member.value for member in AnalysisEventType} == set(ANALYSIS_MEMBERS)
+    emitted = {member.value for member in AnalysisEventType}
+    agreed_but_unparsed = {
+        member.value for member in EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND
+    }
+
+    assert emitted - agreed_but_unparsed == set(ANALYSIS_MEMBERS)
+
+
+async def test_nothing_is_listed_as_unparsed_that_the_frontend_now_parses() -> None:
+    """The staleness check that makes the exclusion above safe.
+
+    When the frontend ships its figure panel, `figure-ready` joins its union - and this fails until the
+    entry is removed, at which point the equality test starts enforcing the event properly. Without this,
+    an exclusion added once would silently stay forever.
+    """
+    still_unparsed = {
+        member.value for member in EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND
+    }
+    now_parsed = still_unparsed & set(ANALYSIS_MEMBERS)
+
+    assert not now_parsed, (
+        f"The frontend now parses {sorted(now_parsed)}. Remove them from "
+        "`EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` so the union test enforces them."
+    )
 
 
 async def test_the_assistant_event_names_are_its_union_exactly() -> None:

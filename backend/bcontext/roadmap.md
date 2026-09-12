@@ -190,7 +190,7 @@ and label parsing belongs to the phase with a model to feed — 1.6 for boxes an
 1.1 owes acquisition, licensing, cataloguing and **enumeration**, and enumeration is what verifies a
 download is complete.
 
-## 1.2 — Raster engine · S1–S6, S11 · plus tiles
+## 1.2 — Raster engine · S1–S6, S11 · plus tiles — **done (2026-08-31)**
 
 **Research:** PDF pp.12–14 (resolutions, sensors, formats, CRS) and §15 (the 20-stage pipeline).
 Notebook: `01_remote_sensing/` — already started.
@@ -208,7 +208,33 @@ EPSG:3857 XYZ, CORS headers present, alpha channel transparent over nodata, and 
 This gate is deliberately early. The frontend's memory names CORS as "the most common first-day failure",
 and a tile contract that is wrong is far cheaper to discover now than in Phase 2.
 
-## 1.2.1 — Visual products · the figures the backend sends
+**Result — the gate passed in a real browser.** `aeris ingest inspect|scene|index`, `services/imagery/`
+(metadata, validation, cog, tiling, `math/`), TiTiler in compose, and `tools/tilecheck/` — seven checks at
+`http://localhost:3000`, all green, including `getImageData` on a canvas the tile was drawn into. 46 new
+tests, **314 green**.
+
+    NDVI over 10980×10980   range [-1.000, 1.000]   vegetated (>0.3) 72.6%
+    TileJSON  xyz, bounds [77.032, 27.901, 78.176, 28.913], minzoom 8, maxzoom 14
+    CORS      allowed → ACAO: http://localhost:3000   ·   other → 200 with NO ACAO
+    Tile      image/png, RGBA, 38,217 transparent px of 65,536 at the scene edge
+
+**The bug worth carrying forward.** The first NDVI ranged **[-337, +347]** and wrote a *valid* COG that
+rendered as a plausible map — 0.055% of pixels, invisible by eye, and enough to set the colour scale of
+every figure the array feeds. The first fix was wrong: raising the denominator guard changed nothing.
+The cause is that `|a−b| ≤ |a+b|` holds **only when a and b share a sign**, and subtracting the L2A offset
+from dark ground gives negative reflectance. Measured: 0.52% of valid pixels are negative, and **100% of
+the out-of-range values came from exactly those.** `math/indices.py` masks them and carries a
+post-condition that raises.
+
+Three more things were measured rather than assumed, each after assuming wrongly first: TiTiler listens on
+**80**, its settings are prefixed **`TITILER_API_`**, and its default CORS is `*` *with* credentials — a
+pair every browser rejects, so the permissive-looking default is the broken one.
+
+**Not built, deliberately**: the index *engine* (registry, vocabulary, cloud mask before arithmetic, the
+S12 trace step) is 1.4. What 1.2 has is the raster path the gate names — read, scale, divide, write a COG,
+upload, serve.
+
+## 1.2.1 — Visual products · the figures the backend sends — **done (2026-08-31)**
 
 **Requirement:** `product-truth.md` §1.5. **Wire:** `api-contract.md` §6. **Invariant:** `architecture-context.md`
 §8 rule 13 and invariant 19.
@@ -249,7 +275,38 @@ byte-identical**, and a figure emitted with a null `traceStepId` fails a test.
 Later sub-phases add figure *kinds*, not rendering code: 1.3 the SAR backscatter dB figure, 1.5 the
 T1 | T2 | change-mask comparison, 1.6 the detection overlay with boxes and labels.
 
-## 1.3 — Preprocessing · S7–S10 and the SAR branch
+**Result — the gate passed.** `aeris figures <scene> --level L2A` renders all three from the four-band
+Sentinel-2 subset in `notebooks/01_remote_sensing/data`, and the index map **redraws byte-identically from
+its recorded `renderSpec`** (1,478,754 bytes). 37 new tests, **353 green**.
+
+    rgb-composite   1066×1120  2518 KB   legend categorical  ramp true-color
+    index-map       1066×1176  1444 KB   legend continuous   ramp index-vegetation  domain [-1, 1]
+    mask-overlay    1066×1120  2554 KB   legend binary       ramp mask-amber        resampling nearest
+    vegetated: 17.1% of the scene   ·   3 figures in MinIO and under runs/<run_id>/figures/
+
+**Matplotlib is used for its colormaps and nothing else** — no figure, no `Agg` canvas, no `savefig`.
+Composition is NumPy and Pillow, because byte-identical reproduction is a *requirement* here (§6 rule 2)
+and a matplotlib figure's bytes depend on font metrics, DPI and backend version. The colourbar is drawn by
+hand for the same reason.
+
+**Two additions to the contract, both because rule 2 demands completeness.** `renderSpec.stretch` carries
+its `method` (a percentile stretch is data-dependent and a fixed one is not — only one redraws on other
+data), and `renderSpec.decimation` was added outright: a figure is drawn from a decimated read, and two
+decimations of one scene produce visibly different images. `figure-ready` is agreed and not yet on the
+frontend, so extending it now costs nothing.
+
+**The contract suite gained a direction.** `figure-ready` in `AnalysisEventType` broke the exact-match
+union test, because the frontend does not parse it yet. Rather than weakening the check to a subset,
+`EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` records the three agreed-but-unimplemented events (§4, §5, §6)
+by name with a reason, plus a staleness test that fails when the frontend ships one — at which point the
+equality check starts enforcing it.
+
+**Also fixed here, found by using it**: a 245 MB scene download had no retry, and a remote reset lost the
+whole transfer. `_download_to` now retries three times with backoff — measured, after three consecutive
+resets while fetching B02/B03 for this gate. Each attempt restarts rather than resuming with a `Range`
+header, because resuming without checking the `ETag` risks stitching a scene from two versions of a file.
+
+## 1.3 — Preprocessing · S7–S10 and the SAR branch — **done (2026-09-01)**
 
 **Research:** PDF pp.12–14 and §15.1. Notebooks `04_sar_fundamentals`, `05_preprocessing` — already started.
 
@@ -273,7 +330,46 @@ Two rules that carry the correctness of everything downstream:
 reason. Layover/shadow masks are what let the system distinguish "radar saw nothing" from "radar could not
 see", and that distinction is demonstrated.
 
-## 1.4 — Spectral indices and geospatial statistics · S12, S15 measurement
+**Result — the gate passed**, `aeris preprocess coregister` and `aeris preprocess sar`, both on the real
+Sentinel-1 / Sentinel-2 scene in `notebooks/01_remote_sensing/data` and the real Copernicus DEM over the
+same ground.
+
+    known-good  one rigid translation of (2.5, -1.25)   residual 0.0000 px   accepted
+    known-bad   opposite translations in each half      residual 4.0000 px   REFUSED
+    real pair   s2_B04 against s2_B08                   residual 0.1436 px   accepted
+
+**Three defects were found in the maths, all by measurement rather than review, and none visible to the
+tests that were passing over them.**
+
+1. **Layover and shadow were swapped.** The slope was measured *away* from the sensor and then tested as
+   though it were measured *towards* it, so a foreslope was reported as shadow and a backslope as layover.
+   The test in place asserted only that both masks were non-empty and differed — which stays true when the
+   sign flips. This is precisely the §8 rule 7 distinction, inverted.
+2. **The terrain correction was a gain.** `cos(slope)/cos(incidence)` multiplies flat ground by 1.22 at a
+   35° incidence. It is now `cos(θ)/cos(θ_local)`, which is exactly 1 where there is nothing to correct.
+3. **Speckle was filtered as additive noise.** Measured on two regions of one scene with identical speckle
+   statistics differing only in brightness: 25× smoothing on the dark half, 1.4× on the bright half. A
+   change detector reads that variance collapse over water as a finding. Now Lee (1980) on the coefficient
+   of variation, which is scale-free.
+
+**And one in registration.** Invalid pixels were filled with zero, so tiles touching the nodata margin
+locked onto that artificial edge and returned a shift of exactly (0, 0) — which reads as *perfect*
+registration rather than as a failure. 1.3% nodata was enough to report 1.02 px on a pair aligned to
+0.00 px, refusing good data. Filled with the tile mean.
+
+**`polarisationSchema` is discharged.** It had sat in `FRONTEND_ONLY_VOCABULARIES` reading "Phase 1.3 —
+the SAR branch" since Phase 0.7; `scenes.Polarisation` now mirrors it and the exact-match test enforces it.
+Upper case `VV`/`VH`, deliberately not `BandRole`'s lower-case members — one addresses a band in a file,
+the other is a value on the wire.
+
+**Both branches report `obscuredFraction`**, the number `sensorRunSchema` already declares: cloud, shadow
+and *unjudged* pixels for optical; layover and shadow for radar.
+
+**The backscatter figure uses a fixed dB domain, not per-scene percentiles** — the same argument that puts
+every NDVI on [-1, 1] in 1.2.1. A radar time series exists to be compared, and a per-date stretch makes a
+flooded field and a calm one look alike.
+
+## 1.4 — Spectral indices and geospatial statistics · S12, S15 measurement — **done (2026-09-11)**
 
 **Research:** PDF pp.12–14 (index formulae) and p.9 (why deterministic tools, not learned approximations).
 
@@ -294,7 +390,58 @@ produces an NDVI map, a stressed-region mask and an area in hectares, **checked 
 scene**. Fully deterministic, so it is fully testable — and because the arithmetic sits in `math/`, the unit
 test is a handful of lines against hand-computed values.
 
-## 1.5 — Evidence, confidence and provenance · S15, S18, S19
+**Result — the gate passed**, and it ran as a real pipeline run rather than a script. `aeris analyse
+--scene <dir> --query "unhealthy vegetation"` runs the new `index-query` graph — **S7 → S12 → S15 → S16** —
+through the 1.0 session and fan-out, with the journal, the live trace and the figure writer registered. On
+the Mumbai scene that closed 1.2 and 1.3:
+
+    S7    no cloud mask: the subset carries no SCL layer; NDVI reported unmasked (and says so)
+    S12   NDVI from B08, B04 over 1066x1120                       index-engine 1.4.0
+    S15   Sparse vegetation (NDVI 0.20 to 0.40): 2,471.0 ha,      geospatial-engine 1.4.0
+          21.2% of 11,651.6 ha observed, 7,691 regions
+    S16   "...covers 2,471.0 hectares ... in 7,691 regions. No cloud mask was available..."
+    3 figures (index map, true colour, mask overlay - primary), each carrying its stage's trace step id
+
+**The hectare figure was checked against two independent tools, not one.** QGIS is not on the build
+machine, so the S15 mask was vectorised and measured by pyproj's ellipsoidal integration
+(`Geod.geometry_area_perimeter`) and by PostGIS `ST_Area(::geography)` — the 0.2 route. All three give
+**2,471.0057 ha**; the 7,691 polygons match the 7,691 regions. The naive figure — pixel count × 100 m² in
+UTM — is 2,472.13 ha, **1.12 ha too many** (+0.045%), because UTM's scale at 230 km from the central
+meridian is not 1. That is the plausible wrong number §8 rule 3 exists to prevent, and a test now fails on
+it. 65 new tests, **444 green** (the two remaining reds need the 1.2 gate's Ghaziabad NDVI COG in MinIO,
+which this machine never fetched); ruff and `uv lock --check` clean.
+
+Measured rather than assumed, and each recorded where it is relied on:
+
+- **s2cloudless cannot run on an L2A scene.** Its ten-band cube needs B10, which L2A products do not
+  publish. The S7 that actually works on the data every index runs over is the product's own scene
+  classification layer, so `mask_from_scene_classification` joined `cloud_masking.py` and the S7 node
+  uses it. Cirrus counts as cloud; dark-area and unclassified pixels count as observed.
+- **Areas are measured per pixel footprint in a local LAEA, without resampling the mask.** Projecting
+  corners and summing footprints (per 32-pixel block) agrees with the geodesic integral to 2×10⁻⁹ in UTM
+  and 6×10⁻⁸ in a geographic grid, and never changes which pixels the mask contains — which resampling
+  the raster into the equal-area CRS would.
+- **`coverageFraction` is a ratio of areas over *observed* ground**, not of counts over the grid. A field
+  under cloud is not "not vegetated"; the same mask that kept it out of the index keeps it out of the
+  denominator. `measure_mask` refuses a detection over unobserved ground, which is the structural proof
+  that S12 masked before it computed.
+- **EVI is unbounded and SAVI exceeds 1 over specular pixels**; both mask (never clip) outside [-1, 1],
+  and the share the formula refused is reported in the S12 trace detail rather than absorbed.
+
+Two additions to the spine, both because a figure rendered inside a node has to carry that node's id
+(`api-contract.md` §6 rule 1): `pipeline_node` now exposes `current_trace_step_id()` and
+`describe_trace_step()` through a context variable, and takes `model_id` / `model_version` so the trace
+says which engine ran. Arrays never enter the checkpoint — S7, S12 and S15 retain their outputs through
+`services/evidence/artefacts.py` (local COG plus the `artefacts` bucket) and the state carries paths and
+keys. A run interrupted after S12, with its local artefact deleted, resumes through S15 by restoring the
+artefact from storage; that is a test.
+
+**Not built, deliberately**: vectorisation, claims and evidence records are 1.5, which is why no caption
+carries a number yet; the query→index table is the deterministic half of routing and 1.8 replaces the
+phrase match with a classifier; and a windowed multi-band fetch that would put a real SCL under the local
+gate scene is 1.1 territory, so the real-data demonstration of S7 is recorded as owed.
+
+## 1.5 — Evidence, confidence and provenance · S15, S18, S19 — **done (2026-09-11)**
 
 **Research:** PDF p.38 (evidence-grounded answers, the answer object) and pp.38–39 (auditable trace).
 
@@ -319,7 +466,50 @@ stretch" is answerable from the run record alone. A figure with no stage behind 
 its artefact URI; **every figure resolves to a trace step**; the run's JSONL validates against the vendored
 contracts.
 
-## 1.6 — Specialist models · S13
+**Result — the gate passed, all four statements, each as a test and each on the real scene.** The index-
+query graph grew to **S7 → S12 → S15 → S16 → S18 → S19**; the two events 1.0 recorded as owed -
+`layer-ready` and `claim` - are emitted, and `EVENT_TYPES_NOT_YET_EMITTED` is empty by earning it. On the
+Mumbai scene, `aeris analyse --query "unhealthy vegetation"`:
+
+    S12   layer-ready   raster-tiles  NDVI over the retained COG (TiTiler, server-side stretch and ramp)
+    S15   layer-ready   raster-mask   every pixel of the mask, as tiles
+          layer-ready   polygon-vector  844 of 7,691 regions as features, each with hectares and mean NDVI
+          claim         primary, quantitative: 2,471.0 ha, 21.2% of 11,651.6 ha observed, 7,691 regions
+          claim         supporting, spatial: the largest region, 112.0 ha, mean NDVI 0.29
+    S16   the claims, spoken            S18  minimum-of-stated: none stated -> confidence None
+    S19   provenance.json (2 inputs hashed, 2 artefact URIs, 2 engines, the rule) + evidence-graph.json
+
+Walked back mechanically: every claim → evidence → layer → feature → ring → rasterised onto the S15 mask,
+845 feature footprints, each containing every pixel its region measured; S12 and S15's completed trace
+steps carry the `artefactLayerId` of the layer that draws their artefact; all three figures name a step and
+the primary one carries both claim ids; 66 of 66 parseable journal lines and the whole evidence graph
+validate against the vendored Zod. 40 new tests, **471 green**, ruff and `uv lock --check` clean.
+
+Measured rather than assumed:
+
+- **Vectorisation is exact and simplification is free; holes are the whole difference.** The largest real
+  region has 658 interior rings. Rasterising its full polygon back covers exactly its pixels; its *outer
+  ring* encloses 33% ground the mask never marked - and `featureGeometrySchema` is a single ring, so
+  holes cannot travel. The feature therefore carries the true, holed area and its outline, and the
+  invariant tested is containment, not equality. **A coordinated change to ask for: `holes` on the
+  polygon geometry.**
+- **The S7 mask from an L2A product has no fleet model.** `layerProvenanceSchema.modelId` is required and
+  the twelve ids have no entry for Sen2Cor; `s2cloudless` did not run and is not claimed. S7's trace step
+  carries no layer, the artefact is retained and its URI is in the provenance record. **A coordinated
+  change to ask for: a thirteenth id for the product's own classification.**
+- **The vector payload is the run's largest artefact.** 844 features made a 5.5 MB journal line; with
+  coordinates at seven decimals (a centimetre) and a compact evidence graph, 11.6 MB became 5.6 MB.
+  `MINIMUM_FEATURE_REGION_PIXELS` bounds what is drawn; the hectares are always the whole mask's.
+- **Every number the answer speaks is on a claim.** The cloud caveat quoted an obscured fraction no claim
+  carried until it became a metric on the primary claim (invariant 15), and a test now strips the claim
+  texts out of the answer and checks what remains.
+
+**Not built, deliberately**: persistence to the `evidence`, `claims` and `trace_steps` tables - a run row
+needs an investigation row, which is 1.9's session persistence; the JSON records and the journal are the
+Phase 1 audit trail and are the columns 1.9 writes. The confidence rule is `minimum-of-stated` with every
+stage declining; 1.6 supplies the first stated score and 1.7 the validation checks PDF §20 folds in.
+
+## 1.6 — Specialist models · S13 — **done (2026-09-12)**
 
 **Research:** PDF pp.17–18 (change detection architectures and failure modes), p.17 (grounding), p.20–21
 (model comparison). Notebooks `05_grounding`, `06_segmentation`, `07_change_detection`.
@@ -335,6 +525,66 @@ contracts.
 Two models requested back-to-back on the 8 GB profile: the first evicts, the second loads, neither crashes,
 and `warming` is observable in the status output.
 
+**Result — both halves of the gate passed, on real weights, on a 4 GB laptop GPU.** Pretrained first, as
+the plan says; nothing was trained. 40 new tests, **515 green** (the two reds are still the 1.2 tile
+tests wanting the Ghaziabad COG), ruff and `uv lock --check` clean.
+
+    aeris models evaluate --limit 256        changeformer  v6-levircd256-hzdr   93 ms per crop
+      change class   precision 0.8009   recall 0.7905   F1 0.7957   IoU 0.6607
+      area           predicted 15.70 ha   truth 15.91 ha   (nominal 0.5 m pixels)
+      all 2,048 test crops:  F1 0.8233   IoU 0.6996   P 0.8516   R 0.7968   159.9 ha of 170.9 ha
+
+    aeris models warm changeformer segformer-landcover --budget 700
+      changeformer          offline -> warming (queue 1) -> online     resident 512 of 700 MB
+      segformer-landcover   offline -> warming (queue 1) -> online     evicted changeformer; 640 of 700 MB
+
+`warming` is *observed*, from a second task polling `status()` while the load runs, both in the CLI and
+in a test. The models: **ChangeFormerV6** (wgcban's architecture vendored under MIT, HZDR-FWGEL's LEVIR-
+CD-256 checkpoint from the Hub, 41.0 M parameters) and **SegFormer-B2 fine-tuned on LoveDA** through
+`transformers`; the **SAR log-ratio detector** as the deterministic `sar-change`; and the residual gate of
+§8 rule 2 in front of the optical detector, tested to refuse a misaligned pair *before* the model is
+loaded. `app/models/` is the fleet: `constants/fleet.py` states every model's capability, stages,
+weights source and measured footprint; `manager.py` leases, evicts idle least-recently-used models to a
+budget, and reports `offline / warming / online / degraded` with `queueDepth` and `medianLatencyMs`
+exactly as `modelStatusSchema` asks; `aeris doctor` gained a "Model device" row.
+
+Measured rather than assumed:
+
+- **The checkpoint's input convention is not the paper's.** ChangeFormer normalises to [-1, 1]; HZDR's
+  checkpoint scores F1 0.21 that way, 0.19 with ImageNet statistics, 0.42 in BGR, and **0.79** on plain
+  RGB in [0, 1]. Every wrong convention produces a plausible mask. The evaluation harness is what chose,
+  and the adapter's header says so.
+- **The vendored file was not verbatim the first time.** The extractor cut `ConvLayer` at a column-0
+  comment inside the class, leaving 38.7 M parameters against the checkpoint's 41.0 M; the strict load
+  refused it (10 unexpected tensors). Re-extracted to the next top-level definition, 41.0 M, loads clean.
+- **Footprints:** ChangeFormer 157 MB of weights, 461 MB peak through a 256 tile, 102 ms; SegFormer 104
+  MB, 556 MB peak through a 512 tile, 217 ms. Declared as 512 and 640. A Sentinel-2 subset (1120×1066)
+  runs through either in about two seconds, windowed and stitched with no seam of NaN.
+- **This laptop is a 4 GB profile**, below the roadmap's smallest. `VramProfile` gained a `4gb` tier and
+  the profile is measured from `mem_get_info`, never read from a product name. Both models fit at once
+  in 3,071 MB of budget, so the eviction is demonstrated with `--budget`, which is what "on the 8 GB
+  profile" means on a card with four.
+- **transformers 5's image processor requires torchvision** for a rescale and a normalisation whose
+  constants are in the checkpoint's own `preprocessor_config.json`. The adapter reads the file instead.
+
+**`dota-detector`, added the same day**: the mmrotate detectors need a compiler toolchain; **YOLO11s-OBB**
+(Ultralytics, trained on DOTA v1.0, pure PyTorch) does not, and it is real - published test mAP50 79.5,
+measured here at 79 MB of weights, 225 MB peak through a 1024 tile, 55 ms per tile. Served through the
+`ultralytics` package, which reads a NumPy array as **BGR**: the adapter reverses at the boundary and a
+test proves it box for box against the package's own file route. Large scenes are windowed at 1024 with a
+128 overlap; a box cut by a window's interior edge is dropped when the neighbour holds it whole, which
+took a 2×2 mosaic from 10 boxes for 8 objects to exactly 8. Smoke-tested on DOTA8 (Ultralytics' eight
+crops, a new `download` route): F1 0.842 at IoU 0.5, no misses - crops the model trained on, so a check of
+the adapter and not a benchmark; DOTA proper stays `manual`. **The cost is the licence: AGPL-3.0**, weights
+and package alike, recorded in `constants/licences.py` - a hosted AERIS that keeps this detector must
+publish its source or buy Ultralytics' commercial licence. That is a product decision, flagged, not made.
+
+**Not built, and why**: `grounding-dino-sam` and `rs-vlm` are 1.7's (both load through `transformers`,
+and the fleet records are in place with `offline` and a refusal naming the gap). The LEVIR-CD licence
+page was unreachable from the build machine, so the dataset stays `UNVERIFIED` - which blocks training,
+not evaluation, and no training was planned. The S13 *node* is 1.10's composition; the 1.5 builder
+already turns any mask the detector produces into both representations and claims.
+
 ## 1.7 — VLM and constrained answer generation · S14, S16
 
 **Research:** PDF pp.15–16 (captioning and VQA), p.8 (why a VLM alone is insufficient).
@@ -349,6 +599,37 @@ given the claim objects and asked to phrase them — and then tested for.
 
 **Gate** — single-image question and answer in the CLI. A test that seeds a claim with a known number and
 asserts the number in the answer text is exactly that number.
+
+**Problem-statement check (2026-09-12), before 1.7 starts.** The SIH statement (SatQuery AI) was read
+against this plan. What it makes *mandatory* that the plan already carries: single-image VQA (1.7),
+captioning or grounding (1.7: both), change description or change-VQA from a bi-temporal pair (1.10 over
+the 1.6 detector, phrased by 1.7), optical-SAR complementary extraction (1.11), agentic model selection
+with an auditable execution summary (1.8/1.9 over the 1.5 provenance record), GeoTIFF/TIFF input with
+PNG/JPEG for benchmarks only (1.2, 1.1). What it changes:
+
+- **"A generic LLM or VLM without remote-sensing adaptation will not satisfy the requirements"**, and
+  "at least one visual or vision-language component must be fine-tuned or otherwise adapted using
+  BigEarthNet.txt or any open-source training data". The deferral "fine-tune only where a gate fails" is
+  withdrawn for the VLM: 1.7 **fine-tunes** it. **`rs-vlm` = Qwen3-VL-2B-Instruct (Apache-2.0, 4.0 GB in
+  bf16, native multi-image input and grounding, transformers-native) with a LoRA trained on
+  BigEarthNet.txt** - the statement's named dataset: 464,044 co-registered S1/S2 pairs with captions,
+  VQA and referring expressions (CDLA-Permissive-1.0, text on the Hub as one 0.43 GB parquet; images from
+  BigEarthNet v2.0, a 10% subset suffices). Training is not possible on the 4 GB laptop; it is run on a
+  16 GB cloud GPU (a free T4 is enough at rank 16-64, 448 px) and the adapter (~70 MB) is what the fleet
+  loads, 4-bit, beside the base. Served on the 3050 it is `degraded`-eligible and measured before declared.
+  The alternatives weighed and not chosen: EarthDial-4B (MIT, RS-adapted, SAR and temporal aware - but
+  7.7 GB, `internvl_chat` custom code pinned to an old transformers, and not adapted *by us*); GeoChat
+  (7B LLaVA, same objections, larger).
+- **CDVQA** is the statement's change-VQA benchmark and was not in the catalogue; it is now, `manual`,
+  unlocked in 1.10 and scored in 1.14 beside LEVIR-CD. Its pairs are SECOND's - the change detector must
+  not be fine-tuned on SECOND if CDVQA is to mean anything.
+- **BigEarthNet.txt** is in the catalogue as its own record, distinct from BigEarthNet-MM.
+- **The final evaluation set is Cartosat-2S optical with RISAT SAR, pre-georeferenced and co-registered.**
+  Neither sensor is Sentinel. The 1.3 SAR chain assumes Sentinel-1 GRD calibration constants; for a
+  pre-calibrated RISAT product S8 must be skippable with the skip *recorded*, and the 1.9 co-registration
+  residual must still be measured on the pair rather than trusted. A resolution the VLM has never seen
+  (0.6 m pan-sharpened) is the reason the LoRA data should include VRSBench-resolution imagery too, not
+  BigEarthNet.txt's 10 m alone.
 
 ## 1.8 — Query understanding and routing
 

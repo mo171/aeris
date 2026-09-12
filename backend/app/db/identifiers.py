@@ -51,6 +51,7 @@ class IdentifierPrefix(StrEnum):
     # `sessions/session.py` so that a thread id in a checkpoint table is self-describing and sorts by when
     # the operator opened it.
     LAYER = "lyr"
+    FEATURE = "ftr"
     SESSION = "ses"
     FIGURE = "fig"
     REPORT = "rpt"

@@ -144,6 +144,7 @@ def _load_parallel_directories(
     and whether a label directory exists beside them. Writing four near-identical functions is how three
     of them come to handle a missing file differently.
     """
+    layout = layout.for_split(split)
     image_sets = [_images_in(root / directory, layout) for directory in layout.image_directories]
 
     if not image_sets or not image_sets[0]:

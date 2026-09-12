@@ -1,3 +1,574 @@
+## Session — 2026-09-12 (1.6) · The first learned models. **The paper's convention scored 0.21; the checkpoint's scored 0.82.**
+
+Phase 1.6 put real weights behind two of the twelve model ids and built the residency they live in. Both
+halves of the gate passed on a 4 GB laptop GPU - a tier the roadmap did not have a name for. 31 new
+tests, **502 green** (515 with the addendum below), ruff and `uv lock --check` clean; the two reds are still the 1.2 tile tests.
+
+### The gate
+
+    ChangeFormerV6 on LEVIR-CD test crops:  F1 0.823  IoU 0.700  P 0.852  R 0.797  (all 2,048)
+                                            159.9 ha predicted of 170.9 ha, at the nominal 0.5 m; 93 ms/crop
+    aeris models warm A B --budget 700:     A offline -> warming -> online; B warming -> online, A evicted
+
+`warming` is observed by a second task polling `status()` - in the CLI and in a test - not asserted from
+inside the load. Neither model crashed; the second's load evicted the first because it would not fit.
+
+### Measured rather than assumed
+
+- **HZDR's ChangeFormer checkpoint wants RGB in [0, 1], not the paper's [-1, 1].** On the same 128 crops:
+  0.79 on [0, 1], 0.21 on [-1, 1], 0.19 on ImageNet mean/std, 0.42 in BGR. Every wrong convention draws
+  a plausible mask. I wrote the adapter with the paper's convention first, and its header said so with
+  confidence; the evaluation harness corrected both. This is the whole reason the harness exists in 1.6
+  rather than 1.14.
+- **The vendored architecture was not verbatim the first time.** My block extractor stopped at a
+  column-0 comment inside `ConvLayer`, dropping its conv and forward; the model had 38.7 M parameters
+  against the checkpoint's 41.0 M, and the strict load refused it with 10 unexpected tensors. That
+  refusal is the design: a checkpoint that "mostly" fits is a different model.
+- **Footprints:** ChangeFormer 157 MB weights / 461 MB peak (256 tile) / 102 ms; SegFormer-B2 104 MB /
+  556 MB peak (512 tile) / 217 ms. Declared 512 and 640 in `constants/fleet.py` - my first guesses of
+  1,200 and 900 were file-size intuition, and a footprint too large evicts for no reason.
+- **This machine is an RTX 3050 with 4,095 MB.** The roadmap plans 8 and 16 GB profiles; `VramProfile`
+  now has `4gb` and `cpu`, and the tier comes from `torch.cuda.mem_get_info`, never a product name. With
+  75% of the card as budget (3,071 MB) both models co-reside, so the eviction gate is run with `--budget`.
+- **s2cloudless-style models are not the only thing L2A lacks.** LEVIR-CD's licence page at chenhao.in
+  was unreachable from here; the dataset stays `UNVERIFIED`. That blocks *training* only, and 1.6 trains
+  nothing - pretrained first, as the roadmap says. Recorded as a quirk on the record.
+- **transformers 5's `SegformerImageProcessor` needs torchvision** for a rescale and an ImageNet
+  normalisation. The constants are in the checkpoint's `preprocessor_config.json`; the adapter reads the
+  file and skips the dependency.
+- **CUDA torch for cp314 on Windows exists on the cu130 index** (`torch-2.14.0+cu130`), not on PyPI.
+  `[tool.uv.sources]` pins torch to that index with `explicit = true` so nothing else resolves from it.
+  The wheel is 1.9 GB and took the better part of an hour on this connection.
+
+### Decisions worth not relitigating
+
+- **A lease, not a handle.** `async with manager.lease(id) as model:` marks the model in use; in-use
+  models are never evicted, and a newcomer that cannot fit beside them loads on the CPU as `degraded`
+  rather than freeing a tensor under a running forward pass. A mutation that drops the guard fails a test.
+- **Footprints are declared and measured once, not measured at load.** Admission that depended on the
+  allocator's caching state would be admission by weather.
+- **The residual gate is a separate module in front of the detector** (`comparison.py`), and the S13
+  node will call it, never the detector. A mutation that removes the `require_comparison_ready` call
+  fails the test that checks the model was never loaded for a misaligned pair.
+- **The detector's stated confidence is the model's mean winning-class probability** over observed
+  pixels, named as exactly that. It is the first non-`None` confidence in the system and S18 aggregates
+  it; it is not a calibrated accuracy and the record does not call it one.
+- **Change-class F1/IoU only, counts summed before ratios.** Accuracy is absent by design (95% for a mask
+  of nothing on LEVIR-CD); a mean of per-crop F1s rewards empty crops.
+- **The SAR detector keeps increase and decrease apart** - a flood and a building site are opposite
+  signs - and layover or shadow on either date is unobserved, never unchanged.
+- **Engines are `online` while the process is; a model with no registered checkpoint is `offline` and
+  refuses with a message naming the gap.** `dota-detector`, `grounding-dino-sam` and `rs-vlm` say so.
+- **LEVIR-CD is fetched from the Hub as the 256-crop mirror the checkpoint trained on**, a new
+  `huggingface` acquisition route that writes parquet columns into the declared layout so the 1.1
+  loader and enumeration serve it unchanged. `aeris dataset list` reports it `PARTIAL` (test only).
+
+### Mutation: 2 applied, 2 caught
+
+In-use guard removed from eviction: 1 test fails. Residual gate removed from `compare_pair`: 1 test
+fails. Both restored and byte-compared.
+
+### Addendum, same day - `dota-detector` via YOLO11s-OBB
+
+The operator asked whether Ultralytics' YOLO-OBB (pretrained on DOTA v1.0, pure PyTorch) was a feasible
+route. It is, and it is real: 9.7 M parameters, 79 MB / 225 MB peak / 55 ms per 1024 tile on the 3050,
+published test mAP50 79.5, `ultralytics` and CUDA `torchvision` both resolve for cp314 (torchvision from
+the cu130 index like torch). Weights are a GitHub release asset, not a Hub file, so `WeightsSource` gained
+a `url` and the loader a SHA-256-pinned download route. Nine new tests; 515 green.
+
+- **`ultralytics` reads a NumPy array as BGR.** Fed RGB and BGR score the same on some crops (the
+  baseball diamonds of P1571 to four decimals) and differ on others; the test that settles it compares
+  the adapter's boxes to the package's own file route on P1470, where they differ.
+- **A 2×2 mosaic returned 10 boxes for 8 objects** before seam-cut boxes were dropped: an object at a
+  window's interior edge yields a partial box with IoU < 0.5 to the whole one, which NMS cannot merge.
+  Dropped only when narrower than the overlap, so a field wider than 128 px on a seam may still double.
+- **`ultralytics` installs a top-level `tests` package into site-packages**, which shadowed this
+  project's namespace `tests` and broke `from tests.integration...` imports. `tests/` is a regular
+  package now, with `__init__.py` files saying why.
+- **DOTA8 is a smoke test, not a benchmark**: its crops come from images the detector trained on. F1
+  0.842 there checks the adapter; the number to quote is the published mAP50.
+- **AGPL-3.0.** Weights and package. Recorded as `Licence.AGPL_3_0`; the fleet header and the roadmap
+  both say a hosted deployment that keeps this detector must publish its source or license commercially.
+
+### Owed
+
+- `dota-detector` on DOTA proper (`manual`, 20 GB) and mAP over the curve - 1.14.
+- `grounding-dino-sam` and `rs-vlm` load through `transformers` (~700 MB and a quantised 7B) - 1.7.
+- LEVIR-CD's licence: read chenhao.in/LEVIR when it is reachable and set the record.
+- The S13 node and the `temporal` graph that composes `compare_pair` → `build_region_evidence` - 1.10.
+- Batching in the evaluation harness (one forward per crop today; 204 s for the full split) - 1.14.
+
+### Next — Phase 1.7
+
+VLM and constrained answer generation, S14 and S16. 1.6 hands it the manager (`lease()` for a 7B model
+quantised to the 4 GB profile - which will not fit at 4-bit either, so `degraded` on the CPU or a smaller
+VLM is the honest first result), the fleet record for `rs-vlm` waiting for a weights source, the figures
+1.2.1 renders for it to read, and the claims 1.5 builds for it to phrase.
+
+---
+
+## Session — 2026-09-11 (1.5) · Evidence, claims and provenance. **A claim is a thing you can walk back to pixels.**
+
+Phase 1.5 closed the loop 1.0 opened: the two analysis events recorded as owed since the spine —
+`layer-ready` and `claim` — are emitted, `EVENT_TYPES_NOT_YET_EMITTED` is empty by earning it, and the
+index-query graph is **S7 → S12 → S15 → S16 → S18 → S19**. 40 new tests, **471 green**, ruff and lock
+clean; the two reds are still the 1.2 tile tests wanting the Ghaziabad COG.
+
+### The gate, four statements, each a test and each on the real scene
+
+1. **Every claim resolves to pixels.** Walked mechanically: claim → `evidenceIds` → evidence → `layerId`
+   + `featureIds` → feature → ring → rasterised back onto the S15 mask. 845 feature footprints on the
+   Mumbai run, each containing every pixel its region measured. The builder mints the whole chain in one
+   place (`services/evidence/builder.py`), and a mutation that drops a claim's evidence fails two tests.
+2. **Every artefact stage carries its artefact.** S12 and S15's completed trace steps carry the
+   `artefactLayerId` of the layer that draws their COG (`attach_artefact_layer()` on the node decorator);
+   the provenance record carries all three object keys and `s3://` URIs, S7's included.
+3. **Every figure resolves to a trace step**, and the primary overlay carries both claim ids.
+4. **The journal and the evidence graph validate.** 66 of 66 parseable lines; `evidence-graph.json`
+   validates against `evidenceGraphSchema` whole.
+
+### Measured rather than assumed
+
+- **Holes.** Vectorisation is exact (rasterising the full polygon back reproduces the mask) and Douglas-
+  Peucker at 5 m changes nothing measurable - but the largest real region has **658 interior rings**, and
+  `featureGeometrySchema` is a single ring. Its outline encloses 33% ground the mask never marked. So the
+  feature carries the *true* holed area, the invariant is containment, and the raster-mask layer is the
+  exact picture. **Coordinated change to ask for: `holes` on the polygon geometry.**
+- **The S7 mask has no fleet model when it came from the SCL.** `layerProvenanceSchema.modelId` is required
+  and there is no id for Sen2Cor; claiming `s2cloudless` would be the one thing a provenance field must
+  never do. S7 emits no layer on an L2A scene; the artefact is retained and in the record. **Coordinated
+  change to ask for: a thirteenth model id for the product's own classification.**
+- **The frontend's Zod has moved past the vendored contracts.** `analysis.schema.ts` now carries
+  `ui-command`, `speech` and a minimal `figure-ready`; `bcontext/contracts/schemas.json` is still the 0.7
+  export. Built against the vendored file, deliberately - re-exporting is a coordinated step that would
+  also change `EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` (the staleness test will say so). **Owed: run
+  `pnpm run contracts:export` and reconcile, before Phase 2.**
+- **Size.** 844 features made a 5.5 MB `layer-ready` line and an 11.6 MB pretty-printed evidence graph.
+  Seven-decimal coordinates (a centimetre) and compact JSON halve it. `MINIMUM_FEATURE_REGION_PIXELS = 25`
+  bounds what is *drawn*; nothing bounds what is *measured*.
+- **Every number the answer speaks is on a claim.** S16's cloud caveat quoted an obscured fraction no claim
+  carried. It is now a metric on the primary claim, and a test strips the claim texts out of the answer and
+  checks the remainder against that metric.
+- **An async fixture on a function-scoped loop closes the storage client under the next test.** The
+  aiobotocore client is a process-wide singleton bound to the loop that opened it; a fixture that runs a
+  graph must be `@pytest_asyncio.fixture(loop_scope="session")`. The symptom is
+  `'NoneType' object has no attribute 'connect'` inside S7, three tests in.
+
+### Decisions worth not relitigating
+
+- **An empty mask is a `NEGATIVE` claim with evidence**, not an empty result. "No sparse vegetation was
+  detected in the 11,651.6 hectares observed" points at what was searched.
+- **Confidence: `minimum-of-stated`, `None` when nothing was stated**, named in `constants/evidence.py`
+  and written into the record (PDF §21.2). Every 1.4/1.5 engine declines, so every run so far reports
+  `None`; S18 exists now so 1.6's first stated score changes the inputs, not the graph.
+- **`comparatorSide` is emitted as `both`** for a single-scene run. It was `FRONTEND_ONLY` ("the backend
+  has no opinion") but the layer schema requires it; it is a shared vocabulary now.
+- **Layers, evidence and claims ride the state in wire form** (`CamelCaseModel.to_wire()`), so S16 reads
+  `claim["text"]`, S19 writes the graph unchanged, and no Pydantic object is checkpointed.
+- **The evidence graph is written compact and the provenance record indented** - a machine reads one, a
+  person the other.
+- **Persistence to the `evidence`/`claims`/`trace_steps` tables is 1.9's**, with the run and investigation
+  rows it needs; the JSON records are those columns, written to disk.
+
+### Mutation: 2 applied, 2 caught
+
+Holes filled in vectorisation: 2 unit tests fail. Primary claim with no evidence ids: 2 integration tests
+fail. Both restored and byte-compared.
+
+### Next — Phase 1.6
+
+Specialist models, S13. 1.5 hands it: `build_region_evidence` for any boolean mask a model produces (a
+change mask, a segmentation class), `attach_artefact_layer` for its trace step, `ModelRecord` with a
+*stated* confidence for S18 to aggregate, and `EvidenceKind.CHANGE_MASK` / `DETECTION` waiting for a
+producer.
+
+---
+
+## Session — 2026-09-11 (1.4) · The index engine and the first hectare. **Three tools, one number.**
+
+Phase 1.4 built the first end-to-end vertical slice: `aeris analyse --scene <dir> --query "unhealthy
+vegetation"` runs a real graph — **S7 → S12 → S15 → S16** — through the 1.0 session, journals it, draws
+the trace, fetches three figures back from storage, and prints a hectare figure read from the checkpoint.
+65 new tests, **444 green**, ruff and `uv lock --check` clean. The two remaining reds are the 1.2 tile
+tests, which need the Ghaziabad NDVI COG in MinIO; this machine never fetched that scene.
+
+### The gate, on the Mumbai scene
+
+    S12   NDVI from B08, B04 over 1066x1120; no mask applied              index-engine 1.4.0
+    S15   Sparse vegetation (NDVI 0.20 to 0.40): 2,471.0 ha,              geospatial-engine 1.4.0
+          21.2% of 11,651.6 ha observed, 7,691 regions
+
+QGIS is not on the build machine, so the check was made twice over instead of once: the S15 mask was
+vectorised (7,691 polygons — the same count S15 reported) and measured by pyproj's ellipsoidal integral
+and by PostGIS `ST_Area(::geography)`, the 0.2 route. **All three give 2,471.0057 ha.** The naive figure,
+pixel count × 100 m² in UTM, is 2,472.13 ha — 1.12 ha too many, because UTM's scale 230 km from the
+central meridian is 1.00025 and area goes as its square. That is the whole of §8 rule 3 in one number,
+and `test_a_utm_grid_is_not_measured_in_its_own_units` fails on it.
+
+### Measured rather than assumed
+
+- **s2cloudless cannot run on an L2A scene.** Its ten bands include B10, which Sen2Cor consumes and L2A
+  products do not publish. 1.3 built the s2cloudless path against a synthetic cube; the S7 that works on
+  the data every index runs over is the product's own SCL layer, read with nearest neighbour onto the 10 m
+  grid. `mask_from_scene_classification` joined `cloud_masking.py`; cirrus is cloud, dark-area and
+  unclassified pixels are observed, nodata and saturated are unread (NaN, so `obscuredFraction` counts them).
+- **Footprints, not resampling.** The area kernel projects pixel *corners* into a local LAEA and sums
+  footprints per 32-pixel block; the mask itself is never reprojected, because reprojecting it changes
+  which pixels it contains. Agreement with the geodesic integral: 2×10⁻⁹ in UTM, 6×10⁻⁸ in a geographic
+  grid, and the hand value 100 / 0.9996² = 100.0800 m² for one pixel on the central meridian is exact.
+- **`coverageFraction` is a ratio of areas, over observed ground.** Pixel footprints differ across a scene
+  at the sixth digit, so a test written as a ratio of counts needed `rel=1e-5` — the number is right and
+  the expectation was the approximation. The denominator is what the S7 mask left observed, not the grid;
+  `measure_mask` refuses a detection over unobserved pixels, which is the structural proof S12 masked first.
+  For a normalised difference, masking before and after the formula produce identical arrays, so that rule
+  is enforced by construction (the mask reaches the inputs; there is no other path) rather than by a test
+  that could tell the two apart.
+- **EVI is unbounded; SAVI exceeds 1 over specular pixels.** Both mask outside [-1, 1] and the share the
+  formula refused is reported in the S12 detail. A formula that refuses a third of the ground was the
+  wrong formula, and that belongs beside the stage rather than in a figure's holes.
+- **`write_cog_from_array` asked for eight overviews regardless of size** and GDAL refuses an overview
+  smaller than a pixel. Found by a 64-pixel test raster; clamped to what the raster holds. Also from 1.3:
+  reprojection copied a striped reference's block size onto a non-tiled output, one GDAL warning per band.
+
+### Decisions worth not relitigating
+
+- **The interpretation bands are the frontend's, transcribed** (`constants/spectral.py` ←
+  `overlays/spectral-indices.ts` ← PDF §3.3). "Unhealthy vegetation" is NDVI [0.2, 0.4) — the band the
+  legend calls "Sparse vegetation" — so the mask and the legend agree by construction. `aeris figures`
+  now draws its demonstration mask from the same table (0.2, was 0.3): 29.8% vegetated, was 17.1%; the
+  byte-identical reproduction is unchanged at 1,478,754 bytes.
+- **The query→target table is the deterministic half of routing** (PDF p.24). Longest phrase wins, whole
+  words only ("urbanisation" is not "urban"), nothing matching is a refusal that names the phrases it
+  knows. 1.8 replaces the phrase match; the table stays.
+- **Arrays never enter the checkpoint.** S7, S12 and S15 retain their outputs through
+  `services/evidence/artefacts.py` — a COG under `runs/<run_id>/artefacts/` plus the `artefacts` bucket —
+  and the state carries paths and keys. A run interrupted after S12 with its local artefact *deleted*
+  resumes through S15 by restoring it from storage; that is a test, and it is what a resume on another
+  machine will do.
+- **A node reads its own step id from a context variable** (`current_trace_step_id()`), the mechanism
+  LangGraph uses for `get_stream_writer()`, and sets its completion line with `describe_trace_step()`.
+  `pipeline_node` takes `model_id` / `model_version`, so the trace names the engine. Nothing about the
+  decorator's shape changed; the spine's 26 tests passed untouched.
+- **A `math/` module may import a sibling `math/`.** `spectral/math/index_formulae.py` imports the
+  normalised-difference kernel 1.2 guards in `imagery/math/indices.py` rather than copying a function that
+  caught a real bug. `architecture-context.md` §5/§6 and `code-standards.md` §8 now say so.
+- **No caption carries a number.** The obscured fraction was in the S12 caption for an hour; §6 rule 4
+  says a figure carries only what a claim carries, and claims are 1.5. Thresholds in a legend
+  ("NDVI 0.20 to 0.40") are the definition of the mask, not a measurement, and stay.
+- **`SpectralIndex` is backend-only in the contract map, with a reason**: the frontend declares the seven
+  ids as a constants array, not a Zod schema, so the exporter never sees them.
+
+### Mutation: 2 applied, 2 caught
+
+Naive-units area (count × |a·e|): 5 tests fail. Whole-grid coverage denominator: 2 tests fail. Both files
+restored and byte-compared.
+
+### Owed
+
+- **A real SCL under the gate scene.** The local subset has four bands and no SCL, so the S7 node's real-
+  data path is proven only on the synthetic scene (cloud, shadow and nodata blocks, all measured). A
+  windowed multi-band fetch from Planetary Computer — the 1.3 `fetch_backscatter_window` idea, for five
+  assets — would put a real mask under `aeris analyse`; it is 1.1 territory and was not started.
+- The 1.2 tile tests want the Ghaziabad NDVI COG in the bucket. `aeris dataset fetch` + `aeris ingest
+  index` on a machine with the scene restores them; nothing in 1.4 touched that path.
+
+### Next — Phase 1.5
+
+Evidence, confidence and provenance. 1.4 hands it: a mask artefact with `DETECTED / NOT_DETECTED /
+UNOBSERVED` bytes to vectorise, a `MeasurementState` whose keys are already the wire's names
+(`areaHectares`, `coverageFraction`), the `index-engine` and `geospatial-engine` model ids on the trace
+steps, and figures that already carry their `traceStepId` and an empty `claimIds` waiting to be filled.
+
+---
+
+## Session — 2026-09-01 (1.3) · Preprocessing. **Four defects, none visible to a passing suite.**
+
+Phase 1.3 arrived already written — services, math kernels and a first pass of tests, all green. The job
+was the testing, and the testing found that green meant very little: **four defects in the maths, every one
+of them producing a plausible raster rather than an error, and every one of them sitting under a test that
+passed.** 41 tests now (25 unit, 16 integration), **337 green** with 60 deselected, ruff and lock clean.
+
+### What was wrong
+
+1. **Layover and shadow were swapped.** The slope was measured *away* from the sensor and then tested as
+   though it were measured *towards* it. The test in place asserted that both masks were non-empty and
+   differed from each other — which stays true when the sign flips. This is the §8 rule 7 distinction,
+   inverted, and it is invisible in a figure because both cases put a plausible mask on plausible ground.
+2. **The terrain correction was a gain.** `cos(slope)/cos(incidence)` multiplies *flat* ground by 1.22 at a
+   35° incidence. A correction that is not the identity where there is nothing to correct biases every
+   value in the scene by a constant nobody declared. Now `cos(θ)/cos(θ_local)`, exactly 1 on the flat.
+3. **Speckle was filtered as additive noise** while the docstring said multiplicative. Measured: two
+   regions of one scene, identical speckle statistics, differing only in brightness — 25× smoothing on the
+   dark half against 1.4× on the bright. Water and shadow get flattened, vegetation keeps its speckle, and
+   a change detector reads that variance collapse as a finding. Now Lee (1980) on the coefficient of
+   variation, which is scale-free.
+4. **Registration filled nodata with zero.** A hard zero block is a strong feature; tiles touching the
+   margin locked onto it and returned a shift of exactly **(0, 0)** — which reads as *perfect* registration
+   rather than as a failure. 1.3% nodata was enough to report 1.02 px on a pair aligned to 0.00 px.
+
+### The measurement discipline, twice over
+
+I got #4 wrong twice on the way. First I called a 0.97 px residual a defect; then I decided my own test
+construction was at fault and said so; then measuring both constructions against both fills showed the
+code was at fault after all — mean-fill gives 0.0000 px on *both* constructions, zero-fill ~1.0 px on both.
+**Only the last of those three positions came from a measurement**, which is the whole lesson.
+
+Then the regression test I wrote for it *survived its own mutation*: the NaN band was 24 rows deep against
+a 64-row tile, so the affected tiles fell below the 0.8 validity floor and were skipped — no tile in the
+test ever contained a nodata edge. Narrowing it fixed the construction and still did not catch the bug,
+because no synthetic texture reproduces the failure (white noise locks through the artefact, smoothed noise
+never locks at all). Pinned instead on the property the fix delivers — the filled tile is continuous.
+
+### Mutation: 16 applied, 14 caught, 1 equivalent, 1 pending
+
+Three survived the first pass and **all three were real gaps**, not equivalent mutations: nothing covered
+the Lee filter beside a nodata margin; the median-vs-mean choice is only observable in the reported
+*translation*, not in the residual; and the nodata fill needed the direct pin above.
+
+### The gate, on real data
+
+`aeris preprocess coregister` / `sar` / `relief`. The bad pair's **4.0000 px** is hand-checkable — half the
+tiles at +4 and half at −4 about a median of 0. The flat local scene reports **0.00% obscured, and that is
+correct**: Mumbai has 91 m of relief and layover needs a slope steeper than the incidence angle. So the
+distinction is demonstrated where it exists — **Khumbu, 4461 m of relief, windowed 1477×1663 out of a
+27577×21415 scene rather than downloaded**: radar *could not see* 8.55%, radar *saw nothing* 0.02%, and
+reversing the orbit swaps which slopes fold and which hide. That last one is what proves it is geometry
+rather than a property of the ground.
+
+### Decisions worth not relitigating
+
+- **`calibration_factor=None` is a first-class input**, not a missing argument. Every RTC product is
+  already linear power; calibrating it again returns the square of the truth and opens cleanly.
+- **The SAR figure uses a fixed dB domain**, for the reason every NDVI is drawn over [-1, 1] (1.2.1). A
+  radar time series exists to be compared, and per-date percentiles make a flooded field look like a calm one.
+- **`scenes.Polarisation` is upper case and is deliberately not `BandRole`.** One addresses a band in a
+  file, the other is a value on the wire. This discharges `polarisationSchema`, which had sat in
+  `FRONTEND_ONLY_VOCABULARIES` reading "Phase 1.3 — the SAR branch" since 0.7.
+- **`obscuredFraction` counts *unjudged* pixels as unread**, not as clear. The frontend's own wording is
+  "could not read at all", and a pixel the detector could not judge has not been shown to anyone.
+- **The DEM is read as a window, never as a tile.** Whole-tile reads over HTTP were slow enough that the
+  first run of the gate never returned.
+
+### Next — Phase 1.4
+
+Spectral indices and geospatial statistics, S12 and S15 measurement. 1.3 hands it the thing rule 1 is
+about: `apply_optical_mask` exists and must run *before* any index formula, not after.
+
+---
+
+## Session — 2026-08-31 (1.2.1) · The rendering primitive. **A figure redraws byte-identically from its spec.**
+
+`services/rendering/` built, `figure-ready` on the wire, and the gate passed: three figures from the
+four-band Sentinel-2 subset, each with a machine-readable legend, a non-null `traceStepId` and a complete
+`renderSpec` — and the index map **redraws byte-identically from that spec**. 37 new tests, **353 green**,
+ruff and `uv lock --check` clean.
+
+    rgb-composite   1066×1120  2518 KB   legend categorical  ramp true-color
+    index-map       1066×1176  1444 KB   legend continuous   ramp index-vegetation  domain [-1, 1]
+    mask-overlay    1066×1120  2554 KB   legend binary       ramp mask-amber        resampling nearest
+    vegetated: 17.1%   ·   byte-identical re-render: 1,478,754 bytes   ·   3 in MinIO and on disk
+
+### The decision the whole sub-phase turns on
+
+**Matplotlib is used for its colormaps and nothing else** — no figure, no `Agg` canvas, no `savefig`.
+Composition is NumPy and Pillow.
+
+The reason is `api-contract.md` §6 rule 2: re-rendering from a recorded spec must be byte-identical,
+because a figure the VLM reasoned over is part of the evidence chain. A matplotlib figure's bytes depend on
+font metrics, DPI, backend version and a `Software` tag; an RGBA array encoded by Pillow with pinned
+parameters depends on none of those. The colourbar is drawn by hand for the same reason — Pillow's bundled
+bitmap font, never a system font, because a system font is present on one machine and absent on another.
+
+The colour data is still matplotlib's, and that is worth not reimplementing: hand-picking control points
+for a diverging ramp is how a product ends up with a midpoint that reads as a value.
+
+### Two additions to the contract, both because rule 2 demands completeness
+
+**`renderSpec.stretch` carries its `method`.** A percentile stretch is data-dependent and a fixed one is
+not; the numbers alone cannot answer *"would this redraw the same way on other data"*.
+
+**`renderSpec.decimation` was added outright** — it is not in `api-contract.md`'s example, and the example
+is not complete without it. A figure is a picture for a person, so a 10980² scene is drawn from a decimated
+read, and two decimations produce visibly different images. `figure-ready` is agreed and not yet on the
+frontend (§6), so extending it now is a change to a contract nobody parses rather than a breaking one.
+
+### The contract suite gained a direction
+
+Adding `FIGURE_READY` to `AnalysisEventType` broke `test_the_backend_event_names_are_the_frontend_union
+_exactly` — correctly, because the frontend does not parse it yet.
+
+**Not weakened to a subset check.** `EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND` records the three
+agreed-but-unimplemented events (§4 `ui-command`, §5 `speech`, §6 `figure-ready`) by name with a reason, and
+a second test fails when the frontend ships one — at which point the equality check starts enforcing it.
+The mirror of `EVENT_TYPES_NOT_YET_EMITTED`, so event drift is now tracked in both directions exactly as
+vocabulary drift has been since 0.7.
+
+### Decisions worth not relitigating
+
+- **A normalised index is always drawn over [-1, 1], never its own extremes.** Two NDVI maps of one field
+  in different weeks are only comparable if they share a scale; stretching each to its own data makes every
+  week look equally varied and hides the change being looked for. A ramp with no fixed domain is *refused*
+  for an index map rather than falling back.
+- **A true-colour composite stretches each band separately**, and records all three. Their dynamic ranges
+  genuinely differ, and a shared stretch produces a colour cast that reads as a property of the ground.
+- **A composite is transparent where *any* band is missing.** A pixel with two of three bands is a colour
+  with one channel invented.
+- **A mask overlay is semi-transparent.** An opaque mask answers "where" and destroys "over what" — and an
+  operator judging a mask is judging exactly whether it agrees with the ground beneath it.
+- **A blend takes its alpha from the base, never the overlay**, or a mask makes the scene's nodata margin
+  opaque and claims ground the sensor never saw.
+- **The figure writer *downloads* rather than being handed the bytes.** Slower, and it proves the object is
+  retrievable under a key something else can reconstruct — which is precisely what breaks silently and
+  surfaces in Phase 2 as an image that will not load.
+- **`--level` on `aeris figures`.** A band extracted into a research directory has lost its processing
+  level, and §8 rule 5 forbids *guessing* it. A human stating what the data is is not the same thing.
+
+### Mutation: 12 applied, 11 caught, 1 recorded as uncatchable
+
+Three survived the first pass. Two were real gaps: "encode the same array twice" passes for any
+deterministic choice, so it proved *stability* without proving *which value*. Two tests were added — the
+invisible pixel's colour is pinned to a specific value, and a lossless round-trip proves the encoder does
+not rewrite pixels nobody can see (which is what `exact=True` buys).
+
+**The survivor is PNG `compress_level`**, and it is recorded rather than papered over: those parameters
+change bytes between Pillow *versions* and are stable within one, so no in-process test can observe the
+drift they guard against. Same category as `_require_in_range` in 1.2 — proven by reasoning, and the
+reasoning is written down.
+
+### A correction I made mid-phase
+
+I read the contact sheet and said the mask looked like it covered water. Measured instead: 17.1% of pixels
+tinted, exactly matching the mask, **zero outside it**, mean NDVI 0.428 inside against 0.009 outside. Amber
+over green vegetation reads brown at thumbnail scale. *Squinting at a thumbnail is not a measurement* —
+which is the same lesson the 1.2 notebook taught from the other direction.
+
+### Fixed here, found by using it
+
+A 245 MB scene download had **no retry**, and a remote reset lost the whole transfer — measured, after
+three consecutive resets while fetching B02/B03 for this gate. `_download_to` now retries three times with
+backoff. Each attempt restarts rather than resuming with a `Range` header: resuming without checking the
+`ETag` risks stitching a scene from two versions of a file, which is a worse failure than a slow retry.
+
+The B02/B03 fetch never did succeed — hence the gate running against the four-band subset in
+`notebooks/01_remote_sensing/data`, which is real Sentinel-2 at 1066×1120 in the same UTM zone.
+
+### Next — Phase 1.3
+
+Preprocessing, S7–S10 and the SAR branch. Two things carry forward: the SAR backscatter figure is a *figure
+kind*, not new rendering code (`sar-grayscale` is already in the ramp vocabulary), and the frontend's
+`polarisationSchema` is `{VV, VH, ratio}` in **upper case** while `BandRole` has lower-case SAR members —
+1.3 needs its own `Polarisation` enum matching the frontend exactly.
+
+---
+
+## Session — 2026-08-31 (1.2) · The raster engine. **An NDVI COG renders in a real browser.**
+
+S1–S6 and S11 built, TiTiler in compose, and the gate passed end to end: an NDVI COG produced by this
+pipeline, stored in MinIO, rendered at `http://localhost:3000` with seven checks green — including
+`getImageData` on a canvas the tile was drawn into, which is what Cesium does and what a plain `<img>`
+does not exercise. 46 new tests, **314 green**, ruff and `uv lock --check` clean.
+
+    NDVI over 10980×10980   range [-1.000, 1.000]   vegetated (>0.3) 72.6%
+    TileJSON  xyz, bounds [77.032, 27.901, 78.176, 28.913], minzoom 8, maxzoom 14
+    CORS      allowed → ACAO: http://localhost:3000   ·   other → 200 with NO ACAO
+    Tile      image/png, RGBA, 38,217 transparent px of 65,536 at the scene edge
+
+### The bug worth carrying into every later phase
+
+The first NDVI this pipeline produced ranged **[-337, +347]** against a mathematical range of [-1, +1]. It
+wrote a **valid COG**. It rendered as a plausible map. 0.055% of pixels — invisible by eye, and more than
+enough to set the colour scale of every figure drawn from the array, because a ramp is stretched to the
+extremes it is given.
+
+**My first fix was wrong.** I raised the denominator guard, on the reasoning that `(a−b)/(a+b)` blows up
+near zero. It changed nothing. The actual cause: `|a−b| ≤ |a+b|` holds **only when a and b share a sign**,
+and subtracting the L2A offset from dark ground — deep water, terrain shadow — gives a small *negative*
+reflectance, which is an atmospheric-correction artefact rather than a measurement.
+
+Measured: **0.52% of valid pixels have negative reflectance in one band, and 100% of the out-of-range
+values came from exactly those pixels.** Masked, not clamped (§8 rule 4). `math/indices.py` carries a
+post-condition that raises on any finite value outside [-1, 1].
+
+Reproduced independently in `notebooks/03_raster_engine/01_cog_and_tiles.ipynb` — which itself found a
+second lesson: a 1024×1024 window at the centre of the tile contains **none** of the artefact and reports
+the bug as 0.0000%. The notebook now reads decimated over the whole scene. *A window that misses the
+defect makes a real bug look fixed.*
+
+### Four things measured after assuming otherwise
+
+- **TiTiler listens on 80**, not 8000. Read from its own startup log after a health check that never went
+  green.
+- **Its settings are prefixed `TITILER_API_`.** Bare `CORS_ORIGINS` had no effect at all; read off the
+  running container's `ApiSettings`.
+- **Its default CORS is `*` *with* `allow-credentials: true`** — a pair every browser rejects outright, so
+  the permissive-looking default is in fact the broken one. Now named to the frontend origin, same
+  reasoning as `MINIO_API_CORS_ALLOW_ORIGIN` in 0.4.
+- **`distinct / valid` is scale-dependent.** At 1e-6 the constant-raster check fired on a 10980² scene and
+  silently passed a 20×20 one — the check existed and only worked on large rasters. Found by a failing
+  test. Constancy is scale-free and is now *counted*.
+
+One correction I made mid-phase: I called the COG predictor a second bug, then found `IMAGE_STRUCTURE`
+reports `PREDICTOR: 3` correctly — rasterio's `.profile` simply does not surface it. The 508 MB NDVI is
+just what float32 costs; not a defect.
+
+### The mutation pass, and the one left uncaught on purpose
+
+12 mutations, 8 caught immediately. Four survived the first pass, and each told me something:
+
+| Survivor | Why | Resolution |
+|---|---|---|
+| nodata detected as `array != 0` | every test used `nodata=0`, so the two were indistinguishable | new test with a declared −9999 and real zeros |
+| prediction-shape check dropped | nothing fed a wrong shape; NumPy broadcasts (1,64) into (64,64) happily and paints a stripe | new test |
+| nodata masked *after* scaling | **the mutation was wrong**, not the test — it still masked before | mutation corrected → caught by 3 tests |
+| `_require_in_range` call removed | **genuinely uncatchable, and recorded as such** | see below |
+
+The last one is worth keeping. Once the masks are correct, no input can produce an out-of-range value, so
+the post-condition is unreachable and deleting its call changes no behaviour. It is defence in depth
+against a *future* regression in the masking — which a separate mutation shows is caught. The guard itself
+is tested directly. Writing a test that forced the call site to fire would mean breaking the masks to do
+it. **Recorded as uncaught rather than papered over.**
+
+### Decisions worth not relitigating
+
+- **A COG is not an optimisation, it is what makes the globe possible.** An ordinary GeoTIFF stores pixels
+  in scanline order, so one 512² patch means reading most of the file. Both open identically in QGIS,
+  which is why `is_cloud_optimised` *validates* rather than trusting an extension.
+- **`web_optimized=False`.** The COG stays in its native CRS and TiTiler reprojects per request. Baking
+  EPSG:3857 in is faster to serve and destroys the pixel grid every measurement depends on — an area from
+  a reprojected raster is an area from resampled pixels (§8 rule 3).
+- **The predictor follows dtype.** 2 for integers, 3 for float. Applying 2 to float32 writes without error
+  and decompresses to noise.
+- **Tiles overlap, and stitching is weighted.** A model's predictions near a window edge are made from
+  cropped context; without overlap those errors land in a grid and read as seams. Averaging overlaps
+  equally keeps half of that error, so the blend ramps to near-zero at the edge — never *to* zero, or
+  normalisation divides by nothing.
+- **The last window is shifted, not padded.** Padding feeds a model fabricated black pixels and asks it
+  about them.
+- **Measurement and policy are separate.** `math/` returns numbers and never decides; `validation.py`
+  compares against `constants/raster.py` and decides. That is what let the index bug be fixed with a unit
+  test instead of a two-minute scene conversion.
+- **Severity, not a boolean.** 60% cloud and a missing CRS are not the same thing: one is a judgement call
+  for a demo, the other means nothing downstream can proceed.
+- **Quality reads are decimated, regularly.** 2.78% of a scene answers "is this mostly nodata" to within a
+  fraction of a percent — and *regular* rather than random, so the same scene measures the same twice.
+
+### What Phase 0 caught again
+
+Three new `StrEnum`s failed `test_every_backend_enum_is_classified`; two new settings failed the
+`.env.example` test. Checked against the frontend before declaring them backend-only — and that surfaced a
+note for 1.3: the frontend's `polarisationSchema` is `{VV, VH, ratio}` in **upper case**, while `BandRole`
+has lower-case SAR members alongside the optical ones. 1.3 needs its own `Polarisation` enum matching the
+frontend exactly; `BandRole` is not it and must not reach the wire.
+
+### Next — Phase 1.2.1
+
+The rendering primitive: `services/rendering/`, colour ramps, stretches, the `figure-ready` event and
+`cli/renderers/figure_writer.py`. Everything it needs is now in place — the scene, the index array, and the
+statistics that decide a stretch (`p2`/`p98` rather than min/max, which this phase measured as 1108/3276
+against a min/max of 252/15747).
+
+---
+
 ## Session — 2026-08-31 (1.1) · Datasets, licences, and one loader. **A real scene is on disk.**
 
 18 datasets catalogued from the PDF's Table 5, one loader over six declared layout shapes,

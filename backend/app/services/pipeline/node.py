@@ -1,7 +1,9 @@
 """Makes the execution trace and the stop-here check structural, instead of two things every node author must remember.
 
 what  : `pipeline_node`, the decorator every stage function wears. It mints the step id, emits the step
-        twice, times it, and checks abandonment on the way in and on the way out.
+        twice, times it, and checks abandonment on the way in and on the way out. Plus
+        `current_trace_step_id()`, `describe_trace_step()` and `attach_artefact_layer()`, the three things
+        a node body may ask of it.
 where : Applied in `services/pipeline/nodes/` (one stage each) and in `graphs/probe.py`. Nothing else
         wraps a node.
 how   : Two obligations sit on every node, and both are the kind that get forgotten in the fourteenth one.
@@ -28,14 +30,27 @@ how   : Two obligations sit on every node, and both are the kind that get forgot
 
         **Timing is `perf_counter`, never wall time.** A duration measured across an NTP correction is how
         a stage comes to report a negative number of milliseconds.
+
+        **The step id reaches the node body through a context variable**, the same mechanism LangGraph
+        uses for `get_stream_writer()`. A figure rendered inside a node must carry the id of the stage that
+        drew it (`api-contract.md` §6 rule 1), and the id is minted here, before the body runs - so the
+        body asks `current_trace_step_id()` rather than the decorator changing every node's signature.
+        `describe_trace_step()` is the other direction: the completion detail an operator reads is often
+        computed ("NDVI over 1066x1120, 2.3% obscured"), and a node that sets it has it emitted on the
+        terminal step instead of the static one. `attach_artefact_layer()` is the third: an artefact-
+        producing stage names the layer that draws its intermediate, and the completed step carries it
+        (`api-contract.md` §1 rule 10 - the operator clicks the step and sees what the machine saw).
 """
 
 import functools
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any, ParamSpec
 
+from app.constants.model_ids import ModelId
 from app.constants.stages import PipelineStage
 from app.constants.statuses import TraceStepState
 from app.db.identifiers import IdentifierPrefix, new_identifier
@@ -51,16 +66,59 @@ Parameters = ParamSpec("Parameters")
 NodeUpdate = dict[str, Any] | None
 
 
+@dataclass(slots=True)
+class _StepContext:
+    """What the running node may read (its id) and write (its completion detail and artefact layer)."""
+
+    step_id: str
+    detail: str | None = None
+    artefact_layer_id: str | None = None
+
+
+_CURRENT_STEP: ContextVar[_StepContext] = ContextVar("aeris_current_trace_step")
+
+
+def current_trace_step_id() -> str:
+    """The id of the stage executing right now. Sync, like `emit()`: it reads a context variable.
+
+    Raises outside a node, because a figure or an artefact attributed to no stage is exactly what §6 rule
+    1 forbids, and a caller that reaches for this outside a node has no stage to attribute to.
+    """
+    try:
+        return _CURRENT_STEP.get().step_id
+    except LookupError as error:
+        raise RuntimeError("current_trace_step_id() called outside a @pipeline_node body.") from error
+
+
+def describe_trace_step(detail: str) -> None:
+    """Set the detail the stage's completed trace step will carry. Sync, for the same reason."""
+    try:
+        _CURRENT_STEP.get().detail = detail
+    except LookupError as error:
+        raise RuntimeError("describe_trace_step() called outside a @pipeline_node body.") from error
+
+
+def attach_artefact_layer(layer_id: str) -> None:
+    """Name the layer that draws this stage's intermediate; the completed trace step carries it."""
+    try:
+        _CURRENT_STEP.get().artefact_layer_id = layer_id
+    except LookupError as error:
+        raise RuntimeError("attach_artefact_layer() called outside a @pipeline_node body.") from error
+
+
 def pipeline_node(
     stage: PipelineStage,
     *,
     detail: str | None = None,
+    model_id: ModelId | None = None,
+    model_version: str | None = None,
 ) -> Callable[[Callable[Parameters, Awaitable[NodeUpdate]]], Callable[Parameters, Awaitable[NodeUpdate]]]:
     """Wrap one stage function so it traces itself and stops when asked.
 
     `detail` is the line the operator reads beside the stage while it runs - "co-registering 2 scenes at
-    10 m". It is a static string here because a node that wants a computed one emits its own updated step;
-    most do not, and the alternative is every node building a `TraceStepEvent` to say one sentence.
+    10 m". A node whose completion line depends on what it found calls `describe_trace_step()` and the
+    terminal emission carries that instead. `model_id` and `model_version` name the specialist the stage
+    runs, on every emission, so "which model produced this step" is answerable from the trace alone.
     """
 
     def decorate(
@@ -76,8 +134,17 @@ def pipeline_node(
             run_id = state["run_id"]
             step_id = new_identifier(IdentifierPrefix.TRACE_STEP)
             started_at = time.perf_counter()
+            context = _StepContext(step_id)
+            token = _CURRENT_STEP.set(context)
 
-            _emit_step(run_id, step_id, stage, TraceStepState.RUNNING, detail=detail, duration_ms=None)
+            def emit_step(step_state: TraceStepState, *, text: str | None, duration_ms: int | None) -> None:
+                _emit_step(
+                    run_id, step_id, stage, step_state,
+                    detail=text, duration_ms=duration_ms, model_id=model_id, model_version=model_version,
+                    artefact_layer_id=context.artefact_layer_id,
+                )
+
+            emit_step(TraceStepState.RUNNING, text=detail, duration_ms=None)
 
             try:
                 update = await node_function(*args, **kwargs)
@@ -88,22 +155,17 @@ def pipeline_node(
                 # value breaks the contract outright (api-contract.md §7), and `SKIPPED` would claim the
                 # stage never ran. The detail says what actually happened. A `cancelled` member is a
                 # reasonable thing to ask the frontend for; until it exists, this is the honest mapping.
-                _emit_step(
-                    run_id, step_id, stage, TraceStepState.FAILED,
-                    detail=str(error), duration_ms=_elapsed_ms(started_at),
-                )
+                emit_step(TraceStepState.FAILED, text=str(error), duration_ms=_elapsed_ms(started_at))
                 raise
             except Exception as error:
-                _emit_step(
-                    run_id, step_id, stage, TraceStepState.FAILED,
-                    detail=str(error), duration_ms=_elapsed_ms(started_at),
-                )
+                emit_step(TraceStepState.FAILED, text=str(error), duration_ms=_elapsed_ms(started_at))
                 logger.exception("pipeline stage failed", extra={"run_id": run_id, "stage": stage.value})
                 raise
+            finally:
+                _CURRENT_STEP.reset(token)
 
-            _emit_step(
-                run_id, step_id, stage, TraceStepState.COMPLETED,
-                detail=detail, duration_ms=_elapsed_ms(started_at),
+            emit_step(
+                TraceStepState.COMPLETED, text=context.detail or detail, duration_ms=_elapsed_ms(started_at)
             )
 
             # After the terminal emission, so a stage that did complete is recorded as completed and the
@@ -163,6 +225,9 @@ def _emit_step(
     *,
     detail: str | None,
     duration_ms: int | None,
+    model_id: ModelId | None,
+    model_version: str | None,
+    artefact_layer_id: str | None,
 ) -> None:
     """One trace-step emission. Private because a node emits through the decorator, never directly."""
     emit(
@@ -174,6 +239,9 @@ def _emit_step(
                 state=state,
                 detail=detail,
                 duration_ms=duration_ms,
+                model_id=model_id.value if model_id is not None else None,
+                model_version=model_version,
+                artefact_layer_id=artefact_layer_id,
             ),
         )
     )

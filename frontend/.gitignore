@@ -12,7 +12,7 @@
 
 # testing
 /coverage
-
+.vscode
 context
 bcontext 
 test

@@ -9,8 +9,8 @@ how   : **One vocabulary, exactly these strings.** `api-contract.md` §7 records
         once on the frontend; re-introducing it from this side would be a regression against a known defect.
 
         The mapping from model to capabilities is not here. It is fleet truth, established when the models
-        are actually wired up (Phase 1.6, 1.7) rather than guessed now, and a wrong mapping would route a
-        request to a model that cannot serve it.
+        were actually wired up - `constants/fleet.py` (Phase 1.6) carries it, with each model's stages,
+        weights source and measured footprint.
 """
 
 from enum import StrEnum
