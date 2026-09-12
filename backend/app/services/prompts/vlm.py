@@ -40,3 +40,11 @@ CONSTRAINED_ANSWER_TEMPLATE: Final[str] = (
     "placeholder such as {{m1}} exactly where its value belongs. Do not invent any number, area, "
     "percentage or count that is not a placeholder. Do not add findings."
 )
+
+# S14 over a run's evidence figure. The highlighted regions are named by the claim's own label; the model
+# is asked for where and what, and told not to count or measure - the specialists did that, and a
+# number it wrote anyway would keep its reading out of the answer.
+FIGURE_READING_TEMPLATE: Final[str] = (
+    "The highlighted areas in this image are {label}. In one or two sentences, describe where they lie in "
+    "the image and what kind of ground surrounds them. Do not state counts, areas or percentages."
+)

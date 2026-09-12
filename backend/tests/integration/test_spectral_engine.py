@@ -366,10 +366,10 @@ async def test_the_gate_the_graph_measures_the_sparse_region_and_says_so(
 
     assert status is RunStatus.COMPLETE
     assert [s.step.stage_code for s in recorder.steps(TraceStepState.COMPLETED)] == [
-        PipelineStage.S7, PipelineStage.S12, PipelineStage.S15, PipelineStage.S16,
+        PipelineStage.S7, PipelineStage.S12, PipelineStage.S15, PipelineStage.S14, PipelineStage.S16,
         PipelineStage.S18, PipelineStage.S19,
     ]
-    assert len(recorder.steps(TraceStepState.RUNNING)) == 6
+    assert len(recorder.steps(TraceStepState.RUNNING)) == 7
 
     by_stage = {s.step.stage_code: s.step for s in recorder.steps(TraceStepState.COMPLETED)}
     assert "SCL mask" in (by_stage[PipelineStage.S7].detail or "")
@@ -467,7 +467,7 @@ async def test_a_run_resumed_after_s12_reads_the_retained_index_rather_than_memo
 
     assert status is RunStatus.COMPLETE
     assert [s.step.stage_code for s in recorder.steps(TraceStepState.COMPLETED)] == [
-        PipelineStage.S15, PipelineStage.S16, PipelineStage.S18, PipelineStage.S19
+        PipelineStage.S15, PipelineStage.S14, PipelineStage.S16, PipelineStage.S18, PipelineStage.S19
     ]
     assert await asyncio.to_thread(index_path.exists), "the artefact was restored from storage through S15"
     assert resumed.values["measurement"]["pixelCount"] == 32 * 64

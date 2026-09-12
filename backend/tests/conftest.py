@@ -84,6 +84,7 @@ def isolated_pipeline_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(settings, "pipeline_journal_directory", tmp_path / "runs")
     # Pipeline tests assert the template answer; the VLM phrasing has its own tests and a 4 GB download.
     monkeypatch.setattr(settings, "answer_generator", "template")
+    monkeypatch.setattr(settings, "vlm_reading", False)
     yield tmp_path
 
 

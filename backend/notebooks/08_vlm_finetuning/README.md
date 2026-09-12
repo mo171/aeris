@@ -68,3 +68,20 @@ Face write token) for the push.
 dataset's record in `app/constants/datasets.py`. That flag means a human read the terms:
 BigEarthNet.txt is CDLA-Permissive-1.0 (use, modify, share; keep the agreement text); RSVQA is CC-BY-4.0.
 Read them, then flip the flag. Evaluation splits need no flag (`--skip-licence-gate`).
+
+## What the first run measured (2026-09-13)
+
+Overall (mean over answer types), base -> adapter: human-verified bench **0.28 -> 0.53**, template test
+0.24 -> 0.64, RSVQA-LR 0.53 -> 0.67. MCQ, boxes and captions improved significantly on every file;
+yes/no significantly on the larger files; **counting did not move** (0.22 -> 0.23) - a VLM is the wrong
+tool for "how many", the detector is the right one. Full table with the paired test in `bcontext/roadmap.md` 1.7.
+
+Two lessons worth more than the numbers:
+
+1. **Look at what the model says, not only the score.** Captions scored 3x higher - and every one began
+   "captured during the summer in Lithuania", because the caption *text* carries the constants we had
+   only removed as *categories*. The prep now scrubs those clauses; the next run will tell whether the
+   caption gain survives without them.
+2. **A fine-tuned model is worse at what it was not trained on.** Asked to phrase claims (a text-only
+   task) the adapter replied with one placeholder. AERIS now phrases on the base weights and reads
+   pictures with the adapter - LoRA lets you switch per call.

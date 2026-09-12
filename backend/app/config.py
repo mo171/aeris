@@ -163,6 +163,12 @@ class Settings(BaseSettings):
     # the fallback when the model is unavailable or its phrasing is rejected). `template`: the claims'
     # own sentences, no model - what a machine without weights, and the pipeline tests, get.
     answer_generator: Literal["vlm", "template"] = "vlm"
+    # S14 reads the evidence figure with the VLM and the answer carries the reading, labelled. Off skips
+    # the node with the reason in the trace - a machine without weights still completes a run.
+    vlm_reading: bool = True
+    # Readings are cached in Redis by the hash of (pictures, prompt, model version). Same picture, same
+    # question, same model -> same words without loading the model; 0 disables.
+    vlm_reading_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, ge=0)
 
     @field_validator("log_level", mode="before")
     @classmethod

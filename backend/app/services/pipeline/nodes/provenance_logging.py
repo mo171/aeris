@@ -78,6 +78,11 @@ async def log_provenance(state: IndexQueryState) -> dict[str, object]:
             "unphysicalFraction": state.get("index_unphysical_fraction"),
         },
         models=[ModelRecord.model_validate(item) for item in state.get("stage_models", [])],
+        reading={
+            "figureId": state.get("reading_figure_id"), "prompt": state.get("reading_prompt"),
+            "text": state.get("reading_text"), "wordingCertainty": state.get("reading_confidence"),
+            "spokenInAnswer": state.get("reading_spoken", False),
+        } if state.get("reading_text") else None,
         artefacts=_artefacts(state),
         trace_step_ids=list(state.get("trace_step_ids", [])),
         claim_ids=[claim.id for claim in claims],

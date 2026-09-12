@@ -1,3 +1,43 @@
+## Session — 2026-09-13 (1.7, the adapter) · Overall 0.28 -> 0.53 on human-verified rows. **It learned "Lithuania" anyway, and it cannot phrase.**
+
+The LoRA trained (21,600 rows, 242 min, T4, val loss 0.375 -> 0.340) and was scored on the same rows as
+the base with per-row predictions and McNemar: MCQ, boxes and captions up on every file (bench MCQ
+0.38 -> 0.62, boxes 0 -> 0.36, captions 0.16 -> 0.49; template test boxes 0 -> 0.61; RSVQA-LR yes/no
+0.61 -> 0.86, all p < 0.01); yes/no on the 91 bench rows a trend (p 0.46); **counting unchanged**
+(0.22 -> 0.23). The numbers are in `roadmap.md` 1.7.
+
+### Measured rather than assumed
+
+- **Dropping the country/season/climate categories was not enough**: every caption text opens with the
+  same clause and the adapter reproduced it on 10 of 10 bench captions. Caption targets are now scrubbed
+  (zero residual on 3,000 samples). Checked on a DOTA aerial crop: it did not say Lithuania there.
+- **The adapter answered the S16 phrasing prompt with "{m1}".** A guard against invented numbers passes a
+  reply that says one number and nothing else. Phrasing now runs on the base weights and every
+  placeholder must be spoken. The unit test asserts `use_adapter is False` for phrasing.
+- **Kaggle's log shows nothing from the Trainer's progress bar** - a healthy run looked hung for hours.
+  A flushed heartbeat callback prints step/loss/ETA now. Kaggle's secrets service is unreachable from an
+  API-pushed kernel; the Hub push happens from the laptop (`publish_adapter.py`) and needs a write token.
+- **A bare `enable_gpu` hands out a P100 (sm_60)** that neither the image's torch nor bitsandbytes
+  support; `machine_shape: NvidiaTeslaT4` is stated. `warmup_ratio` is gone in transformers 5
+  (`warmup_steps` < 1 is a ratio). Every code cell is `ast.parse`d before a push - a syntax slip cost a
+  queue wait and a GPU session to discover.
+- **The 4-bit base is not deterministic across runs**: two identical base runs on the bench rows scored
+  0.274 and 0.283 (yes/no 0.54 vs 0.59 on 91 rows). Differences of a few points on that file are noise;
+  the paired test across three files is what the claim rests on.
+- **S14 over the run's overlay figure asks where the highlighted regions lie and what surrounds them**;
+  asked the operator's bare query ("unhealthy vegetation") the model says "yes". Readings are cached in
+  Redis by content hash including the model version - a repeat run's S14 is 0 ms and no load.
+- **The laptop's GPU was disabled at the OS level after a reboot** (both display adapters
+  `CM_PROB_DISABLED`); the operator re-enabled it. Docker Desktop needed relaunching twice; named volumes
+  kept the data.
+
+### Owed
+
+- Retrain on the scrubbed captions with more VRSBench caption rows; then the 4B variant on an 8 GB box.
+- Counting routed to `dota-detector`, not the VLM (1.8). Hub publish once a write token exists.
+
+---
+
 ## Session — 2026-09-12 (1.7) · The VLM, the constrained generator, and a baseline of 0.27. **The first phrasing was rejected for copying the specialists' own number.**
 
 Phase 1.7 built the VLM path end to end - serving, the S14 readings, the S16 constrained generator,

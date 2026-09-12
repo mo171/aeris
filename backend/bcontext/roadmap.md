@@ -585,7 +585,7 @@ page was unreachable from the build machine, so the dataset stays `UNVERIFIED` -
 not evaluation, and no training was planned. The S13 *node* is 1.10's composition; the 1.5 builder
 already turns any mask the detector produces into both representations and claims.
 
-## 1.7 — VLM and constrained answer generation · S14, S16 — **built (2026-09-12); the adapter's training run awaits the operator's Kaggle and Hub credentials**
+## 1.7 — VLM and constrained answer generation · S14, S16 — **done (2026-09-13): adapter trained, measured better on every task but counting, served end to end**
 
 **Research:** PDF pp.15–16 (captioning and VQA), p.8 (why a VLM alone is insufficient).
 
@@ -633,10 +633,54 @@ for Kaggle). The fleet loads the adapter from `VLM_ADAPTER_REPOSITORY`; until on
 string carries `-unadapted`, visible in `aeris models status`, on purpose. Four teaching notebooks and a
 README explain the recipe for a reader new to it.
 
-**Owed:** the training run's result (credentials placed and licences confirmed by the operator the same
-day; 42,404 training rows prepared - 34,332 BigEarthNet.txt over 11,341 rendered pictures, 8,072
-RSVQA-LR - and uploaded), notebook 04's base-vs-adapter table, and the 4B variant measured on an 8 GB
-machine. `grounding-dino-sam` is still
+**The adapter, measured (2026-09-13).** One epoch, rank 16, 21,600 rows (BigEarthNet.txt Lithuania-summer,
+RSVQA-LR, a VRSBench slice), 242 min on a Kaggle T4, validation loss 0.375 -> 0.340. Scored on the same
+rows as the base with per-row predictions and McNemar's exact test (`training/vlm/compare.py`):
+
+    file                          type            n    base   adapter   fixed  broken     p
+    BigEarthNet.txt bench (human) yes/no         91   0.593   0.648       17      12   0.46
+                                  MCQ            66   0.379   0.621       24       8   0.007
+                                  boxes IoU>=.5  22   0.000   0.364        8       0   0.008
+                                  captions R-L   10   0.161   0.491       10       0   0.002
+    BigEarthNet.txt test (templ.) yes/no        127   0.465   0.756       45       8   <1e-4
+                                  MCQ           160   0.350   0.700       74      18   <1e-4
+                                  boxes          76   0.000   0.605       46       0   <1e-4
+                                  captions       37   0.156   0.479       37       0   <1e-4
+    RSVQA-LR test (Netherlands)   yes/no        300   0.607   0.863       95      18   <1e-4
+                                  count/rural   250   0.452   0.484       27      19   0.30
+      by category: presence 0.54 -> 0.85, comparison 0.67 -> 0.87, rural/urban 0.80 -> 0.86, count 0.22 -> 0.23
+
+    overall (mean of types): bench 0.283 -> 0.531, test 0.243 -> 0.635, RSVQA-LR 0.529 -> 0.674
+
+Honest reading: MCQ, boxes and captions are large, significant gains on every file; yes/no is significant
+on the two larger files and only a trend on the 91 bench rows; **counting did not improve** (0.22 -> 0.23,
+p = 0.3) - a LoRA on 5k count rows does not teach a 2B model to count vehicles, and the fleet should
+answer "how many" with the detector, not the VLM. Confidence moved the right way where it was worst
+(MCQ 0.90 -> 0.82 stated against 0.62 accuracy) and is still over-stated.
+
+Two defects the adapter exposed, both fixed and tested:
+
+- **Captions learned the constants anyway.** Categories were dropped, but every caption *text* opens with
+  "captured during the summer in Lithuania" and the adapter said so on 10 of 10 bench captions. The
+  prep now scrubs the country, season and climate-zone clauses from caption targets (zero residual on
+  3,000 sampled captions) - the next training run inherits it. On an aerial DOTA crop the adapter did
+  *not* say Lithuania; it described a vehicle, tersely - captions of high-resolution scenes got shorter
+  and thinner, which the VRSBench slice (928 caption rows) did not prevent.
+- **The adapter cannot phrase.** Asked the S16 constrained prompt it answered "{m1}" - one placeholder,
+  nothing else - and the numeral guard, which forbade *invented* numbers, let it through: the answer was
+  "2,471.0". Two fixes: phrasing runs on the base weights (`use_adapter=False`; the adapter's job is the
+  picture), and every placeholder must be spoken or the template speaks.
+
+End to end with the adapter: `aeris analyse` on the Mumbai scene - S14 reads the overlay in 19 s
+("distributed across the image, with one area in the bottom-right quadrant, adjacent to a body of water
+and a densely built-up urban area"), S16 phrases every claim number exactly, the four VLM integration
+tests pass including the footprint (declared 2,048 MB holds with the adapter attached). The adapter is
+loaded from a local directory (`VLM_ADAPTER_REPOSITORY` accepts a path or a Hub id); the Hub push waits
+for a token with write permission.
+
+**Owed:** a second training run on the scrubbed captions with more VRSBench caption rows; the Hub push
+(write token); notebook 04 executed end to end; the 4B variant on an 8 GB machine; counting routed to
+the detector rather than asked of the VLM (1.8's routing). `grounding-dino-sam` is still
 offline; Qwen3-VL's native grounding plus the LoRA's box rows is the first candidate for it.
 
 **Problem-statement check (2026-09-12), before 1.7 starts.** The SIH statement (SatQuery AI) was read

@@ -48,7 +48,8 @@ class FakeVlm:
         self.reply = reply
         self.prompts: list[str] = []
 
-    def generate(self, images: list[Any], prompt: str, *, max_new_tokens: int = 0, **_: Any) -> FakeGeneration:
+    def generate(self, images: list[Any], prompt: str, *, max_new_tokens: int = 0, use_adapter: bool = True, **_: Any) -> FakeGeneration:
+        assert use_adapter is False, "phrasing must run on the base weights"
         self.prompts.append(prompt)
         return FakeGeneration(self.reply)
 
@@ -79,7 +80,8 @@ def test_a_numeral_the_model_wrote_itself_is_rejected_and_a_placeholder_is_requi
     assert verify_phrasing("About {m1} of sparse vegetation, {m2} of the ground, mostly north-east.", facts) is None
     assert "numerals" in (verify_phrasing("About 2,471 hectares ({m1}) are sparse.", facts) or "")
     assert "no fact defines" in (verify_phrasing("Sparse vegetation covers {m7}.", facts) or "")
-    assert "no placeholder" in (verify_phrasing("Some vegetation is sparse.", facts) or "")
+    assert "unspoken" in (verify_phrasing("Some vegetation is sparse.", facts) or "")
+    assert "unspoken" in (verify_phrasing("{m1}", facts) or "")
     # Numerals the facts already carry (the index range) may be repeated; any other is invented.
     assert verify_phrasing("Vegetation with NDVI 0.20-0.40 covers {m1}, {m2} of the ground.", facts) is None
     assert "numerals" in (verify_phrasing("Vegetation with NDVI 0.20-0.50 covers {m1}, {m2}.", facts) or "")
@@ -109,3 +111,12 @@ async def test_no_model_means_the_template_with_no_pretence() -> None:
     assert fill_placeholders("{m1}", facts_from_claims(claims())) == "2,471.0"
     with pytest.raises(KeyError):
         fill_placeholders("{m9}", facts_from_claims(claims()))
+
+
+def test_a_reading_is_spoken_only_when_its_numerals_are_already_on_a_claim() -> None:
+    from app.services.answer.constrained import admissible_reading
+
+    assert admissible_reading("Sparse fields lie to the north-east near a river.", claims())
+    assert admissible_reading("Vegetation with NDVI 0.20-0.40 dominates.", claims())
+    assert not admissible_reading("About 3 fields are visible.", claims())
+    assert not admissible_reading("Roughly 40% of the scene is farmland.", claims())

@@ -28,6 +28,7 @@ import argparse
 import json
 import logging
 import random
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -61,6 +62,37 @@ ANSWER_FORMAT = {
     "captioning": "",
 }
 PAIR_NOTE = "The first image is the optical (Sentinel-2 true colour) view; the second is the SAR view of the same ground. "
+
+# Captions open with the country, the season and the climate zone - the three constants of a one-country
+# one-season subset. Dropping the *categories* was not enough: the first adapter learned to open every
+# caption with "captured during the summer in Lithuania" (10 of 10 on the bench rows), which is exactly
+# the reflex a Cartosat scene of Gujarat must not trigger. The clauses are scrubbed from the target text.
+CAPTION_SCRUBS = (
+    re.compile(r",\s*captured (?:during|in) [^,]*?(?:season|summer|winter|spring|fall|autumn)[^,]*,"),
+    re.compile(r",\s*captured in [A-Z][A-Za-z ]+,"),
+    re.compile(r"\s*(?:set |located |situated )?within the \"[^\"]*\" climate zone"),
+    re.compile(r"\s*in the \"[^\"]*\" climate zone"),
+)
+
+
+LEAK_WORDS = re.compile(
+    r"(?:summer|winter|spring|fall|autumn|climate zone|Lithuania|Lithuanian|Finland|Finnish|Ireland|Irish|Austria|"
+    r"Austrian|Serbia|Serbian|Portugal|Portuguese|Belgium|Belgian|Luxembourg|Switzerland|Swiss|Kosovo|Slovenia|Slovenian|"
+    r"Latvia|Latvian|Estonia|Estonian|Croatia|Croatian|Slovakia|Slovak)",
+    re.IGNORECASE,
+)
+
+
+def scrub_caption(text: str) -> str:
+    """The caption without the openers that name the country, the season or the climate zone; a later
+    sentence that still names one is dropped whole, and a caption left with nothing is dropped by the
+    caller."""
+    for pattern in CAPTION_SCRUBS:
+        text = pattern.sub(lambda match: "," if match.group(0).startswith(",") and match.group(0).endswith(",") else "", text)
+    text = text.replace("This satellite image, showcases", "This satellite image showcases").replace("This satellite image, presents", "This satellite image presents")
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    kept = [s for s in sentences if not LEAK_WORDS.search(s)]
+    return re.sub(r"\s{2,}", " ", " ".join(kept)).replace(" ,", ",").replace(",.", ".").strip()
 
 
 def main() -> None:
@@ -124,7 +156,7 @@ def _balanced(rows: pd.DataFrame, cap: int, generator: random.Random) -> pd.Data
     return pd.concat(parts).sample(frac=1.0, random_state=generator.randrange(1 << 30))
 
 
-def _example(record, generator, images: Path, rendered: set[str], transaction, load_safetensors) -> dict:
+def _example(record, generator, images: Path, rendered: set[str], transaction, load_safetensors) -> dict | None:
     kind = record.type
     modality = "s2" if kind == "bounding box" else generator.choices(list(MODALITY_WEIGHTS), weights=list(MODALITY_WEIGHTS.values()))[0]
     s2_path = images / f"{record.patch_id}_s2.png"
@@ -141,6 +173,9 @@ def _example(record, generator, images: Path, rendered: set[str], transaction, l
 
     prompt = (record.input if kind != "captioning" else "Describe this satellite image: its land cover, the "
               "features visible and how they lie relative to each other.") + ANSWER_FORMAT[kind]
+    answer = scrub_caption(str(record.output).strip()) if kind == "captioning" else str(record.output).strip()
+    if not answer:
+        return None
     if modality == "s2":
         image_list, notes = [s2_path.name], [None]
     elif modality == "s1":
@@ -150,7 +185,7 @@ def _example(record, generator, images: Path, rendered: set[str], transaction, l
     return {
         "id": str(record.ID), "source": "bigearthnet-txt", "split": record.split, "category": record.category,
         "type": kind, "modality": modality, "images": image_list, "image_notes": notes,
-        "prompt": prompt, "answer": str(record.output).strip(),
+        "prompt": prompt, "answer": answer,
     }
 
 

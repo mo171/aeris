@@ -14,6 +14,10 @@ how   : Each claim's metric values are replaced in its own sentence by placehold
         run was rejected for copying "NDVI 0.20-0.40" from the fact - the rule had to learn the difference
         between repeating a specialist's number and inventing one.)
 
+        Every placeholder must be spoken: the first adapted model answered the phrasing prompt with "{m1}"
+        alone - one number, nothing else - and a guard that only forbids *invented* numbers let it through.
+        Phrasing runs on the base weights (`use_adapter=False`); the adapter's job is the picture.
+
         The check is the design (PDF §20, `product-truth.md` §1.3): "the VLM cannot emit a figure that no
         specialist produced" is not a prompt instruction, it is a regular expression that runs on the
         output. The gate test seeds a claim with a known number and asserts the answer carries exactly it.
@@ -103,9 +107,17 @@ def verify_phrasing(text: str, facts: list[Fact]) -> str | None:
     stripped = PLACEHOLDER_PATTERN.sub("", text)
     if invented := [numeral for numeral in NUMERAL_PATTERN.findall(stripped) if numeral not in permitted]:
         return f"numerals the model wrote itself: {invented}"
-    if not used and known:
-        return "no placeholder used although the findings carry numbers"
+    if missing := known - used:
+        return f"placeholders left unspoken: {sorted(missing)} - every number the specialists computed is said, or the template says it"
     return None
+
+
+def admissible_reading(reading: str, claims: list[dict[str, Any]]) -> bool:
+    """A free-form reading may be spoken only if every numeral in it already appears in a claim's text.
+    "Three fields" is fine; "3 fields" is a count nobody computed and keeps the reading out of the answer
+    (it stays in the provenance record)."""
+    permitted = {numeral for claim in claims for numeral in NUMERAL_PATTERN.findall(claim["text"])}
+    return all(numeral in permitted for numeral in NUMERAL_PATTERN.findall(reading))
 
 
 def fill_placeholders(text: str, facts: list[Fact]) -> str:
@@ -133,7 +145,7 @@ async def phrase_claims(
     )
     try:
         async with manager.lease(ModelId.REMOTE_SENSING_VLM) as model:
-            generation = await asyncio.to_thread(model.generate, [], prompt, max_new_tokens=VLM_MAX_NEW_TOKENS)
+            generation = await asyncio.to_thread(model.generate, [], prompt, max_new_tokens=VLM_MAX_NEW_TOKENS, use_adapter=False)
     except AerisError as error:
         logger.info("vlm unavailable for phrasing; template answer used", extra={"reason": str(error)})
         return fallback

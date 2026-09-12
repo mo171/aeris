@@ -61,8 +61,15 @@ class VlmAdapter:
         *,
         image_notes: list[str | None] | None = None,
         max_new_tokens: int = VLM_MAX_NEW_TOKENS,
+        use_adapter: bool = True,
     ) -> Generation:
-        """Greedy generation for a conversation of `images` (each optionally introduced by a note) and `prompt`."""
+        """Greedy generation for a conversation of `images` (each optionally introduced by a note) and `prompt`.
+
+        `use_adapter=False` runs the base weights alone. The LoRA was trained on short answers about
+        pictures; asked to *phrase* claims it answers with one placeholder and stops (measured), so the
+        text-only constrained answer is the base model's job and the adapter's is seeing."""
+        import contextlib
+
         import torch
 
         notes = image_notes or [None] * len(images)
@@ -79,7 +86,8 @@ class VlmAdapter:
         inputs = self._processor.apply_chat_template(  # type: ignore[attr-defined]
             messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
         ).to(self._module.device)  # type: ignore[attr-defined]
-        with torch.inference_mode():
+        disabled = self._module.disable_adapter() if not use_adapter and hasattr(self._module, "disable_adapter") else contextlib.nullcontext()  # type: ignore[attr-defined]
+        with torch.inference_mode(), disabled:
             output = self._module.generate(  # type: ignore[attr-defined]
                 **inputs, max_new_tokens=max_new_tokens, do_sample=False,
                 output_scores=True, return_dict_in_generate=True,
@@ -116,7 +124,7 @@ def vlm_record() -> FleetRecord:
     adapted = settings.vlm_adapter_repository is not None
     version = variant.version + ("" if adapted else UNADAPTED_SUFFIX)
     if adapted:
-        version += "+" + settings.vlm_adapter_repository.rsplit("/", 1)[-1]  # type: ignore[union-attr]
+        version += "+" + settings.vlm_adapter_repository.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]  # type: ignore[union-attr]
     return base._replace(
         version=version,
         weights=WeightsSource(variant.repository, None, variant.revision),
@@ -131,9 +139,18 @@ async def load_vlm(device: str) -> VlmAdapter:
     base = await fetch_repository(record.weights)
     adapter: Path | None = None
     if settings.vlm_adapter_repository is not None:
-        adapter = await fetch_repository(WeightsSource(settings.vlm_adapter_repository, None, settings.vlm_adapter_revision))
+        adapter = await adapter_path(settings.vlm_adapter_repository, settings.vlm_adapter_revision)
     module, processor = await asyncio.to_thread(_build, base, adapter, device)
     return VlmAdapter(module, processor, device, record.version)
+
+
+async def adapter_path(repository: str, revision: str) -> Path:
+    """A Hub repository, or a directory on this machine holding `adapter_model.safetensors` - a demo laptop
+    with no network, or an adapter pulled from Kaggle before it is published, loads the same way."""
+    local = Path(repository)
+    if await asyncio.to_thread(lambda: (local / "adapter_model.safetensors").exists()):
+        return local
+    return await fetch_repository(WeightsSource(repository, None, revision))
 
 
 def _build(base: Path, adapter: Path | None, device: str) -> tuple[object, object]:
