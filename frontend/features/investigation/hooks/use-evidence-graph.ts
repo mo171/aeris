@@ -49,6 +49,7 @@ export function useEvidenceGraph(investigationId: string): UseEvidenceGraphResul
   const visibilityOverrides = useInvestigationStore((state) => state.layerVisibilityOverrides);
   const opacityOverrides = useInvestigationStore((state) => state.layerOpacityOverrides);
   const soloLayerId = useInvestigationStore((state) => state.soloLayerId);
+  const layerOrderOverride = useInvestigationStore((state) => state.layerOrder);
 
   const { data, isLoading } = useQuery({
     queryKey: QUERY_KEYS.investigations.evidence(investigationId),
@@ -57,20 +58,25 @@ export function useEvidenceGraph(investigationId: string): UseEvidenceGraphResul
 
   const graph = data ?? EMPTY_GRAPH;
 
-  const layers = useMemo(
-    () =>
-      graph.layerOrder.map((layerId) => {
-        const layer = graph.layersById[layerId];
-        const isVisible = visibilityOverrides[layerId] ?? layer.isVisible;
+  const layers = useMemo(() => {
+    const order = layerOrderOverride ?? graph.layerOrder;
+    // Include layers from graph that might be missing from override, plus filter out ones not in graph
+    const validOrder = [
+      ...order.filter((id) => graph.layersById[id]),
+      ...graph.layerOrder.filter((id) => !order.includes(id)),
+    ];
+    
+    return validOrder.map((layerId) => {
+      const layer = graph.layersById[layerId];
+      const isVisible = visibilityOverrides[layerId] ?? layer.isVisible;
 
         return {
           ...layer,
           isVisible: soloLayerId === null ? isVisible : soloLayerId === layerId,
           opacity: opacityOverrides[layerId] ?? layer.opacity,
         };
-      }),
-    [graph, opacityOverrides, soloLayerId, visibilityOverrides],
-  );
+      });
+  }, [graph, opacityOverrides, soloLayerId, visibilityOverrides, layerOrderOverride]);
 
   const claims = useMemo(
     () => graph.claimOrder.map((claimId) => graph.claimsById[claimId]),

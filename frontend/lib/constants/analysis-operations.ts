@@ -26,7 +26,6 @@
 //         analysis run would fabricate a trace for work nobody did.
 
 import { CROSS_MODAL_STAGE } from "./cross-modal";
-import { SPECTRAL_INDICES, type SpectralIndexId } from "./overlays/spectral-indices";
 import type { ParameterValue } from "./parameters";
 import type { PipelineStageCode } from "./pipeline-stages";
 import { z } from "zod";
@@ -83,87 +82,53 @@ export interface AnalysisOperation {
   group: OperationGroup;
 }
 
-/**
- * Builds the entry for a spectral-index operation from the index definition itself.
- *
- * The descriptions, the queries and the caveats used to be written out twice — once in
- * overlays/spectral-indices.ts and once here — which is two files that can disagree about what NDVI is.
- * Now there is one definition and this reads it.
- */
-function indexOperation(indexId: SpectralIndexId, requires: readonly AnalysisRequirement[]): AnalysisOperation {
-  const index = SPECTRAL_INDICES[indexId];
-
-  return {
-    id: `index-${indexId}`,
-    kind: "run",
-    label: `${index.label} · ${index.fullName.split(" ").slice(-1)[0].toLowerCase()}`,
-    description: index.meaning,
-    requires,
-    stageCode: "S12",
-    prompt: index.typicalQuery,
-    producesOverlayId: indexId,
-    parameters: z.object({}),
-    defaultParameters: {},
-    keywords: ["vegetation", "water", "burn", "soil", "index", indexId],
-    group: "ANALYSIS",
-  };
-}
-
 export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
   {
-    id: "change-detection",
+    id: "vegetation-analysis",
     kind: "run",
-    label: "Change detection",
-    description:
-      "Compare the two selected observations and map where the ground changed, with each region sized and scored.",
-    requires: ["pair"],
-    stageCode: "S13",
-    prompt: "What changed between these two observations?",
-    producesOverlayId: "change-mask",
+    label: "Vegetation analysis",
+    description: "Measure vegetation health and density, or assess burn severity across an area.",
+    requires: ["optical"],
+    stageCode: "S12",
+    prompt: "Analyse the vegetation and plant health in this area.",
+    producesOverlayId: "ndvi", // Fallback, the real one depends on the parameter
     parameters: z.object({
-      threshold: z.number().min(0).max(1).describe("Sensitivity threshold for change detection"),
+      index: z.enum(["ndvi", "nbr"]).describe("Specific vegetation index to compute"),
     }),
-    defaultParameters: { threshold: 0.35 },
-    keywords: ["change", "difference", "compare", "loss", "gain", "construction", "destruction"],
+    defaultParameters: { index: "ndvi" },
+    keywords: ["vegetation", "plant", "health", "biomass", "burn", "severity", "ndvi", "nbr"],
     group: "ANALYSIS",
   },
   {
-    id: "object-detection",
+    id: "water-detection",
     kind: "run",
-    label: "Object detection",
-    description:
-      "Find and count discrete objects — buildings, vehicles, vessels, infrastructure — in the comparison observation.",
+    label: "Water detection",
+    description: "Map surface water bodies and moisture levels.",
     requires: ["optical"],
-    stageCode: "S13",
-    prompt: "What objects are present, and how many of each?",
-    producesOverlayId: "detected-objects",
+    stageCode: "S12",
+    prompt: "Map the surface water in this area.",
+    producesOverlayId: "ndwi",
     parameters: z.object({
-      targetClass: z.string().describe("Class of object to detect"),
+      index: z.enum(["ndwi", "mndwi"]).describe("Specific water index to compute"),
     }),
-    defaultParameters: { targetClass: "building" },
-    keywords: ["find", "count", "objects", "buildings", "vehicles", "vessels"],
+    defaultParameters: { index: "ndwi" },
+    keywords: ["water", "moisture", "flood", "lake", "river", "ndwi", "mndwi"],
     group: "ANALYSIS",
   },
   {
-    id: "segmentation",
+    id: "built-up-detection",
     kind: "run",
-    label: "Land-cover segmentation",
-    description:
-      "Classify every pixel into land-cover classes and report the share of the area each one covers.",
+    label: "Built-up detection",
+    description: "Highlight urban areas, impervious surfaces and human infrastructure.",
     requires: ["optical"],
-    stageCode: "S13",
-    prompt: "Classify land cover across this area and give the proportions.",
-    producesOverlayId: "land-cover",
+    stageCode: "S12",
+    prompt: "Highlight built-up and urban areas here.",
+    producesOverlayId: "ndbi",
     parameters: z.object({}),
     defaultParameters: {},
-    keywords: ["land cover", "classify", "segment", "area", "share", "proportion"],
+    keywords: ["urban", "built-up", "infrastructure", "city", "impervious", "ndbi"],
     group: "ANALYSIS",
   },
-  indexOperation("ndvi", ["optical"]),
-  indexOperation("ndwi", ["optical"]),
-  indexOperation("mndwi", ["optical"]),
-  indexOperation("ndbi", ["optical"]),
-  indexOperation("nbr", ["optical", "pair"]),
   {
     id: "sar-analysis",
     kind: "run",

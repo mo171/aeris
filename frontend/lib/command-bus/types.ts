@@ -36,6 +36,8 @@ export interface CommandDefinition<TParams> {
   isPaletteVisible?: boolean;
   /** Evaluated at render time by the palette to dim unavailable commands. Defaults to enabled. */
   isEnabled?: () => boolean;
+  /** Whether dispatching this command should be recorded in the investigation history. Defaults to false. */
+  recordsHistory?: boolean;
 }
 
 /** A command as stored in the registry: parameters erased to `unknown`, validated at dispatch time. */

@@ -47,6 +47,7 @@ import type { Claim, EvidenceItem } from "../../types/evidence.types";
 import { ClaimCard } from "./ClaimCard";
 import { InsufficientEvidenceCard } from "./InsufficientEvidenceCard";
 import { InvestigatePlanSheet } from "./InvestigatePlanSheet";
+import { HistoryList } from "./HistoryList";
 
 const STARTER_PROMPTS: readonly string[] = [
   "What changed between these two observations?",
@@ -70,6 +71,7 @@ interface AnswerPanelProps {
   onTogglePlanStep: (stepId: string) => void;
   onExecutePlan: () => void;
   onDismissPlan: () => void;
+  history?: import("../../types/history.types").InvestigationEvent[];
 }
 
 export function AnswerPanel({
@@ -86,6 +88,7 @@ export function AnswerPanel({
   onTogglePlanStep,
   onExecutePlan,
   onDismissPlan,
+  history,
 }: AnswerPanelProps) {
   const [draft, setDraft] = useState("");
   const spotlightClaimId = useInvestigationStore((state) => state.spotlightClaimId);
@@ -174,6 +177,12 @@ export function AnswerPanel({
             >
               Back to latest
             </Button>
+          </div>
+        ) : null}
+
+        {history && history.length > 0 ? (
+          <div className="mb-4">
+            <HistoryList events={history} />
           </div>
         ) : null}
 

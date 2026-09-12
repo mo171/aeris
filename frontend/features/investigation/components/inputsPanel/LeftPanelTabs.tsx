@@ -14,22 +14,26 @@
 
 "use client";
 
-import { Layers, Wrench } from "lucide-react";
+import { Database, Layers, Wrench } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
 import { InputsPanel } from "./InputsPanel";
-import { ToolboxPanel, type AnalysisReadiness } from "./ToolboxPanel";
+import { LayersPanel } from "./LayersPanel";
+import { ToolboxPanel, type AnalysisReadiness } from "./ToolboxTab";
 
-type LeftPanelTab = "inputs" | "toolbox";
+type LeftPanelTab = "inputs" | "layers" | "toolbox";
 
 const TABS: readonly { id: LeftPanelTab; label: string; icon: typeof Layers }[] = [
-  { id: "inputs", label: "Inputs", icon: Layers },
-  { id: "toolbox", label: "Toolbox", icon: Wrench },
+  { id: "inputs", label: "Inputs", icon: Database as any },
+  { id: "layers", label: "Layers", icon: Layers },
+  { id: "toolbox", label: "Toolbox", icon: Wrench as any },
 ];
 
-interface LeftPanelTabsProps extends React.ComponentProps<typeof InputsPanel> {
+interface LeftPanelTabsProps 
+  extends React.ComponentProps<typeof InputsPanel>, 
+    Omit<React.ComponentProps<typeof LayersPanel>, "sensorsSection" | "sceneSlots"> {
   readiness: AnalysisReadiness;
   onRunOperation: (operationId: string) => void;
   activeOverlayIds: readonly string[];
@@ -41,7 +45,24 @@ export function LeftPanelTabs({
   onRunOperation,
   activeOverlayIds,
   activeLensIds,
-  ...inputsProps
+  
+  // Inputs props
+  sceneSlots,
+  acquisitions,
+  roleBySceneId,
+  openSceneIds,
+  onOpenScene,
+  regions,
+  activeRegionId,
+  onSelectRegion,
+  onRemoveRegion,
+  onFocusScene,
+  
+  // Layers props
+  sensorsSection,
+  layers,
+  
+  ...rest
 }: LeftPanelTabsProps) {
   const [tab, setTab] = useState<LeftPanelTab>("inputs");
 
@@ -72,13 +93,26 @@ export function LeftPanelTabs({
         ))}
       </div>
 
-      {/*
-        Both trees stay mounted and the inactive one is hidden, not unmounted. The inputs panel holds
-        section collapse state and scroll position that an operator would otherwise lose every time they
-        glanced at the toolbox.
-      */}
       <div className={cn("min-h-0 flex-1", tab === "inputs" ? "flex" : "hidden")} role="tabpanel">
-        <InputsPanel {...inputsProps} />
+        <InputsPanel 
+          sceneSlots={sceneSlots}
+          acquisitions={acquisitions}
+          roleBySceneId={roleBySceneId}
+          openSceneIds={openSceneIds}
+          onOpenScene={onOpenScene}
+          regions={regions}
+          activeRegionId={activeRegionId}
+          onSelectRegion={onSelectRegion}
+          onRemoveRegion={onRemoveRegion}
+          onFocusScene={onFocusScene}
+        />
+      </div>
+      <div className={cn("min-h-0 flex-1", tab === "layers" ? "flex" : "hidden")} role="tabpanel">
+        <LayersPanel 
+          sensorsSection={sensorsSection}
+          layers={layers}
+          sceneSlots={sceneSlots}
+        />
       </div>
       <div className={cn("min-h-0 flex-1", tab === "toolbox" ? "flex" : "hidden")} role="tabpanel">
         <ToolboxPanel

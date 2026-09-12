@@ -25,7 +25,7 @@
 
 "use client";
 
-import { History, Layers, Satellite } from "lucide-react";
+import { History, Satellite } from "lucide-react";
 import { useState } from "react";
 
 import { SectionHeader } from "@/components/sharedUI/dumbComponent/SectionHeader";
@@ -38,15 +38,9 @@ import type {
   InvestigationSceneSlot,
   SceneRole,
 } from "../../types/investigation.types";
-import type { EvidenceLayer } from "../../types/layer.types";
 import type { StageDrawnRegion } from "@/components/sharedUI/functionalComponent/geoStage/geo-stage.types";
 
-import { OVERLAY_SECTIONS, sectionForOverlay } from "@/lib/constants/overlays";
-import { REFERENCE_LAYERS } from "@/lib/constants/reference-layers";
-
 import { AcquisitionList } from "./AcquisitionList";
-import { EvidenceLayerRow } from "./EvidenceLayerRow";
-import { ReferenceLayerList } from "./ReferenceLayerList";
 import { RegionList } from "./RegionList";
 import { SceneSlotCard } from "./SceneSlotCard";
 
@@ -63,7 +57,6 @@ interface InputsPanelProps {
   roleBySceneId: Record<string, SceneRole>;
   openSceneIds: readonly string[];
   onOpenScene: (sceneId: string) => void;
-  layers: EvidenceLayer[];
   regions: readonly StageDrawnRegion[];
   activeRegionId: string | null;
   onSelectRegion: (regionId: string | null) => void;
@@ -78,7 +71,6 @@ export function InputsPanel({
   roleBySceneId,
   openSceneIds,
   onOpenScene,
-  layers,
   regions,
   activeRegionId,
   onSelectRegion,
@@ -105,18 +97,6 @@ export function InputsPanel({
   // A scene and a change mask being hidden by two different mechanisms is how a layer stack starts lying.
   const isSceneVisible = (slot: InvestigationSceneSlot) =>
     soloLayerId === null ? (visibilityOverrides[slot.layerId] ?? true) : soloLayerId === slot.layerId;
-
-  const producedLayers = layers.filter(
-    (layer) => !sceneSlots.some((slot) => slot.layerId === layer.id),
-  );
-
-  // Filed by the catalogue, not by a rule written here, so adding a product never edits this component.
-  const evidenceLayers = producedLayers.filter(
-    (layer) => sectionForOverlay(layer.overlayId) !== "masks",
-  );
-  const maskLayers = producedLayers.filter(
-    (layer) => sectionForOverlay(layer.overlayId) === "masks",
-  );
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
@@ -225,116 +205,6 @@ export function InputsPanel({
         </section>
       ) : null}
 
-      <section
-        className={cn(
-          "flex flex-col border-t border-border-soft pt-2",
-          isLayersExpanded ? "min-h-0 flex-1" : "shrink-0",
-        )}
-      >
-        <SectionHeader
-          title="Findings"
-          isExpanded={isLayersExpanded}
-          onToggle={() => setIsLayersExpanded((current) => !current)}
-          trailing={
-            <span className="font-mono text-[10px] text-muted-foreground">
-              {evidenceLayers.length}
-            </span>
-          }
-        />
-
-        {isLayersExpanded ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-            {evidenceLayers.length === 0 ? (
-              <EmptyState
-                icon={Layers}
-                title="No evidence yet"
-                description="Ask a question and the layers AERIS produces will appear here."
-              />
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {evidenceLayers.map((layer) => (
-                  <EvidenceLayerRow
-                    key={layer.id}
-                    layer={layer}
-                    isSoloed={soloLayerId === layer.id}
-                    onToggleVisibility={() => setLayerVisibility(layer.id, !layer.isVisible)}
-                    onToggleSolo={() => toggleSoloLayer(layer.id)}
-                    onOpacityChange={(opacity) => setLayerOpacity(layer.id, opacity)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-      </section>
-
-      {/*
-        Where the answer cannot be trusted. Separate from the findings above because it is the opposite
-        kind of statement — and shown even when empty is wrong, so it hides entirely when a run produced
-        no masks at all.
-      */}
-      {maskLayers.length > 0 ? (
-        <section
-          className={cn(
-            "flex flex-col border-t border-border-soft pt-2",
-            isMasksExpanded ? "min-h-0 flex-1" : "shrink-0",
-          )}
-        >
-          <SectionHeader
-            title="Masks"
-            isExpanded={isMasksExpanded}
-            onToggle={() => setIsMasksExpanded((current) => !current)}
-            trailing={
-              <span className="font-mono text-[10px] text-muted-foreground">
-                {maskLayers.length}
-              </span>
-            }
-          />
-
-          {isMasksExpanded ? (
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-              <p className="mb-1.5 px-0.5 text-[10px] leading-relaxed text-muted-foreground/70">
-                {OVERLAY_SECTIONS.masks.caption}
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {maskLayers.map((layer) => (
-                  <EvidenceLayerRow
-                    key={layer.id}
-                    layer={layer}
-                    isSoloed={soloLayerId === layer.id}
-                    onToggleVisibility={() => setLayerVisibility(layer.id, !layer.isVisible)}
-                    onToggleSolo={() => toggleSoloLayer(layer.id)}
-                    onOpacityChange={(opacity) => setLayerOpacity(layer.id, opacity)}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      {/*
-        Context, kept visually distinct from the evidence above it. An evidence row names the model that
-        asserted it; a reference row names a source and a purpose, because nothing asserted a coastline.
-      */}
-      <section className={cn("flex flex-col", isReferenceExpanded ? "min-h-0 flex-1" : "shrink-0")}>
-        <SectionHeader
-          title="Reference"
-          isExpanded={isReferenceExpanded}
-          onToggle={() => setIsReferenceExpanded((current) => !current)}
-          trailing={
-            <span className="font-mono text-[10px] text-muted-foreground">
-              {REFERENCE_LAYERS.length}
-            </span>
-          }
-        />
-
-        {isReferenceExpanded ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-            <ReferenceLayerList />
-          </div>
-        ) : null}
-      </section>
     </div>
   );
 }

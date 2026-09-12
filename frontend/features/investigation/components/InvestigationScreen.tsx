@@ -59,6 +59,7 @@ import { searchCatalogue } from "../services/catalogue.service";
 import { useEvidenceGraph } from "../hooks/use-evidence-graph";
 import { useInvestigation } from "../hooks/use-investigation";
 import { useInvestigationCommands } from "../hooks/use-investigation-commands";
+import { useInvestigationHistory } from "../hooks/use-investigation-history";
 import { useInvestigationVersions } from "../hooks/use-investigation-versions";
 import { useRegionSelection } from "../hooks/use-region-selection";
 import { useScenePopout } from "../hooks/use-scene-popout";
@@ -68,7 +69,7 @@ import { useTimeline } from "../hooks/use-timeline";
 import { useInvestigationStore } from "../store/investigation-store";
 import type { Claim } from "../types/evidence.types";
 import type { InvestigationSceneSlot } from "../types/investigation.types";
-import { AnswerPanel } from "./answerPanel/AnswerPanel";
+import { RightPanelTabs } from "./answerPanel/RightPanelTabs";
 import { InvestigationHeader } from "./header/InvestigationHeader";
 import { LeftPanelTabs } from "./inputsPanel/LeftPanelTabs";
 import { ReportDrawer } from "./report/ReportDrawer";
@@ -117,6 +118,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const catalogue = useCatalogueSearch(investigationId);
   const referenceLayers = useReferenceLayers();
   const monitor = useMonitorThis(investigation);
+  const { history } = useInvestigationHistory(investigationId);
   /**
    * The cross-modal reading of this same investigation.
    *
@@ -595,8 +597,8 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               revealDelaySeconds={BOOT_SEQUENCE_DELAY.assistantPanel}
               ariaLabel="AERIS answer panel"
             >
-              <PanelErrorBoundary panelName="AERIS">
-                <AnswerPanel
+              <PanelErrorBoundary panelName="Right Panel">
+                <RightPanelTabs
                   verdictSection={
                     crossModal.isActive ? (
                       <AgreementSection
@@ -614,6 +616,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                     ) : undefined
                   }
                   runs={runs}
+                  history={history}
                   isRunning={isRunning}
                   claimsById={graph.claimsById}
                   evidenceById={graph.evidenceById}
@@ -625,6 +628,12 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                   onTogglePlanStep={togglePlanStep}
                   onExecutePlan={autonomous.execute}
                   onDismissPlan={autonomous.dismiss}
+                  onInspectStep={(stepId) => {
+                    const stepNodeId = `step-${stepId}`;
+                    useInvestigationStore.getState().setSelectedNodeId(stepNodeId);
+                    useInvestigationStore.getState().setTraceView("canvas");
+                  }}
+                  onFocusLayer={toggleSoloLayer}
                 />
               </PanelErrorBoundary>
             </PanelContainer>

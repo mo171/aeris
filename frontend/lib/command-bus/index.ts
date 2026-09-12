@@ -12,6 +12,7 @@ export {
   listCommandDescriptors,
   registerCommands,
   useRegisteredCommands,
+  subscribeToDispatches,
 } from "./registry";
 export { useRegisterCommands } from "./use-register-commands";
 export type {

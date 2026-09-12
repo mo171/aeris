@@ -114,6 +114,7 @@ interface InvestigationState {
   layerVisibilityOverrides: Record<string, boolean>;
   layerOpacityOverrides: Record<string, number>;
   soloLayerId: string | null;
+  layerOrder: string[] | null;
 
   /** The claim currently under the pointer. Drives the scene spotlight. */
   spotlightClaimId: string | null;
@@ -208,6 +209,7 @@ interface InvestigationState {
   setLayerVisibility: (layerId: string, isVisible: boolean) => void;
   setLayerOpacity: (layerId: string, opacity: number) => void;
   toggleSoloLayer: (layerId: string) => void;
+  setLayerOrder: (layerIds: string[]) => void;
 
   setSpotlightClaimId: (claimId: string | null) => void;
   setArtefactLayerId: (layerId: string | null) => void;
@@ -282,6 +284,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   layerVisibilityOverrides: {},
   layerOpacityOverrides: {},
   soloLayerId: null,
+  layerOrder: null,
 
   spotlightClaimId: null,
   artefactLayerId: null,
@@ -326,6 +329,7 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       layerVisibilityOverrides: {},
       layerOpacityOverrides: {},
       soloLayerId: null,
+      layerOrder: null,
       spotlightClaimId: null,
       artefactLayerId: null,
       inspectedFeature: null,
@@ -459,6 +463,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
 
   toggleSoloLayer: (layerId) =>
     set((state) => ({ soloLayerId: state.soloLayerId === layerId ? null : layerId })),
+    
+  setLayerOrder: (layerIds) => set({ layerOrder: layerIds }),
 
   setSpotlightClaimId: (spotlightClaimId) => set({ spotlightClaimId }),
   setArtefactLayerId: (artefactLayerId) => set({ artefactLayerId }),

@@ -106,9 +106,25 @@ export async function dispatchCommand(
 
   try {
     await command.handler(parsed.data);
-    return { status: "completed", commandId };
+    const result: CommandDispatchResult = { status: "completed", commandId };
+    notifyDispatchListeners(commandId, parsed.data);
+    return result;
   } catch (error) {
     return { status: "failed", commandId, error };
+  }
+}
+
+type DispatchListener = (commandId: string, params: unknown) => void;
+const dispatchListeners = new Set<DispatchListener>();
+
+export function subscribeToDispatches(listener: DispatchListener): () => void {
+  dispatchListeners.add(listener);
+  return () => dispatchListeners.delete(listener);
+}
+
+function notifyDispatchListeners(commandId: string, params: unknown) {
+  for (const listener of dispatchListeners) {
+    listener(commandId, params);
   }
 }
 

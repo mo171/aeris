@@ -74,3 +74,34 @@ Added a 13th Model ID representing Sentinel-2's native Scene Classification Laye
 - **Investigation Breadcrumb**: Modified `InvestigationHeader.tsx` to include a breadcrumb indicating the parent Project (`Project › Investigation`).
 - **Mission Command Left Panel**: Renamed `ActiveMissionsList` to `RecentProjectsList`. Created `AlertsStrip.tsx` to show only missions with an `alert` status. Integrated both into `DataContextPanel.tsx`.
 - **Renamed Hooks & Commands**: Renamed `useSaveAsMission` to `use-monitor-this.ts` and updated to prompt for a cadence and reference the `templateVersionId`. Added the `projects.open` command to `COMMAND_IDS` in `commands.ts`.
+
+## 9. Phase F - History & Evidence Tooling
+- **Action**: Implemented Investigation History (Command Logging) from Phase F.
+- **Files Modified/Created**:
+  - rontend/lib/command-bus/types.ts: Added \ecordsHistory?: boolean\ flag to \CommandDefinition\.
+  - rontend/lib/command-bus/registry.ts: Added a dispatch listener mechanism (\subscribeToDispatches\) to fire when commands complete.
+  - rontend/features/investigation/hooks/use-investigation-commands.ts: Flagged analytical and temporal commands (e.g. \unOperation\, \sk\, \scrubTo\, \erunStep\, \saveVersion\) with \ecordsHistory: true\.
+  - rontend/features/investigation/types/history.types.ts [NEW]: Created \InvestigationEvent\ interface for history logging.
+  - rontend/features/investigation/hooks/use-investigation-history.ts [NEW]: Created a hook that subscribes to command dispatches, generates human-readable summaries, and stores them in session storage.
+  - rontend/features/investigation/components/answerPanel/HistoryList.tsx [NEW]: Built UI component to render history events grouped by date.
+  - rontend/features/investigation/components/answerPanel/AnswerPanel.tsx: Integrated \HistoryList\ to show the audit trail above previous runs.
+  - rontend/features/investigation/components/InvestigationScreen.tsx: Wired up the history hook and passed it into the \AnswerPanel\.
+
+
+## 10. Phase F - Layers Tab & Inputs Panel Overhaul
+- **Action**: Refactored the Inputs panel to use a tabbed interface and added layer sorting.
+- **Files Modified/Created**:
+  - rontend/features/investigation/components/inputsPanel/LeftPanelTabs.tsx: Restructured to support three tabs (INPUTS, LAYERS, TOOLBOX).
+  - rontend/features/investigation/components/inputsPanel/InputsPanel.tsx: Removed layer lists, leaving only scene inputs, acquisition history, and AOIs.
+  - rontend/features/investigation/components/inputsPanel/LayersPanel.tsx [NEW]: Created to house Findings (Evidence), Masks, and Reference layers. Implemented @dnd-kit/core and @dnd-kit/sortable to allow drag-and-drop layer reordering. Added visual locks (?? for immutable model evidence, ? for editable regions) on hover.
+  - rontend/features/investigation/store/investigation-store.ts: Added \layerOrder\ array and \setLayerOrder\ setter to maintain drag-and-drop state.
+  - rontend/features/investigation/hooks/use-evidence-graph.ts: Updated to read \layerOrder\ from the store to ensure the scene stage respects the operator's sorting.
+
+
+## 11. Phase F - Palette & Toolbox Regrouping and Evidence Tab
+- **Action**: Refactored `CommandPalette` to include intent-level grouped operations and added an `EvidenceTab` to the right panel.
+- **Files Modified/Created**:
+  - `frontend/components/sharedUI/functionalComponent/appShell/CommandPalette.tsx`: Updated to render intent-level `ANALYSIS_OPERATIONS` alongside system commands.
+  - `frontend/features/investigation/components/answerPanel/EvidenceTab.tsx` [NEW]: Built the provenance chain view per-claim (metrics, layer link, figure, model, trace step).
+  - `frontend/features/investigation/components/answerPanel/RightPanelTabs.tsx` [NEW]: Extracted `AnswerPanel` to support three tabs (`ANALYSIS`, `EVIDENCE`, `CHAT`), embedding the `AnswerPanel` into Analysis and Chat modes, and the new `EvidenceTab` into Evidence mode.
+  - `frontend/features/investigation/components/InvestigationScreen.tsx`: Replaced `AnswerPanel` with `RightPanelTabs`.

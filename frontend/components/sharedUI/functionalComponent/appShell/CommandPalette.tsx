@@ -27,7 +27,9 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { dispatchCommand, useRegisteredCommands } from "@/lib/command-bus";
+import { ANALYSIS_OPERATIONS } from "@/lib/constants/analysis-operations";
 import { COMMAND_GROUP_LABEL, type CommandGroup as CommandGroupId } from "@/lib/constants/commands";
+import { COMMAND_IDS } from "@/lib/constants/commands";
 import { useUiStore } from "@/store/ui-store";
 
 export function CommandPalette() {
@@ -50,7 +52,7 @@ export function CommandPalette() {
     return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
   }, [commands]);
 
-  const handleSelect = async (commandId: string) => {
+  const handleSelectCommand = async (commandId: string) => {
     setCommandPaletteOpen(false);
     const result = await dispatchCommand(commandId, undefined);
 
@@ -60,6 +62,14 @@ export function CommandPalette() {
       toast.error("The command did not complete");
     } else if (result.status === "disabled") {
       toast.warning("That command is not available right now");
+    }
+  };
+
+  const handleSelectOperation = async (operationId: string) => {
+    setCommandPaletteOpen(false);
+    const result = await dispatchCommand(COMMAND_IDS.investigation.runOperation, { operationId });
+    if (result.status === "failed") {
+      toast.error("The operation did not complete");
     }
   };
 
@@ -87,7 +97,7 @@ export function CommandPalette() {
                     key={command.id}
                     value={`${command.title} ${command.description} ${(command.keywords ?? []).join(" ")}`}
                     disabled={!isEnabled}
-                    onSelect={() => void handleSelect(command.id)}
+                    onSelect={() => void handleSelectCommand(command.id)}
                     className="gap-2"
                   >
                     {Icon ? (
@@ -107,6 +117,31 @@ export function CommandPalette() {
               })}
             </CommandGroup>
           ))}
+
+          {/* Render Intent-level Operations */}
+          {["ANALYSIS", "TEMPORAL", "MULTIMODAL", "AI", "MEASURE"].map((groupName) => {
+            const ops = ANALYSIS_OPERATIONS.filter(op => op.group === groupName);
+            if (ops.length === 0) return null;
+            return (
+              <CommandGroup key={`intent-${groupName}`} heading={groupName}>
+                {ops.map((operation) => (
+                  <CommandItem
+                    key={operation.id}
+                    value={`${operation.label} ${operation.description} ${(operation.keywords ?? []).join(" ")}`}
+                    onSelect={() => void handleSelectOperation(operation.id)}
+                    className="gap-2"
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-xs">{operation.label}</span>
+                      <span className="truncate text-[10px] text-muted-foreground">
+                        {operation.description}
+                      </span>
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            );
+          })}
         </CommandList>
       </Command>
     </CommandDialog>

@@ -50,6 +50,7 @@ import {
   ANALYSIS_OPERATIONS,
   REQUIREMENT_COPY,
   type AnalysisRequirement,
+  type OperationGroup,
 } from "@/lib/constants/analysis-operations";
 import { COMMAND_GROUP_LABEL, type CommandGroup } from "@/lib/constants/commands";
 import { getPipelineStage } from "@/lib/constants/pipeline-stages";
@@ -74,6 +75,8 @@ export interface AnalysisReadiness {
  * not things you do to an investigation, and listing them would bury the six operations that matter.
  */
 const TOOLBOX_GROUPS: readonly CommandGroup[] = ["investigation", "assistant", "imagery"];
+
+const INTENT_GROUPS: readonly OperationGroup[] = ["ANALYSIS", "TEMPORAL", "MULTIMODAL", "AI", "MEASURE"];
 
 interface ToolboxPanelProps {
   readiness: AnalysisReadiness;
@@ -152,79 +155,82 @@ export function ToolboxPanel({
       />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-0.5">
-        {operations.length > 0 ? (
-          <section className="flex flex-col gap-1">
-            <h3 className="aeris-technical px-1">
-              Analysis · scoped to {readiness.scopeLabel}
-            </h3>
+        {INTENT_GROUPS.map((group) => {
+          const groupOps = operations.filter(({ operation }) => operation.group === group);
+          if (groupOps.length === 0) return null;
 
-            {operations.map(({ operation, unmet }) => {
-              const isRunnable = unmet.length === 0;
-              const stage = getPipelineStage(operation.stageCode);
-              const isLens = operation.kind === "lens";
-              const isLensOpen = isLens && activeLensIds.includes(operation.id);
-              const ActionIcon = isLens ? Eye : Play;
+          return (
+            <section key={group} className="flex flex-col gap-1">
+              <h3 className="aeris-technical px-1">
+                {group}
+                {group === "ANALYSIS" ? ` · scoped to ${readiness.scopeLabel}` : ""}
+              </h3>
 
-              return (
-                <button
-                  key={operation.id}
-                  type="button"
-                  disabled={!isRunnable}
-                  // Only a lens has an on/off state to announce. A run happens and is over.
-                  aria-pressed={isLens ? isLensOpen : undefined}
-                  onClick={() => onRunOperation(operation.id)}
-                  title={operation.description}
-                  className={cn(
-                    "group flex w-full items-start gap-2 rounded-md border px-2 py-1.5 text-left transition-colors duration-fast",
-                    isLensOpen
-                      ? "border-aeris-teal/60 bg-aeris-teal/15"
-                      : isRunnable
-                        ? "border-aeris-teal/25 bg-aeris-teal/5 hover:border-aeris-teal/55 hover:bg-aeris-teal/10"
-                        : "cursor-default border-border-soft/60 bg-transparent",
-                  )}
-                >
-                  <ActionIcon
+              {groupOps.map(({ operation, unmet }) => {
+                const isRunnable = unmet.length === 0;
+                const stage = getPipelineStage(operation.stageCode);
+                const isLens = operation.kind === "lens";
+                const isLensOpen = isLens && activeLensIds.includes(operation.id);
+                const ActionIcon = isLens ? Eye : Play;
+
+                return (
+                  <button
+                    key={operation.id}
+                    type="button"
+                    disabled={!isRunnable}
+                    aria-pressed={isLens ? isLensOpen : undefined}
+                    onClick={() => onRunOperation(operation.id)}
+                    title={operation.description}
                     className={cn(
-                      "mt-0.5 size-3.5 shrink-0",
-                      isRunnable
-                        ? "text-aeris-teal"
-                        : "text-muted-foreground/35",
+                      "group flex w-full items-start gap-2 rounded-md border px-2 py-1.5 text-left transition-colors duration-fast",
+                      isLensOpen
+                        ? "border-aeris-teal/60 bg-aeris-teal/15"
+                        : isRunnable
+                          ? "border-aeris-teal/25 bg-aeris-teal/5 hover:border-aeris-teal/55 hover:bg-aeris-teal/10"
+                          : "cursor-default border-border-soft/60 bg-transparent",
                     )}
-                    aria-hidden="true"
-                  />
+                  >
+                    <ActionIcon
+                      className={cn(
+                        "mt-0.5 size-3.5 shrink-0",
+                        isRunnable ? "text-aeris-teal" : "text-muted-foreground/35",
+                      )}
+                      aria-hidden="true"
+                    />
 
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline gap-1.5">
-                      <span
-                        className={cn(
-                          "truncate text-xs",
-                          isRunnable ? "text-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {operation.label}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-1.5">
+                        <span
+                          className={cn(
+                            "truncate text-xs",
+                            isRunnable ? "text-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {operation.label}
+                        </span>
+                        <span className="shrink-0 font-mono text-[9px] text-muted-foreground/50">
+                          {isLensOpen ? "open · " : null}
+                          {operation.stageCode} · {stage.label}
+                        </span>
                       </span>
-                      <span className="shrink-0 font-mono text-[9px] text-muted-foreground/50">
-                        {isLensOpen ? "open · " : null}
-                        {operation.stageCode} · {stage.label}
+                      <span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground/70">
+                        {operation.description}
                       </span>
+                      {unmet.map((requirement) => (
+                        <span
+                          key={requirement}
+                          className="mt-0.5 block font-mono text-[9px] leading-relaxed tracking-wide text-aeris-amber/80 uppercase"
+                        >
+                          {REQUIREMENT_COPY[requirement as AnalysisRequirement]}
+                        </span>
+                      ))}
                     </span>
-                    <span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground/70">
-                      {operation.description}
-                    </span>
-                    {unmet.map((requirement) => (
-                      <span
-                        key={requirement}
-                        className="mt-0.5 block font-mono text-[9px] leading-relaxed tracking-wide text-aeris-amber/80 uppercase"
-                      >
-                        {REQUIREMENT_COPY[requirement as AnalysisRequirement]}
-                      </span>
-                    ))}
-                  </span>
-                </button>
-              );
-            })}
-          </section>
-        ) : null}
+                  </button>
+                );
+              })}
+            </section>
+          );
+        })}
 
         {grouped.length === 0 && operations.length === 0 ? (
           <p className="px-1 py-4 text-center text-xs text-muted-foreground">

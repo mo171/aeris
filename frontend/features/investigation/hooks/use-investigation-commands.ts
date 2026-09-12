@@ -131,6 +131,7 @@ export function useInvestigationCommands({
         paramsSchema: z.object({ query: z.string().min(1) }),
         handler: ({ query }) => ask(query),
         isPaletteVisible: false,
+        recordsHistory: true,
       }),
 
       defineCommand({
@@ -178,6 +179,7 @@ export function useInvestigationCommands({
           ask(operation.prompt, { operationId });
         },
         isPaletteVisible: false,
+        recordsHistory: true,
       }),
 
       // ── Layers ─────────────────────────────────────────────────────────────────────────────────
@@ -386,6 +388,7 @@ export function useInvestigationCommands({
         icon: Crosshair,
         paramsSchema: z.void(),
         handler: () => stage()?.draw.complete(),
+        recordsHistory: true,
       }),
 
       defineCommand({
@@ -531,6 +534,7 @@ export function useInvestigationCommands({
           }
         },
         isPaletteVisible: false,
+        recordsHistory: true,
       }),
 
       defineCommand({
@@ -562,6 +566,7 @@ export function useInvestigationCommands({
           }
         },
         isPaletteVisible: false,
+        recordsHistory: true,
       }),
 
       defineCommand({
@@ -586,6 +591,7 @@ export function useInvestigationCommands({
         paramsSchema: z.object({ percentage: z.number().min(0).max(100) }),
         handler: ({ percentage }) => store().setTimelineCloudCeiling(percentage),
         isPaletteVisible: false,
+        recordsHistory: true,
       }),
 
       // ── Autonomous, present, trace, report ─────────────────────────────────────────────────────
@@ -694,6 +700,7 @@ export function useInvestigationCommands({
         handler: ({ stepId, parameterOverrides }) => {
           rerunStep(stepId, parameterOverrides as Record<string, ParameterValue>);
         },
+        recordsHistory: true,
       }),
 
       defineCommand({
@@ -710,6 +717,7 @@ export function useInvestigationCommands({
         handler: ({ label }) => {
           if (saveVersion) saveVersion(label);
         },
+        recordsHistory: true,
       }),
 
       defineCommand({
