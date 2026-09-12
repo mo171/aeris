@@ -93,6 +93,25 @@ export const investigationSceneSlotSchema = z.object({
   layerId: z.string().min(1),
 });
 
+/**
+ * Timeline event annotations — notable moments on the temporal axis.
+ *
+ * Rendered as markers or labels on the timeline component when the backend sends them.
+ * Examples: known dates of construction activity, policy changes, natural disasters,
+ * or any event that helps the operator interpret what changed and when.
+ */
+export const timelineEventAnnotationSchema = z.object({
+  id: z.string().min(1),
+  /** The event date, placed on the timeline axis. */
+  date: isoTimestampSchema,
+  /** Short label shown on the timeline marker. */
+  label: z.string().min(1),
+  /** Longer description shown on hover or in a popover. */
+  description: z.string().nullable(),
+  /** Visual category — drives marker colour/shape. */
+  kind: z.enum(["construction", "natural-event", "policy", "conflict", "observation", "custom"]),
+});
+
 export const investigationSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -113,6 +132,10 @@ export const investigationSchema = z.object({
   projectId: z.string().min(1),
   /** Provenance identity. Small, permanent, and the most credible element on the page. */
   traceId: z.string().min(1),
+  /** Optional timeline event annotations. Rendered as markers on the timeline when present. */
+  events: z.array(timelineEventAnnotationSchema).optional(),
+  /** Operator-authored notes per layer id — stored beside the descriptor, never in it. */
+  layerNotes: z.record(z.string(), z.string()).optional(),
 });
 
 export const investigationSummarySchema = investigationSchema.pick({

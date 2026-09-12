@@ -30,6 +30,7 @@ export const COMMAND_IDS = {
   },
   missions: {
     open: "missions.open",
+    create: "missions.create",
   },
   investigation: {
     create: "investigation.create",
@@ -77,9 +78,12 @@ export const COMMAND_IDS = {
     saveVersion: "investigation.saveVersion",
     compareVersions: "investigation.compareVersions",
     restoreVersion: "investigation.restoreVersion",
+    focusNode: "investigation.focusNode",
+    moveToProject: "investigation.moveToProject",
   },
   projects: {
     open: "projects.open",
+    create: "projects.create",
   },
   assistant: {
     ask: "assistant.ask",

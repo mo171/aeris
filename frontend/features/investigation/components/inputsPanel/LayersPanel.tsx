@@ -14,6 +14,7 @@ import { REFERENCE_LAYERS } from "@/lib/constants/reference-layers";
 
 import { EvidenceLayerRow } from "./EvidenceLayerRow";
 import { ReferenceLayerList } from "./ReferenceLayerList";
+import { BasemapSwitcher } from "./BasemapSwitcher";
 import type { EvidenceLayer } from "../../types/layer.types";
 import { useInvestigationStore } from "../../store/investigation-store";
 import type { InvestigationSceneSlot } from "../../types/investigation.types";
@@ -222,6 +223,8 @@ export function LayersPanel({
           </div>
         ) : null}
       </section>
+
+      <BasemapSwitcher />
     </div>
   );
 }

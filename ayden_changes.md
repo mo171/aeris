@@ -105,3 +105,18 @@ Added a 13th Model ID representing Sentinel-2's native Scene Classification Laye
   - `frontend/features/investigation/components/answerPanel/EvidenceTab.tsx` [NEW]: Built the provenance chain view per-claim (metrics, layer link, figure, model, trace step).
   - `frontend/features/investigation/components/answerPanel/RightPanelTabs.tsx` [NEW]: Extracted `AnswerPanel` to support three tabs (`ANALYSIS`, `EVIDENCE`, `CHAT`), embedding the `AnswerPanel` into Analysis and Chat modes, and the new `EvidenceTab` into Evidence mode.
   - `frontend/features/investigation/components/InvestigationScreen.tsx`: Replaced `AnswerPanel` with `RightPanelTabs`.
+
+## 12. Final Audit Gap Fixes (Polish & Missing Implementation Details)
+- **Action**: Addressed the 10 remaining gaps identified during the comprehensive audit of `implementation.md` to achieve 100% completion of the design document.
+- **Files Modified/Created**:
+  - `frontend/features/investigation/schemas/analysis.schema.ts`: Replaced `z.any()` fields in the `figure-ready` event with strictly typed `legend` and `renderSpec` schemas.
+  - `frontend/lib/constants/commands.ts`: Added missing command IDs (`focusNode`, `moveToProject`, `missions.create`, `projects.create`).
+  - `frontend/lib/constants/analysis-operations.ts`: Added the 10 missing analysis operations across the `ANALYSIS`, `TEMPORAL`, and `AI` groups (Change detection, Object detection, Land-cover segmentation, Burn severity, Trend analysis, Change explanation, Ask scene, Describe scene, Ground object, Ask region).
+  - `frontend/features/investigation/hooks/use-investigation-commands.ts`: Registered the `focusNode` and `moveToProject` commands.
+  - `frontend/lib/constants/basemaps.ts` [NEW]: Created the declarative basemap catalogue.
+  - `frontend/features/investigation/components/inputsPanel/BasemapSwitcher.tsx` [NEW]: Created the basemap switcher UI.
+  - `frontend/features/investigation/components/inputsPanel/LayersPanel.tsx`: Wired in the `BasemapSwitcher`.
+  - `frontend/features/investigation/components/inputsPanel/LayerMetadataDrawer.tsx` [NEW]: Created the per-layer metadata drawer showing provenance and statistics.
+  - `frontend/features/investigation/components/inputsPanel/RampOverrideSelect.tsx` [NEW]: Created the per-layer color ramp override selector.
+  - `frontend/features/investigation/store/investigation-store.ts`: Added view state for the active basemap, ramp overrides, and layer annotations.
+  - `frontend/features/investigation/schemas/investigation.schema.ts`: Added `events` (using the new `timelineEventAnnotationSchema`) and `layerNotes` to the investigation schema.

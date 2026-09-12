@@ -185,6 +185,178 @@ export const ANALYSIS_OPERATIONS: readonly AnalysisOperation[] = [
     keywords: ["measure", "area", "statistics", "counts", "distribution", "summary"],
     group: "MEASURE",
   },
+
+  // ── ANALYSIS group — operations that produce new evidence ──────────────────
+
+  {
+    id: "change-detection",
+    kind: "run",
+    label: "Change detection",
+    description:
+      "Compare two temporal observations and identify areas where land cover or structure has changed between them.",
+    requires: ["pair"],
+    stageCode: "S13",
+    prompt: "Detect changes between the baseline and comparison observations.",
+    producesOverlayId: "change-diverging",
+    parameters: z.object({
+      threshold: z.number().min(0).max(1).describe("Change significance threshold"),
+      method: z.enum(["pixel-diff", "deep-change", "object-change"]).describe("Detection algorithm"),
+    }),
+    defaultParameters: { threshold: 0.35, method: "deep-change" },
+    keywords: ["change", "difference", "before after", "temporal", "construction", "demolition"],
+    group: "ANALYSIS",
+  },
+  {
+    id: "object-detection",
+    kind: "run",
+    label: "Object detection",
+    description: "Locate discrete objects — buildings, vehicles, vessels, aircraft — and draw a bounding box around each.",
+    requires: ["optical"],
+    stageCode: "S13",
+    prompt: "Detect and locate objects in this scene.",
+    producesOverlayId: "detection-teal",
+    parameters: z.object({
+      minConfidence: z.number().min(0).max(1).describe("Minimum detection confidence"),
+    }),
+    defaultParameters: { minConfidence: 0.5 },
+    keywords: ["object", "detect", "building", "vehicle", "vessel", "aircraft", "structure", "count"],
+    group: "ANALYSIS",
+  },
+  {
+    id: "land-cover-segmentation",
+    kind: "run",
+    label: "Land-cover segmentation",
+    description:
+      "Classify every pixel into a land-cover type — urban, forest, cropland, water, bare soil — and produce a thematic map.",
+    requires: ["optical"],
+    stageCode: "S13",
+    prompt: "Segment the land cover across this area.",
+    producesOverlayId: null,
+    parameters: z.object({
+      resolution: z.enum(["10m", "20m", "30m"]).describe("Target classification resolution"),
+    }),
+    defaultParameters: { resolution: "10m" },
+    keywords: ["segment", "classify", "land cover", "land use", "thematic", "urban", "forest", "cropland"],
+    group: "ANALYSIS",
+  },
+  {
+    id: "burn-severity",
+    kind: "run",
+    label: "Burn severity",
+    description:
+      "Map the severity of fire damage using pre- and post-fire observations and the Normalised Burn Ratio (NBR).",
+    requires: ["pair", "optical"],
+    stageCode: "S12",
+    prompt: "Assess burn severity across this area using the NBR difference.",
+    producesOverlayId: "ndvi", // NBR reuses the vegetation-family ramp
+    parameters: z.object({}),
+    defaultParameters: {},
+    keywords: ["burn", "fire", "severity", "nbr", "wildfire", "damage"],
+    group: "ANALYSIS",
+  },
+
+  // ── TEMPORAL group — time-series and multi-date reasoning ────────────────
+
+  {
+    id: "trend-analysis",
+    kind: "run",
+    label: "Trend analysis",
+    description:
+      "Analyse an N-date series of acquisitions to detect gradual trends — vegetation decline, urban expansion, shoreline retreat.",
+    requires: ["pair"],
+    stageCode: "S15",
+    prompt: "Analyse the temporal trend across all available observations for this area.",
+    producesOverlayId: null,
+    parameters: z.object({
+      metric: z.enum(["ndvi", "ndwi", "ndbi", "backscatter"]).describe("Index or metric to track over time"),
+    }),
+    defaultParameters: { metric: "ndvi" },
+    keywords: ["trend", "time series", "decline", "growth", "gradual", "multi-date", "progression"],
+    group: "TEMPORAL",
+  },
+  {
+    id: "change-explanation",
+    kind: "run",
+    label: "Change explanation",
+    description:
+      "Given a detected change between two dates, use vision-language reasoning to explain what happened — new construction, clearing, flooding.",
+    requires: ["pair"],
+    stageCode: "S14",
+    prompt: "Explain what changed between the baseline and comparison observations.",
+    producesOverlayId: null,
+    parameters: z.object({}),
+    defaultParameters: {},
+    keywords: ["explain", "why", "cause", "reason", "change vqa", "narrative"],
+    group: "TEMPORAL",
+  },
+
+  // ── AI group — vision-language and grounding operations ────────────────
+
+  {
+    id: "ask-scene",
+    kind: "run",
+    label: "Ask scene",
+    description: "Ask a free-form question about the visible scene and receive a grounded visual answer.",
+    requires: ["optical"],
+    stageCode: "S14",
+    prompt: "What can you see in this scene?",
+    producesOverlayId: null,
+    parameters: z.object({
+      question: z.string().min(1).describe("The question to ask about the scene"),
+    }),
+    defaultParameters: { question: "What is visible in this scene?" },
+    keywords: ["ask", "question", "scene", "vqa", "visual question"],
+    group: "AI",
+  },
+  {
+    id: "describe-scene",
+    kind: "run",
+    label: "Describe scene",
+    description:
+      "Generate a structured natural-language description of the scene contents — land cover, notable features, conditions.",
+    requires: ["optical"],
+    stageCode: "S14",
+    prompt: "Describe what is visible in this scene.",
+    producesOverlayId: null,
+    parameters: z.object({}),
+    defaultParameters: {},
+    keywords: ["describe", "caption", "narrate", "summary", "scene description"],
+    group: "AI",
+  },
+  {
+    id: "ground-object",
+    kind: "run",
+    label: "Ground object",
+    description:
+      "Point at an object or phrase and ground it in the scene — highlight exactly where the described thing is.",
+    requires: ["optical"],
+    stageCode: "S14",
+    prompt: "Where is the described object in this scene?",
+    producesOverlayId: null,
+    parameters: z.object({
+      target: z.string().min(1).describe("The object or phrase to locate in the scene"),
+    }),
+    defaultParameters: { target: "" },
+    keywords: ["ground", "locate", "find", "point", "where is", "highlight"],
+    group: "AI",
+  },
+  {
+    id: "ask-region",
+    kind: "run",
+    label: "Ask region",
+    description:
+      "Draw a region on the scene and ask a question specifically about that area — a scoped visual-question-answer.",
+    requires: ["optical"],
+    stageCode: "S14",
+    prompt: "What can you see in the selected region?",
+    producesOverlayId: null,
+    parameters: z.object({
+      question: z.string().min(1).describe("The question to ask about the drawn region"),
+    }),
+    defaultParameters: { question: "What is in this region?" },
+    keywords: ["region", "area", "draw", "scope", "ask region", "local"],
+    group: "AI",
+  },
 ];
 
 /** Why an operation cannot run, said in terms of what to do about it. */

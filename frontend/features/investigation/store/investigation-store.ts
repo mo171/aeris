@@ -116,6 +116,13 @@ interface InvestigationState {
   soloLayerId: string | null;
   layerOrder: string[] | null;
 
+  /** Active basemap tile source id. View state — does not survive reload. */
+  activeBasemapId: string;
+  /** Operator-overridden color ramp per layer. Keyed by layerId. */
+  layerRampOverrides: Record<string, string>;
+  /** Operator-authored notes per layer, stored beside the descriptor, never in it. */
+  layerAnnotations: Record<string, string>;
+
   /** The claim currently under the pointer. Drives the scene spotlight. */
   spotlightClaimId: string | null;
   /** A trace step's intermediate product, temporarily added to the scene. */
@@ -249,6 +256,10 @@ interface InvestigationState {
   ) => void;
   failRun: (runId: string, message: string) => void;
   cancelRun: (runId: string) => void;
+
+  setActiveBasemapId: (basemapId: string) => void;
+  setLayerRampOverride: (layerId: string, rampId: string) => void;
+  setLayerAnnotation: (layerId: string, text: string) => void;
 }
 
 /** Applied to every run update so a malfunctioning stream cannot grow the trace without bound. */
@@ -285,6 +296,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   layerOpacityOverrides: {},
   soloLayerId: null,
   layerOrder: null,
+  activeBasemapId: "satellite",
+  layerRampOverrides: {},
+  layerAnnotations: {},
 
   spotlightClaimId: null,
   artefactLayerId: null,
@@ -330,6 +344,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       layerOpacityOverrides: {},
       soloLayerId: null,
       layerOrder: null,
+      activeBasemapId: "satellite",
+      layerRampOverrides: {},
+      layerAnnotations: {},
       spotlightClaimId: null,
       artefactLayerId: null,
       inspectedFeature: null,
@@ -465,6 +482,16 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
     set((state) => ({ soloLayerId: state.soloLayerId === layerId ? null : layerId })),
     
   setLayerOrder: (layerIds) => set({ layerOrder: layerIds }),
+
+  setActiveBasemapId: (basemapId) => set({ activeBasemapId: basemapId }),
+  setLayerRampOverride: (layerId, rampId) =>
+    set((state) => ({
+      layerRampOverrides: { ...state.layerRampOverrides, [layerId]: rampId },
+    })),
+  setLayerAnnotation: (layerId, text) =>
+    set((state) => ({
+      layerAnnotations: { ...state.layerAnnotations, [layerId]: text },
+    })),
 
   setSpotlightClaimId: (spotlightClaimId) => set({ spotlightClaimId }),
   setArtefactLayerId: (artefactLayerId) => set({ artefactLayerId }),

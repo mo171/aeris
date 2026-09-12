@@ -182,8 +182,32 @@ export const analysisStreamEventSchema = z.discriminatedUnion("type", [
     runId: z.string().min(1),
     figureId: z.string().min(1),
     isPrimary: z.boolean().optional(),
-    legend: z.record(z.string(), z.any()),
-    renderSpec: z.record(z.string(), z.any()),
+    /** Typed legend describing the visual encoding of this figure. */
+    legend: z.object({
+      title: z.string().min(1),
+      entries: z.array(
+        z.object({
+          label: z.string().min(1),
+          color: z.string().min(1),
+          /** Value range this entry covers, when the legend is continuous rather than categorical. */
+          valueRange: z
+            .object({ min: z.number(), max: z.number() })
+            .nullable()
+            .optional(),
+        }),
+      ),
+      unit: z.string().nullable().optional(),
+    }),
+    /** Typed render specification telling the canvas renderer how to draw this figure. */
+    renderSpec: z.object({
+      chartType: z.enum(["bar", "pie", "line", "scatter", "heatmap", "histogram", "area"]),
+      xAxis: z.object({ label: z.string(), field: z.string() }).nullable().optional(),
+      yAxis: z.object({ label: z.string(), field: z.string() }).nullable().optional(),
+      data: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))),
+      palette: z.array(z.string()).optional(),
+      width: z.number().int().positive().optional(),
+      height: z.number().int().positive().optional(),
+    }),
   }),
 ]);
 

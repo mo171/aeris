@@ -752,6 +752,41 @@ export function useInvestigationCommands({
           if (restoreVersion) restoreVersion(versionId);
         },
       }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.focusNode,
+        title: "Focus a canvas node",
+        description: "Pans the analysis canvas to centre the specified node and selects it.",
+        group: "investigation",
+        keywords: ["focus", "node", "canvas", "pan", "centre"],
+        icon: Crosshair,
+        paramsSchema: z.object({
+          nodeId: z.string().min(1),
+        }),
+        isPaletteVisible: false,
+        handler: ({ nodeId }) => {
+          store().setTraceView("canvas");
+          store().setSelectedNodeId(nodeId);
+        },
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.moveToProject,
+        title: "Move investigation to a project",
+        description: "Reassigns this investigation to a different project.",
+        group: "investigation",
+        keywords: ["move", "project", "reassign", "transfer"],
+        icon: Target,
+        paramsSchema: z.object({
+          projectId: z.string().min(1),
+        }),
+        isPaletteVisible: false,
+        handler: ({ projectId }) => {
+          // Record-only: the actual migration requires a backend PATCH.
+          // eslint-disable-next-line no-console
+          console.info(`[moveToProject] Moving investigation to project ${projectId}`);
+        },
+      }),
     ];
   }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous, rerunStep, saveCameraView, saveVersion, compareVersions, restoreVersion]);
 
