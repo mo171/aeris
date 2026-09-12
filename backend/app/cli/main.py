@@ -32,6 +32,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from app.cli import analyse as analyse_command
+from app.cli import ask as ask_command
 from app.cli import dataset as dataset_command
 from app.cli import doctor as doctor_command
 from app.cli import figures as figures_command
@@ -465,18 +466,32 @@ def models_warm(
         raise typer.Exit(code=1)
 
 
+@app.command("ask")
+def ask(
+    image: list[Path] = typer.Option(..., "--image", help="One picture, or two for a pair (bi-temporal or optical/SAR)."),
+    question: str | None = typer.Option(None, "--question", help="What to ask. Omit for a caption."),
+    sar: list[bool] = typer.Option([], "--sar", help="Per image, in order: true if it is radar backscatter."),
+) -> None:
+    """Ask the remote-sensing VLM about a picture. The 1.7 gate; no run, no claims - the model's reading, labelled as such."""
+    flags = list(sar) + [False] * (len(image) - len(sar))
+    asyncio.run(_run_models(ask_command.execute_ask(images=image, question=question, sar=flags[: len(image)], console=console)))
+
+
 @models_app.command("evaluate")
 def models_evaluate(
-    model_id: ModelId = typer.Option(ModelId.CHANGEFORMER, "--model", help="changeformer or dota-detector."),
+    model_id: ModelId = typer.Option(ModelId.CHANGEFORMER, "--model", help="changeformer, dota-detector or rs-vlm."),
     dataset_id: DatasetId | None = typer.Option(None, "--dataset", help="A benchmark; defaults per model."),
     split: DatasetSplit | None = typer.Option(None, "--split", help="Which split to score; defaults per model."),
     limit: int = typer.Option(0, "--limit", help="Score only the first N samples. 0 scores every one."),
+    file: Path | None = typer.Option(None, "--file", help="rs-vlm: an instruction .jsonl written by training/vlm/prepare_*.py."),
+    predictions: Path | None = typer.Option(None, "--predictions", help="rs-vlm: write every row's prediction to this .jsonl for paired comparison."),
 ) -> None:
-    """Score a learned model on a benchmark split - change-class F1 and IoU for changeformer, box F1 at IoU 0.5 for dota-detector."""
+    """Score a learned model - change-class F1/IoU (changeformer), box F1 at IoU 0.5 (dota-detector), per-type VQA accuracy (rs-vlm)."""
     asyncio.run(
         _run_models(
             models_command.execute_evaluate(
-                model_id=model_id, dataset_id=dataset_id, split=split, limit=limit or None, console=console
+                model_id=model_id, dataset_id=dataset_id, split=split, limit=limit or None, file=file,
+                predictions=predictions, console=console,
             )
         )
     )

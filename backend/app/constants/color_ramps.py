@@ -88,6 +88,16 @@ FIXED_DOMAINS: Final[dict[ColorRampId, tuple[float, float]]] = {
     ColorRampId.CONFIDENCE_MAGMA: (0.0, 1.0),
 }
 
+# The reflectance window a true-colour composite is drawn over, in L2A units (reflectance x 10,000).
+# Fixed for the same reason as the index domains. 0-2,500 rather than the browser-conventional 0-3,000
+# or 0-4,000: measured on 200 BigEarthNet patches the 98th percentile of red is ~900, and a window that
+# leaves vegetation at a third of full brightness leaves the VLM (Phase 1.7) reading a dark picture.
+TRUE_COLOR_REFLECTANCE_DOMAIN: Final[tuple[float, float]] = (0.0, 2_500.0)
+# Gamma applied after the window. Linear, a Lithuanian forest (red ~300) renders at 12% brightness and
+# the VLM sees black; 0.6 lifts the dark end the way a browser's "brightness" curve does. Compared on
+# eight random patches against 0-1800/0.7 and 0-3000/0.5 (notebooks/08_vlm_finetuning/01).
+TRUE_COLOR_GAMMA: Final[float] = 0.6
+
 # How many entries a ramp's lookup table holds. 256 because the output is 8-bit RGBA, so a finer table
 # would quantise to the same bytes; coarser would band a smooth gradient visibly.
 COLOR_RAMP_RESOLUTION: Final[int] = 256

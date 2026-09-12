@@ -128,7 +128,8 @@ backend/
 │   │   │   │   ├── feature_extraction.py    # S12 DONE (1.4). Mask the bands, then the formula; artefact + figure.
 │   │   │   │   ├── evidence_localisation.py # S15 DONE (1.4, 1.5). Threshold, measure vs OBSERVED ground,
 │   │   │   │   │                            #   then BOTH representations, evidence items, claims, overlay.
-│   │   │   │   ├── answer_generation.py     # S16 DONE (1.5). The claims' text, then the recorded caveats.
+│   │   │   │   ├── answer_generation.py     # S16 DONE (1.5, 1.7). The constrained generator's phrasing (or
+│   │   │   │   │                            #   the template), then the recorded caveats; trace says which.
 │   │   │   │   ├── confidence_estimation.py # S18 DONE (1.5). minimum-of-stated; None when nothing stated.
 │   │   │   │   ├── provenance_logging.py    # S19 DONE (1.5). provenance.json + evidence-graph.json from state.
 │   │   │   │   ├── input_validation.py
@@ -245,12 +246,19 @@ backend/
 │   │   │       ├── alignment.py
 │   │   │       └── fusion_rules.py      # the decision arithmetic, per sensor, kept separable
 │   │   │
-│   │   ├── vqa/                         # S14
-│   │   │   ├── inference.py
-│   │   │   └── prompts.py
+│   │   ├── vlm/                         # S14  DONE (1.7) - one package for VQA and captioning: one lease, one
+│   │   │   ├── reading.py               #   `Reading` (text, prompt, model version, model-stated confidence)
+│   │   │   └── math/
+│   │   │       └── rendering.py         # the fixed S2 true-colour and S1 false-colour stretches; training
+│   │   │                                #   and serving import the same functions
 │   │   │
-│   │   ├── captioning/                  # S14
-│   │   │   └── inference.py
+│   │   ├── prompts/                     # Every prompt put in front of a language model, as strings. DONE (1.7)
+│   │   │   └── vlm.py                   # system prompt, SAR note, VQA / caption / constrained-answer templates
+│   │   │
+│   │   ├── answer/                      # S16  DONE (1.7)
+│   │   │   └── constrained.py           # claims -> facts with {m1} holes -> VLM prose -> numeral check ->
+│   │   │                                #   holes filled from the claims. A hallucinated digit rejects the
+│   │   │                                #   whole phrasing for the template.
 │   │   │
 │   │   ├── grounding/                   # S14
 │   │   │   ├── inference.py
@@ -319,9 +327,10 @@ backend/
 │   │   │                                #   at the boundary, 1024 windows, seam-cut boxes dropped, rotated NMS
 │   │   ├── vendor/
 │   │   │   └── changeformer_v6.py       # wgcban's architecture, verbatim, MIT, licence in the header
-│   │   ├── vqa.py
+│   │   ├── vlm.py                       # DONE (1.7). Qwen3-VL at `settings.vlm_size`, NF4 on CUDA, PEFT LoRA
+│   │   │                                #   from `settings.vlm_adapter_repository`; version says `-unadapted`
+│   │   │                                #   when none is attached. `vlm_record()` is what the manager admits by.
 │   │   ├── grounding.py
-│   │   ├── detection.py
 │   │   └── fusion.py
 │   │
 │   ├── db/                              # SQLAlchemy persistence shape. Carries no business logic.
@@ -385,6 +394,10 @@ backend/
 │       │                                #   weights source, measured VRAM footprint, tile size; the
 │       │                                #   VRAM profile tiers (4 GB is a tier); engine vs learned.
 │       ├── change.py                    # (Phase 1.6) the change threshold and the SAR log-ratio dB threshold
+│       ├── detection.py                 # (Phase 1.6) DOTA's fifteen classes in checkpoint order, thresholds, tiling
+│       ├── vlm.py                       # (Phase 1.7) the Qwen3-VL variants and footprints, the image size, the
+│       │                                #   token budgets, the numeral rule, the BigEarthNet.txt categories (not)
+│       │                                #   trained. The prompt strings are services/prompts/vlm.py.
 │       ├── spectral.py                  # (Phase 1.4) the seven indices, their band roles, coefficients,
 │       │                                #   interpretation bands and the phrase -> target table. Transcribed
 │       │                                #   from the frontend's overlays/spectral-indices.ts (PDF §3.3).
@@ -401,11 +414,19 @@ backend/
 │   ├── 06_segmentation/
 │   ├── 07_change_detection/
 │   ├── 08_optical_sar/
+│   ├── 08_vlm_finetuning/               # DONE (1.7). Teaching notebooks: data analysis, zero-shot baseline,
+│   │                                    #   the Kaggle LoRA run, base-vs-adapter. README explains the recipe.
 │   ├── 09_finetuning/
 │   ├── 10_evaluation/
 │   └── experiments/
 │
-├── training/
+├── training/                            # Imports app/ constants; nothing under app/ imports from here.
+│   ├── vlm/                             # DONE (1.7)
+│   │   ├── prepare_bigearthnet_txt.py   # BigEarthNet.txt x Lithuania-summer LMDB -> rendered PNGs + jsonl,
+│   │   │                                #   balanced per bucket, constant categories dropped, licence-gated
+│   │   ├── prepare_rsvqa_lr.py          # RSVQA-LR by its published image splits, capped per type
+│   │   ├── merge_instruction_sets.py    # -> train.jsonl / validation.jsonl + manifest
+│   │   └── kaggle.py                    # upload-data | push | status | output through the kaggle CLI
 │   ├── datasets/
 │   ├── configs/
 │   ├── scripts/

@@ -111,8 +111,25 @@ def load_samples(dataset_id: DatasetId, split: DatasetSplit) -> Iterator[Dataset
             yield from _load_class_folders(dataset_id, split, root, record.layout)
         case LayoutKind.SCENE_DIRECTORIES:
             yield from _load_scene_directories(dataset_id, split, root, record.layout)
+        case LayoutKind.TEXT_TABLE:
+            yield from _load_text_table(dataset_id, split, root, record.layout)
         case _:
             yield from _load_parallel_directories(dataset_id, split, root, record.layout)
+
+
+def _load_text_table(dataset_id: DatasetId, split: DatasetSplit, root: Path, layout: DatasetLayout) -> Iterator[DatasetSample]:
+    """One sample per row of the table; the images are another record's. Rows are counted from the parquet
+    footer, so a 9.5 M-row file is enumerated without being read."""
+    import pyarrow.parquet as pq
+
+    assert layout.label_file is not None
+    table = root / layout.label_file
+    if not table.exists():
+        raise ResourceNotFoundError(
+            f"{dataset_id.value}: {table} is missing.", details={"datasetId": dataset_id.value, "path": str(table)}
+        )
+    for index in range(pq.ParquetFile(table).metadata.num_rows):
+        yield DatasetSample(dataset_id=dataset_id, split=split, sample_id=str(index), images=(), label=table)
 
 
 def count_samples(dataset_id: DatasetId, split: DatasetSplit) -> int:

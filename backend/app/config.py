@@ -149,6 +149,27 @@ class Settings(BaseSettings):
     model_load_timeout_seconds: float = Field(default=600.0, gt=0, le=3_600)
     huggingface_token: SecretStr | None = None
 
+    # --- The vision-language model (Phase 1.7) ---
+
+    # Which Qwen3-VL base: `2b` fits the 4 GB profile at 4-bit; `4b` needs 8 GB. One flag per demo machine.
+    vlm_size: Literal["2b", "4b"] = "2b"
+    # The LoRA adapter that makes it a remote-sensing model - a Hub repository. `None` runs the base model
+    # unadapted, and the fleet's version string says so.
+    vlm_adapter_repository: str | None = None
+    vlm_adapter_revision: str = "main"
+    # NF4 weights on CUDA. Off only for measurement; a 2B model in bf16 does not fit beside anything.
+    vlm_quantise: bool = True
+    # `vlm`: S16 asks the model to phrase the claims (numbers injected, never generated; the template is
+    # the fallback when the model is unavailable or its phrasing is rejected). `template`: the claims'
+    # own sentences, no model - what a machine without weights, and the pipeline tests, get.
+    answer_generator: Literal["vlm", "template"] = "vlm"
+    # S14 reads the evidence figure with the VLM and the answer carries the reading, labelled. Off skips
+    # the node with the reason in the trace - a machine without weights still completes a run.
+    vlm_reading: bool = True
+    # Readings are cached in Redis by the hash of (pictures, prompt, model version). Same picture, same
+    # question, same model -> same words without loading the model; 0 disables.
+    vlm_reading_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, ge=0)
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalise_log_level(cls, raw_value: object) -> object:

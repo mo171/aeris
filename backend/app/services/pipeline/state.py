@@ -69,6 +69,9 @@ class PipelineState(TypedDict, total=False):
     # The written answer, in the word-sized chunks that were streamed. Joined for the report; kept as
     # chunks so a replayed journal reproduces the same stream the operator saw.
     answer_tokens: Annotated[list[str], add]
+    # `vlm` or `template`: which generator phrased the claims (S16), and whether the S14 reading was spoken.
+    answer_source: str
+    reading_spoken: bool
 
     # --- Terminal. Set by at most one node. --------------------------------------------------------------
 
@@ -145,6 +148,12 @@ class IndexQueryState(PipelineState, total=False):
     band_fractions: dict[str, float]
     composite_figure_id: str | None
     mask_figure_id: str | None
+
+    # S14. The model's reading of the evidence figure, labelled as its own; `None` when skipped.
+    reading_text: str | None
+    reading_prompt: str | None
+    reading_figure_id: str | None
+    reading_confidence: float | None
 
     # --- Accumulated across stages, in wire form. `add`, because S12 and S15 each contribute. -------------
     layers: Annotated[list[dict[str, Any]], add]

@@ -125,21 +125,19 @@ async def test_a_model_in_use_is_never_evicted_so_the_newcomer_degrades_to_cpu()
 async def test_least_recently_used_is_the_one_evicted(monkeypatch: pytest.MonkeyPatch) -> None:
     """Three models, room for two. The one touched longest ago goes, not the one loaded first."""
     from app.constants.fleet import FleetRecord, WeightsSource
-    from app.models import manager as manager_module
-
     third = ModelId.GROUNDING_DINO_SAM
     fleet = dict(FLEET)
     fleet[third] = FleetRecord(third, "test", FLEET[third].capability, FLEET[third].stages,
                                WeightsSource("test/repo", None, "main"), 500, None)
-    monkeypatch.setattr(manager_module, "FLEET", fleet)
-    monkeypatch.setattr(manager_module, "LEARNED_MODELS", frozenset({CHANGE, SEGMENT, third}))
     loaders = fake_loaders()
 
     async def third_loader(device: str) -> dict[str, Any]:
         return {"model": third.value, "device": device}
 
     loaders[third] = third_loader
-    manager = ModelManager(device=cuda_device(CHANGE_MB + SEGMENT_MB), loaders=loaders, lock_factory=no_cross_process_lock)
+    manager = ModelManager(
+        device=cuda_device(CHANGE_MB + SEGMENT_MB), loaders=loaders, lock_factory=no_cross_process_lock, records=fleet
+    )
 
     async with manager.lease(CHANGE):
         pass

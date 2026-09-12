@@ -19,6 +19,7 @@ how   : The 1.6 gate, exactly: *"change mask plus area statistics computed for a
 
 import asyncio
 import logging
+from pathlib import Path
 
 from rich.console import Console
 from rich.markup import escape
@@ -33,6 +34,7 @@ from app.models.manager import ModelManager, get_manager
 from app.models.registry import LOADERS
 from app.services.evaluation.change_detection import evaluate_change_detection
 from app.services.evaluation.object_detection import evaluate_object_detection
+from app.services.evaluation.vqa import evaluate_vqa
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,27 @@ async def _evaluate_detector(
     return True
 
 
+async def _evaluate_vlm(
+    manager: ModelManager, file: Path, limit: int | None, console: Console, predictions: Path | None
+) -> bool:
+    console.print(f"\n  scoring rs-vlm on {escape(str(file))}" + (f" (first {limit})" if limit else ""))
+    report = await evaluate_vqa(manager=manager, file=file, limit=limit, predictions_path=predictions)
+    if predictions is not None:
+        console.print(f"  per-row predictions -> {escape(str(predictions))}")
+    console.print(
+        f"\n  {report.samples} rows  model {escape(report.model_version)}  mean latency {report.mean_latency_ms:.0f} ms"
+        f"  mean stated confidence {report.mean_confidence:.3f}"
+    )
+    for kind in sorted(report.score.asked):
+        metric = "ROUGE-L" if kind == "captioning" else "accuracy"
+        console.print(f"  {kind:<14} {metric} {report.score.accuracy(kind):.4f}   n={report.score.asked[kind]}")
+    console.print(f"  [bold]overall (mean of types) {report.score.overall:.4f}[/bold]")
+    for kind, prompt, reference, prediction, hit in report.examples[:6]:
+        console.print(f"    [{'green' if hit else 'red'}]{kind}[/] {escape(prompt[:90])} -> {escape(prediction[:60])}  (ref {escape(reference[:40])})")
+    await render_status(console, manager)
+    return True
+
+
 async def _lease_while_watching(manager: ModelManager, model_id: ModelId, console: Console) -> list[ModelHealth]:
     """Lease in a task; poll `status()` from this one and print each health transition as it happens."""
     seen: list[ModelHealth] = []
@@ -146,10 +169,16 @@ async def _lease_while_watching(manager: ModelManager, model_id: ModelId, consol
 
 
 async def execute_evaluate(
-    *, model_id: ModelId, dataset_id: DatasetId | None, split: DatasetSplit | None, limit: int | None, console: Console
+    *, model_id: ModelId, dataset_id: DatasetId | None, split: DatasetSplit | None, limit: int | None,
+    console: Console, file: Path | None = None, predictions: Path | None = None,
 ) -> bool:
     """Score a learned model on a benchmark split and print the metrics its task is scored by."""
     manager = await get_manager()
+    if model_id is ModelId.REMOTE_SENSING_VLM:
+        if file is None:
+            console.print("  [red]--file <jsonl> is required for rs-vlm (training/vlm/prepare_*.py writes them)[/red]")
+            return False
+        return await _evaluate_vlm(manager, file, limit, console, predictions)
     if model_id is ModelId.DOTA_DETECTOR:
         return await _evaluate_detector(manager, dataset_id or DatasetId.DOTA8, split or DatasetSplit.VALIDATION, limit, console)
     if model_id is not ModelId.CHANGEFORMER:

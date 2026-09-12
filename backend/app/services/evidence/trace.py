@@ -90,6 +90,8 @@ class ProvenanceRecord(CamelCaseModel):
     figure_ids: list[str]
     confidence_aggregation_rule: str
     confidence: float | None
+    # The S14 reading, if any: what the model said about which figure, and whether the answer carried it.
+    reading: dict[str, Any] | None = None
 
 
 class EvidenceGraph(CamelCaseModel):
