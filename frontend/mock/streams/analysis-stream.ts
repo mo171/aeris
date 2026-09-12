@@ -61,11 +61,49 @@ export async function mockAnalysisStream({
     startedAt: new Date().toISOString(),
   });
 
-  for (const step of script.traceSteps) {
+  // ── Re-run path ──────────────────────────────────────────────────────────────────────────────────
+  //
+  // When a step id is supplied the backend (and here, the mock) treats every step BEFORE the rerun
+  // point as "skipped" — reused from the prior run — and every step AT or AFTER as re-executing.
+  // parameterOverrides are merged into the affected step's parameters so the inspector shows the
+  // new value on the wire rather than the old one.
+
+  const rerunFromStepId = request.rerunFromStepId ?? null;
+  const parameterOverrides = request.parameterOverrides ?? {};
+
+  // Build the ordered list of step IDs so we can find the cut point
+  const stepIds = script.traceSteps.map((s) => s.id);
+  const rerunIndex = rerunFromStepId ? stepIds.indexOf(rerunFromStepId) : -1;
+
+  for (let i = 0; i < script.traceSteps.length; i++) {
+    const step = script.traceSteps[i];
+    const isUpstream = rerunIndex !== -1 && i < rerunIndex;
+
+    if (isUpstream) {
+      // Upstream of the rerun point: emit as skipped immediately (no running → completed cycle)
+      emit({
+        type: "trace-step",
+        runId,
+        step: {
+          ...step,
+          state: "skipped",
+          durationMs: null,
+          detail: `Reused from prior run (upstream of step ${rerunFromStepId})`,
+        },
+      });
+      continue;
+    }
+
+    // Apply parameter overrides for the re-run step (and any downstream that inherit the same key)
+    const stepOverrides = parameterOverrides[step.id] ?? {};
+    const effectiveStep = Object.keys(stepOverrides).length > 0
+      ? { ...step, parameters: { ...step.parameters, ...stepOverrides } }
+      : step;
+
     if (await isCancelled(signal, STEP_START_DELAY_MS)) {
       return;
     }
-    emit({ type: "trace-step", runId, step: { ...step, state: "running", durationMs: null } });
+    emit({ type: "trace-step", runId, step: { ...effectiveStep, state: "running", durationMs: null } });
 
     if (await isCancelled(signal, STEP_COMPLETE_DELAY_MS)) {
       return;
@@ -74,17 +112,13 @@ export async function mockAnalysisStream({
       type: "trace-step",
       runId,
       step: {
-        ...step,
+        ...effectiveStep,
         state: "completed",
         durationMs: STEP_START_DELAY_MS + STEP_COMPLETE_DELAY_MS,
       },
     });
 
     // Layers become available the moment their stage finishes, not when the run does.
-    //
-    // ALL of them, not the first match. One stage routinely produces several products — specialist
-    // analysis emits a change mask, a land-cover classification and a water extent — and taking only the
-    // first silently discarded the rest, leaving them in the catalogue but never on the scene.
     const readyLayers = script.layers.filter((layer) => layer.provenance.traceStepId === step.id);
     for (const readyLayer of readyLayers) {
       emit({
@@ -96,8 +130,7 @@ export async function mockAnalysisStream({
     }
   }
 
-  // Evidence that draws nothing — the area statistics — still has to reach the graph, or claims that
-  // cite it would render as unsupported.
+  // Evidence that draws nothing — the area statistics — still has to reach the graph.
   const unattachedEvidence = script.evidence.filter((item) => item.layerId === null);
   if (unattachedEvidence.length > 0 && script.layers.length > 0) {
     emit({

@@ -31,15 +31,15 @@ import { useInvestigationStore } from "../../store/investigation-store";
 import type { AnalysisRun } from "../../types/analysis.types";
 import { TraceStepNode } from "./TraceStepNode";
 import { AnalysisCanvas } from "./AnalysisCanvas";
-import type { Claim } from "../../schemas/evidence.schema";
-import type { EvidenceLayer } from "../../schemas/layer.schema";
-import type { SceneAcquisition } from "../../schemas/acquisition.schema";
+import type { Claim } from "../../types/evidence.types";
+import type { EvidenceLayer } from "../../types/layer.types";
+import type { InvestigationSceneSlot } from "../../types/investigation.types";
 
 interface ExecutionSpineProps {
   run: AnalysisRun | null;
-  layersById: Map<string, EvidenceLayer>;
-  claimsById: Map<string, Claim>;
-  sceneSlots: readonly SceneAcquisition[];
+  layersById: Record<string, EvidenceLayer>;
+  claimsById: Record<string, Claim>;
+  sceneSlots: readonly InvestigationSceneSlot[];
 }
 
 export function ExecutionSpine({ run, layersById, claimsById, sceneSlots }: ExecutionSpineProps) {

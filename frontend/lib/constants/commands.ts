@@ -71,6 +71,9 @@ export const COMMAND_IDS = {
     saveAsMission: "investigation.saveAsMission",
     saveCameraView: "investigation.saveCameraView",
     resetView: "investigation.resetView",
+    toggleCanvas: "investigation.toggleCanvas",
+    selectNode: "investigation.selectNode",
+    rerunStep: "investigation.rerunStep",
   },
   assistant: {
     ask: "assistant.ask",

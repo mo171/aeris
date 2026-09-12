@@ -58,6 +58,7 @@ import {
 import { useInvestigationStore } from "../store/investigation-store";
 import type { EvidenceItem } from "../types/evidence.types";
 import type { Acquisition } from "../types/investigation.types";
+import type { ParameterValue } from "@/lib/constants/parameters";
 
 interface InvestigationCommandOptions {
   ask: (query: string, options?: { operationId?: string }) => void;
@@ -71,6 +72,8 @@ interface InvestigationCommandOptions {
   evidenceById: Record<string, EvidenceItem>;
   /** The investigation extent, so resetting the view always has somewhere definite to return to. */
   areaOfInterest: { west: number; south: number; east: number; north: number } | null;
+  /** Re-executes a run from a given step with updated parameter values. */
+  rerunStep: (stepId: string, parameterOverrides: Record<string, ParameterValue>) => void;
 }
 
 export function useInvestigationCommands({
@@ -80,6 +83,7 @@ export function useInvestigationCommands({
   prepareAutonomous,
   evidenceById,
   areaOfInterest,
+  rerunStep,
 }: InvestigationCommandOptions): void {
   const commands = useMemo(() => {
     const store = () => useInvestigationStore.getState();
@@ -664,8 +668,25 @@ export function useInvestigationCommands({
           }
         },
       }),
+      defineCommand({
+        id: COMMAND_IDS.investigation.rerunStep,
+        title: "Re-run from a step with overridden parameters",
+        description:
+          "Re-runs the current analysis from a specific step, applying new parameter values. Upstream steps are marked as reused; downstream steps re-execute with the new parameters.",
+        group: "investigation",
+        keywords: ["rerun", "re-run", "parameter", "threshold", "edit", "change"],
+        icon: Play,
+        paramsSchema: z.object({
+          stepId: z.string().min(1),
+          parameterOverrides: z.record(z.string(), z.any()),
+        }),
+        isPaletteVisible: false,
+        handler: ({ stepId, parameterOverrides }) => {
+          rerunStep(stepId, parameterOverrides as Record<string, ParameterValue>);
+        },
+      }),
     ];
-  }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous, saveCameraView]);
+  }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous, rerunStep, saveCameraView]);
 
   useRegisterCommands(commands);
 }

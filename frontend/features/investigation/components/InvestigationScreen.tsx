@@ -104,7 +104,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
         .map((layer) => layer.overlayId as string),
     [layers],
   );
-  const { ask, stop } = useAnalysisRun(investigationId);
+  const { ask, stop, rerunStep } = useAnalysisRun(investigationId);
   const autonomous = useAutonomousInvestigation({ investigationId, ask });
   const regionSelection = useRegionSelection(investigationId);
   const scenePopout = useScenePopout({ investigationId, onAssignRole: assignSceneRole });
@@ -303,6 +303,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
     prepareAutonomous: autonomous.prepare,
     evidenceById: graph.evidenceById,
     areaOfInterest: investigation?.areaOfInterest ?? { west: 0, south: 0, east: 0, north: 0 },
+    rerunStep,
   });
 
   const handleAutoFetchCrossModal = useCallback(

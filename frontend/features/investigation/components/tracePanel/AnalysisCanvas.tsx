@@ -5,15 +5,16 @@ import { WorkflowCanvas } from "@/components/sharedUI/workflowCanvas";
 import { buildWorkflowGraph } from "../../lib/workflow-graph";
 import { useInvestigationStore } from "../../store/investigation-store";
 import type { AnalysisRun } from "../../types/analysis.types";
+import type { InvestigationSceneSlot } from "../../types/investigation.types";
 
 interface AnalysisCanvasProps {
   run: AnalysisRun | null;
   // In a real app we'd fetch these from the query cache using the investigationId.
   // For Phase B mock integration, we can assume the parent supplies them or we fetch them here.
   // For now, I will define them as props.
-  layersById: Map<string, any>;
-  claimsById: Map<string, any>;
-  sceneSlots: any[];
+  layersById: Record<string, any>;
+  claimsById: Record<string, any>;
+  sceneSlots: readonly InvestigationSceneSlot[];
 }
 
 export function AnalysisCanvas({ run, layersById, claimsById, sceneSlots }: AnalysisCanvasProps) {

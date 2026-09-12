@@ -1,13 +1,9 @@
 import dagre from "dagre";
 import type { WorkflowNodeKind } from "@/lib/constants/workflow";
-import type {
-  AnalysisTraceStep,
-} from "@/features/investigation/schemas/analysis.schema";
-import type {
-  EvidenceLayer,
-} from "@/features/investigation/schemas/layer.schema";
-import type { Claim } from "@/features/investigation/schemas/evidence.schema";
-import type { SceneAcquisition } from "@/features/investigation/schemas/acquisition.schema";
+import type { AnalysisTraceStep } from "@/features/investigation/types/analysis.types";
+import type { EvidenceLayer } from "@/features/investigation/types/layer.types";
+import type { Claim } from "@/features/investigation/types/evidence.types";
+import type { InvestigationSceneSlot } from "@/features/investigation/types/investigation.types";
 
 export interface WorkflowNode {
   id: string;
@@ -31,9 +27,9 @@ export interface WorkflowGraph {
 
 interface BuildWorkflowGraphParams {
   steps: AnalysisTraceStep[];
-  layersById: Map<string, EvidenceLayer>;
-  claimsById: Map<string, Claim>;
-  sceneSlots: readonly SceneAcquisition[];
+  layersById: Record<string, EvidenceLayer>;
+  claimsById: Record<string, Claim>;
+  sceneSlots: readonly InvestigationSceneSlot[];
 }
 
 /**
@@ -77,13 +73,13 @@ export function buildWorkflowGraph({
     addNode(step.id, "operation", step);
 
     // Inputs -> Step
-    step.inputs.forEach((input) => {
+    step.inputs.forEach((input: any) => {
       // Ensure the input node exists if it's a scene or layer not explicitly in the inputs list
       if (input.kind === "scene") {
         const scene = sceneSlots.find((s) => s.sceneId === input.id);
         if (scene) addNode(scene.sceneId, "scene", scene);
       } else if (input.kind === "layer") {
-        const layer = layersById.get(input.id);
+        const layer = layersById[input.id];
         if (layer) addNode(layer.id, "layer", layer);
       }
       
@@ -94,12 +90,12 @@ export function buildWorkflowGraph({
     });
 
     // Step -> Outputs
-    step.outputs.forEach((output) => {
+    step.outputs.forEach((output: any) => {
       if (output.kind === "layer") {
-        const layer = layersById.get(output.id);
+        const layer = layersById[output.id];
         if (layer) addNode(layer.id, "layer", layer);
       } else if (output.kind === "claim") {
-        const claim = claimsById.get(output.id);
+        const claim = claimsById[output.id];
         if (claim) addNode(claim.id, "claim", claim);
       }
       addEdge(step.id, output.id);
@@ -107,7 +103,7 @@ export function buildWorkflowGraph({
 
     // Step -> Step dependencies (ordering / sequence execution)
     // S12 dependsOn S10, for example. 
-    step.dependsOn.forEach((upstreamId) => {
+    step.dependsOn.forEach((upstreamId: string) => {
       addEdge(upstreamId, step.id);
     });
   });

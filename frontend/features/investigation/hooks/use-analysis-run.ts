@@ -34,6 +34,8 @@ import type { EvidenceItem, NormalisedEvidenceGraph } from "../types/evidence.ty
 import type { EvidenceLayer } from "../types/layer.types";
 import type { Claim } from "../types/evidence.types";
 
+import type { ParameterValue } from "@/lib/constants/parameters";
+
 const ANSWER_FLUSH_INTERVAL_MS = 80;
 
 const EMPTY_GRAPH: NormalisedEvidenceGraph = {
@@ -44,9 +46,23 @@ const EMPTY_GRAPH: NormalisedEvidenceGraph = {
   layerOrder: [],
 };
 
+interface AskOptions {
+  planId?: string;
+  operationId?: string;
+  /** Overrides keyed by stepId → { paramName → value }. Present on re-runs. */
+  parameterOverrides?: Record<string, Record<string, ParameterValue>>;
+  /** The step from which downstream re-execution should begin. */
+  rerunFromStepId?: string;
+}
+
 interface AnalysisRunControls {
-  ask: (query: string, options?: { planId?: string; operationId?: string }) => void;
+  ask: (query: string, options?: AskOptions) => void;
   stop: () => void;
+  /**
+   * Convenience wrapper for Phase C: re-executes a run from a specific step with new parameters.
+   * Internally calls ask() with the latest run's query and the overrides baked in.
+   */
+  rerunStep: (stepId: string, parameterOverrides: Record<string, ParameterValue>) => void;
 }
 
 export function useAnalysisRun(investigationId: string): AnalysisRunControls {
@@ -171,7 +187,7 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
   );
 
   const ask = useCallback(
-    (query: string, options?: { planId?: string; operationId?: string }) => {
+    (query: string, options?: AskOptions) => {
       const trimmedQuery = query.trim();
       if (trimmedQuery.length === 0 || abortControllerRef.current) {
         return;
@@ -188,12 +204,12 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
         {
           investigationId,
           query: trimmedQuery,
-          // The active drawn region scopes the question; the backend crops to it. With several regions
-          // on screen only the selected one applies, so asking never silently uses the wrong shape.
           regionBounds:
             store.drawnRegions.find((region) => region.id === store.activeRegionId)?.bounds ?? null,
           planId: options?.planId ?? null,
           operationId: options?.operationId ?? null,
+          parameterOverrides: options?.parameterOverrides ?? null,
+          rerunFromStepId: options?.rerunFromStepId ?? null,
         },
         { onEvent: handleEvent },
         abortController.signal,
@@ -242,7 +258,19 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
     };
   }, []);
 
-  return { ask, stop };
+  const rerunStep = useCallback(
+    (stepId: string, parameterOverrides: Record<string, ParameterValue>) => {
+      const latestRun = useInvestigationStore.getState().runs.at(-1);
+      if (!latestRun) return;
+      ask(latestRun.query, {
+        rerunFromStepId: stepId,
+        parameterOverrides: { [stepId]: parameterOverrides },
+      });
+    },
+    [ask],
+  );
+
+  return { ask, stop, rerunStep };
 }
 
 function createRun(
