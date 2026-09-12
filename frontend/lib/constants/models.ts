@@ -68,6 +68,7 @@ export const MODEL_IDS = [
   "geospatial-engine",
   "optical-sar-fusion",
   "s2cloudless",
+  "sen2cor-scl",
   "co-registration",
   "sar-preprocess",
 ] as const;
@@ -212,6 +213,18 @@ export const SPECIALIST_MODELS: Readonly<Record<ModelId, SpecialistModel>> = {
       "Thin cirrus and bright rooftops are its two failure modes, in opposite directions. Check the mask against the scene where a claim sits near its edge.",
     stageCodes: ["S7"],
   },
+  "sen2cor-scl": {
+    id: "sen2cor-scl",
+    name: "Sen2Cor Scene Classification",
+    family: "Sentinel-2 native scene classification layer (SCL)",
+    capability: "preprocessing",
+    role: "Provides the native Sentinel-2 scene classification for cloud, shadow, and snow.",
+    selectionRationale:
+      "Used when providing cloud masks and classification directly from the ESA Sentinel-2 L2A product instead of running s2cloudless.",
+    limitations:
+      "Lower resolution (20m) compared to some learned models, and can misclassify bright urban areas as cloud.",
+    stageCodes: ["S7"],
+  },
   "co-registration": {
     id: "co-registration",
     name: "Co-registration",
@@ -250,6 +263,7 @@ export const MODEL_ORDER: readonly ModelId[] = [
   "index-engine",
   "geospatial-engine",
   "s2cloudless",
+  "sen2cor-scl",
   "co-registration",
   "sar-preprocess",
 ];

@@ -44,6 +44,7 @@ export const MOCK_MODEL_STATUSES: readonly ModelStatus[] = [
     queueDepth: 3,
   },
   { id: "s2cloudless", version: "1.5.0", health: "online", medianLatencyMs: 640, queueDepth: 0 },
+  { id: "sen2cor-scl", version: "1.0.0", health: "online", medianLatencyMs: 500, queueDepth: 0 },
   {
     id: "co-registration",
     version: "0.7.1",

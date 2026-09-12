@@ -53,7 +53,11 @@ export const colorRampIdSchema = z.enum([
 ]);
 
 export const featureGeometrySchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("polygon"), ring: z.array(geoPointSchema).min(3) }),
+  z.object({ 
+    type: z.literal("polygon"), 
+    ring: z.array(geoPointSchema).min(3),
+    holes: z.array(z.array(geoPointSchema).min(3)).optional(),
+  }),
   z.object({ type: z.literal("point"), position: geoPointSchema }),
   z.object({ type: z.literal("bbox"), bounds: geoBoundingBoxSchema }),
 ]);

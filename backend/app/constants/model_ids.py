@@ -29,6 +29,7 @@ class ModelId(StrEnum):
     GEOSPATIAL_ENGINE = "geospatial-engine"
     OPTICAL_SAR_FUSION = "optical-sar-fusion"
     S2CLOUDLESS = "s2cloudless"
+    SEN2COR_SCL = "sen2cor-scl"
     CO_REGISTRATION = "co-registration"
     SAR_PREPROCESS = "sar-preprocess"
 
