@@ -22,6 +22,8 @@ export const missionAnalysisKindSchema = z.enum([
 
 export const missionSchema = z.object({
   id: z.string().min(1),
+  projectId: z.string().min(1),
+  templateVersionId: z.string().nullable(),
   name: z.string().min(1),
   status: missionStatusSchema,
   analysisKind: missionAnalysisKindSchema,
@@ -35,6 +37,8 @@ export const missionSchema = z.object({
   confidence: z.number().min(0).max(1).nullable(),
   openAlertCount: z.number().int().nonnegative(),
   summary: z.string(),
+  cadence: z.string(),
+  alertRule: z.string().nullable(),
 });
 
 export const missionPageSchema = createCursorPageSchema(missionSchema);
@@ -46,13 +50,15 @@ export const missionPageSchema = createCursorPageSchema(missionSchema);
  * and duplicating them here would let a mission drift from the investigation it was created from.
  */
 export const missionCreateRequestSchema = z.object({
-  investigationId: z.string().min(1),
+  projectId: z.string().min(1),
+  templateVersionId: z.string().min(1),
   name: z.string().min(1, "Give the mission a name."),
-  analysisKind: missionAnalysisKindSchema,
+  cadence: z.string().min(1),
 });
 
 export const globeMarkerSchema = z.object({
   id: z.string().min(1),
+  projectId: z.string().min(1),
   missionId: z.string().nullable(),
   label: z.string().min(1),
   position: geoPointSchema,

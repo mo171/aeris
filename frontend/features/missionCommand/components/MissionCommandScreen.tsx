@@ -97,7 +97,7 @@ export function MissionCommandScreen() {
     if (selectedSceneIds.length === 0) {
       return;
     }
-    launch({ sceneIds: selectedSceneIds, seedQuery: null, missionId: null });
+    launch({ projectId: "default-project", sceneIds: selectedSceneIds, seedQuery: null, missionId: null });
   }, [launch]);
 
   // Registered after the callbacks exist so the stage can route a marker click straight into them.
@@ -118,7 +118,6 @@ export function MissionCommandScreen() {
           <PanelErrorBoundary panelName="Data & Context">
             <DataContextPanel
               onLocateScene={handleLocateScene}
-              onLocateMission={handleLocateMission}
               onInvestigate={handleInvestigate}
               isLaunchingInvestigation={isLaunching}
             />

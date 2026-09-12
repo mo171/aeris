@@ -110,6 +110,7 @@ export const investigationSchema = z.object({
   /** The question that started this investigation, carried down from Mission Command. */
   seedQuery: z.string().nullable(),
   missionId: z.string().nullable(),
+  projectId: z.string().min(1),
   /** Provenance identity. Small, permanent, and the most credible element on the page. */
   traceId: z.string().min(1),
 });
@@ -129,6 +130,7 @@ export const investigationListSchema = z.object({
 });
 
 export const investigationCreateRequestSchema = z.object({
+  projectId: z.string().min(1),
   sceneIds: z.array(z.string().min(1)).min(1, "Select at least one scene to investigate."),
   seedQuery: z.string().nullable(),
   missionId: z.string().nullable(),

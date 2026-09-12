@@ -30,21 +30,20 @@ import { cn } from "@/lib/utils";
 import { useMissionCommandStore } from "../../store/mission-command-store";
 import type { ImageryScene } from "../../types/imagery.types";
 import type { Mission } from "../../types/mission.types";
-import { ActiveMissionsList } from "./ActiveMissionsList";
+import { RecentProjectsList } from "./RecentProjectsList";
+import { AlertsStrip } from "./AlertsStrip";
 import { ImageryCatalogList } from "./ImageryCatalogList";
 import { ImageryUploadZone } from "./ImageryUploadZone";
 import { ModelStatusStrip } from "./ModelStatusStrip";
 
 interface DataContextPanelProps {
   onLocateScene: (scene: ImageryScene) => void;
-  onLocateMission: (mission: Mission) => void;
   onInvestigate: () => void;
   isLaunchingInvestigation: boolean;
 }
 
 export function DataContextPanel({
   onLocateScene,
-  onLocateMission,
   onInvestigate,
   isLaunchingInvestigation,
 }: DataContextPanelProps) {
@@ -90,11 +89,11 @@ export function DataContextPanel({
           isExpanded={isCatalogSectionExpanded}
           onToggleExpanded={toggleCatalogSection}
         />
-        <ActiveMissionsList
-          onLocateMission={onLocateMission}
+        <RecentProjectsList
           isExpanded={isMissionSectionExpanded}
           onToggleExpanded={toggleMissionSection}
         />
+        <AlertsStrip />
         {/* Absorbs the leftover height when both lists are collapsed, so the fleet strip stays anchored. */}
         {!isCatalogSectionExpanded && !isMissionSectionExpanded ? (
           <div className="flex-1" aria-hidden="true" />

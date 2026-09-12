@@ -7,6 +7,7 @@
 
 export const ROUTES = {
   MISSION_COMMAND: "/",
+  PROJECTS: "/projects",
   INVESTIGATION: "/investigation",
   EVIDENCE: "/evidence",
   MODEL_OBSERVATORY: "/models",
@@ -22,6 +23,7 @@ export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
  * compile-time guarantee that every navigation target is a surface that exists.
  */
 export const buildRoute = {
+  project: (projectId: string) => `${ROUTES.PROJECTS}/${projectId}` as const,
   investigationDetail: (investigationId: string) =>
     `${ROUTES.INVESTIGATION}/${investigationId}` as const,
   evidenceAudit: (search: string) =>

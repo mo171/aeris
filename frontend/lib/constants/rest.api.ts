@@ -24,6 +24,11 @@ export const REST_API = {
      */
     search: `${API_VERSION_PREFIX}/catalogue/search`,
   },
+  projects: {
+    list: `${API_VERSION_PREFIX}/projects`,
+    detail: (projectId: string) => `${API_VERSION_PREFIX}/projects/${projectId}`,
+    create: `${API_VERSION_PREFIX}/projects`,
+  },
   missions: {
     list: `${API_VERSION_PREFIX}/missions`,
     detail: (missionId: string) => `${API_VERSION_PREFIX}/missions/${missionId}`,

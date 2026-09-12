@@ -85,6 +85,7 @@ export function useInvestigationLaunch(): InvestigationLaunchControls {
         keywords: ["analyse", "analyze", "workspace", "change detection"],
         icon: ScanSearch,
         paramsSchema: z.object({
+          projectId: z.string().min(1),
           sceneIds: z.array(z.string().min(1)).min(1),
           seedQuery: z.string().nullable().default(null),
           missionId: z.string().nullable().default(null),

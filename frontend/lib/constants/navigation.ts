@@ -25,7 +25,7 @@
 //           exist yet. If scheduled runs and an alert queue get built, that queue IS a place and this
 //           entry comes back.
 
-import { Cpu, FileSearch, Globe, ScanSearch, type LucideIcon } from "lucide-react";
+import { Cpu, FileSearch, Folder, Globe, type LucideIcon } from "lucide-react";
 
 import { ROUTES, type RoutePath } from "./routes";
 
@@ -48,12 +48,11 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     isAvailable: true,
   },
   {
-    id: "investigation",
-    label: "Investigation",
-    description:
-      "Analyse a scene with overlays, answers, execution traces and cross-modal agreement",
-    href: ROUTES.INVESTIGATION,
-    icon: ScanSearch,
+    id: "projects",
+    label: "Projects",
+    description: "Your workspaces, investigations, standing orders and derived products",
+    href: ROUTES.PROJECTS,
+    icon: Folder,
     isAvailable: true,
   },
   {

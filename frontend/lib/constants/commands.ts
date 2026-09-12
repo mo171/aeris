@@ -78,6 +78,9 @@ export const COMMAND_IDS = {
     compareVersions: "investigation.compareVersions",
     restoreVersion: "investigation.restoreVersion",
   },
+  projects: {
+    open: "projects.open",
+  },
   assistant: {
     ask: "assistant.ask",
     clear: "assistant.clear",
@@ -92,6 +95,7 @@ export const COMMAND_GROUP_LABEL = {
   globe: "Globe",
   imagery: "Imagery",
   missions: "Missions",
+  projects: "Projects",
   investigation: "Investigation",
   assistant: "Assistant",
 } as const;

@@ -60,3 +60,17 @@ Added a 13th Model ID representing Sentinel-2's native Scene Classification Laye
   - `frontend/features/investigation/components/versions/` [NEW]: Created UI components: `SaveVersionDialog` (modal for naming saves), `VersionListPopover` (history dropdown with checkboxes for comparison), and `VersionCompareSheet` (renders the pure diff engine's output).
   - `frontend/features/investigation/components/header/InvestigationHeader.tsx`: Integrated `VersionListPopover` next to the trace ID as a compact `v{N}` badge.
   - `frontend/features/investigation/components/InvestigationScreen.tsx`: Wired up the version hook. Rendered `VersionCompareSheet` at the root and passed `versions` to the Header. Bound the compare modal's open state to the command callback.
+
+## 8. Phase E — Project & Catalogue View
+- **Project Entity**: Created `project.schema.ts` and `project.types.ts` defining `Project` with fields `name`, `areaOfInterest`, `status`, etc.
+- **Service & Hook**: Created `project.service.ts` and `use-project.ts` to manage API integration and React Query hooks (`useProjects`, `useProject`). Added `/api/projects` endpoints to `rest.api.ts`.
+- **Updated Schemas**: 
+  - Added `projectId` to `investigationSchema` and `investigationCreateRequestSchema`. 
+  - Added `projectId`, `templateVersionId`, `cadence`, and `alertRule` to `missionSchema`. 
+  - Updated `globeMarkerSchema` with `projectId`.
+- **UI and Navigation**: Replaced `/investigation` with `/projects` in `navigation.ts`. Added `ROUTES.PROJECTS` and `buildRoute.project` to `routes.ts`.
+- **Project Index Screen (Shelf)**: Created `ProjectIndexScreen.tsx` listing all user projects.
+- **Project Detail Screen**: Created `ProjectScreen.tsx` with tabs for Data (Catalogue view), Investigations, Reports, Versions, and Missions.
+- **Investigation Breadcrumb**: Modified `InvestigationHeader.tsx` to include a breadcrumb indicating the parent Project (`Project › Investigation`).
+- **Mission Command Left Panel**: Renamed `ActiveMissionsList` to `RecentProjectsList`. Created `AlertsStrip.tsx` to show only missions with an `alert` status. Integrated both into `DataContextPanel.tsx`.
+- **Renamed Hooks & Commands**: Renamed `useSaveAsMission` to `use-monitor-this.ts` and updated to prompt for a cadence and reference the `templateVersionId`. Added the `projects.open` command to `COMMAND_IDS` in `commands.ts`.

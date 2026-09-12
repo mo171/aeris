@@ -152,7 +152,7 @@ const SESSION_STORAGE_KEY = "aeris.mock.investigations";
  * reports "no evidence yet" with nothing anywhere saying why. It costs a session's history to discard
  * the cache; it costs an afternoon to debug a schema change against data that predates it.
  */
-const SESSION_STORAGE_VERSION = 4;
+const SESSION_STORAGE_VERSION = 5;
 
 const investigationsById = new Map<string, GeneratedInvestigation>(loadPersisted());
 
@@ -362,6 +362,7 @@ function generate(
 
   const investigation: Investigation = {
     id: investigationId,
+    projectId: "p-1",
     name: `Urban expansion — ${area.name}`,
     areaOfInterestName: `${area.name}, ${area.country}`,
     areaOfInterest,

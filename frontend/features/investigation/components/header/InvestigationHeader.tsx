@@ -42,6 +42,8 @@ import type { InvestigationVersion } from "../../types/version.types";
 import { SceneSlotChips } from "./SceneSlotChips";
 import { VersionListPopover } from "../versions/VersionListPopover";
 
+import { useProject } from "../../../project/hooks/use-project";
+
 const COPY_FEEDBACK_MS = 1_400;
 
 interface InvestigationHeaderProps {
@@ -64,6 +66,7 @@ export function InvestigationHeader({
 }: InvestigationHeaderProps) {
   const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
   const [hasCopiedTraceId, setHasCopiedTraceId] = useState(false);
+  const { data: project } = useProject(investigation.projectId);
 
   const hasRadarScene = investigation.sceneSlots.some((slot) => slot.role === "sar");
   const isCrossModalOpen = useInvestigationStore((state) => state.crossModalLens.isActive);
@@ -89,7 +92,15 @@ export function InvestigationHeader({
 
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-2">
-          <h1 className="truncate text-sm font-medium text-foreground">{investigation.name}</h1>
+          <div className="flex items-center text-sm font-medium text-foreground truncate">
+            {project ? (
+              <>
+                <Link href={buildRoute.project(project.id)} className="hover:underline text-muted-foreground">{project.name}</Link>
+                <span className="mx-1 text-muted-foreground">›</span>
+              </>
+            ) : null}
+            <span>{investigation.name}</span>
+          </div>
           <span className="truncate font-mono text-[10px] text-muted-foreground">
             {investigation.areaOfInterestName}
           </span>

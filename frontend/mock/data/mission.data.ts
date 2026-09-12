@@ -90,6 +90,10 @@ function generateMissions(): Mission[] {
       sceneCount: randomInteger(random, 2, 48),
       confidence: hasRun ? Math.round(randomFloat(random, 0.62, 0.98) * 100) / 100 : null,
       openAlertCount: status === "alert" ? randomInteger(random, 1, 6) : 0,
+      projectId: "p-1",
+      templateVersionId: "v1",
+      cadence: "weekly",
+      alertRule: null,
       summary: MISSION_SUMMARIES[analysisKind],
     });
   }
@@ -141,6 +145,10 @@ export function createMockMission(request: {
     sceneCount: investigation?.sceneSlots.length ?? 0,
     confidence: null,
     openAlertCount: 0,
+    projectId: "p-1",
+    templateVersionId: "v1",
+    cadence: "weekly",
+    alertRule: null,
     summary: MISSION_SUMMARIES[request.analysisKind],
   };
 
@@ -195,6 +203,7 @@ function generateGlobeMarkers(markerCount: number): GlobeMarker[] {
 
     markers.push({
       id: `mkr_${(index + 1).toString().padStart(6, "0")}`,
+      projectId: linkedMission?.projectId ?? "p-1",
       missionId: linkedMission?.id ?? null,
       label: linkedMission ? linkedMission.name : `${area.name} observation`,
       position: {
