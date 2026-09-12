@@ -46,3 +46,17 @@ Added a 13th Model ID representing Sentinel-2's native Scene Classification Laye
   - `frontend/components/sharedUI/workflowCanvas/nodes.tsx`: `OperationNode` now applies per-state CSS classes (`completed` → teal border, `running` → pulsing primary, `skipped` → muted + strikethrough, `failed` → destructive). All node types refined with improved typography and layout.
   - `frontend/mock/streams/analysis-stream.ts`: Re-run simulation — when `rerunFromStepId` is present, steps before the cut point emit as `state: "skipped"` with a detail string; steps at and after the cut point re-execute with `parameterOverrides` merged into their `parameters` field.
 
+## 7. Phase D — Version Snapshots + Compare
+- **Action**: Implemented Phase D of `implementation.md` — operator-driven version snapshots with a pure client-side diff engine.
+- **Files Modified/Created**:
+  - `frontend/features/investigation/schemas/version.schema.ts` [NEW]: Created `investigationVersionSchema` and `versionSnapshotSchema` encapsulating `sceneSlots`, `timelinePair`, trace `steps` (the full graph with parameters), and `resultSummary`.
+  - `frontend/features/investigation/types/version.types.ts` [NEW]: Extracted TypeScript types and defined diff types (`DiffSection`, `DiffRow`).
+  - `frontend/features/investigation/lib/version-diff.ts` [NEW]: Implemented `diffVersions()`, a pure, side-effect-free engine that diffs two snapshots across Inputs, Workflow, Parameters, Models, Result Metrics, and Confidence. Excludes unchanged sections.
+  - `frontend/mock/data/version.data.ts` [NEW]: Provided pre-seeded versions (Initial baseline, Relaxed threshold) to demonstrate the compare capabilities instantly.
+  - `frontend/lib/constants/query-keys.ts`: Appended `investigations.versions()` query key factory.
+  - `frontend/lib/constants/commands.ts`: Added `saveVersion`, `compareVersions`, `restoreVersion` to `COMMAND_IDS.investigation`.
+  - `frontend/features/investigation/hooks/use-investigation-versions.ts` [NEW]: React Query hook for reading and mutating versions. The `saveVersion` mutation constructs a snapshot of the current workspace state (via `useInvestigationStore` and `useEvidenceGraph`) and mocks a REST save. `restoreVersion` logs the intent (in Phase D, restoring doesn't launch a run automatically).
+  - `frontend/features/investigation/hooks/use-investigation-commands.ts`: Registered the three version commands and passed `versions`, `saveVersion`, `compareVersions`, `restoreVersion` dependencies through `InvestigationCommandOptions`.
+  - `frontend/features/investigation/components/versions/` [NEW]: Created UI components: `SaveVersionDialog` (modal for naming saves), `VersionListPopover` (history dropdown with checkboxes for comparison), and `VersionCompareSheet` (renders the pure diff engine's output).
+  - `frontend/features/investigation/components/header/InvestigationHeader.tsx`: Integrated `VersionListPopover` next to the trace ID as a compact `v{N}` badge.
+  - `frontend/features/investigation/components/InvestigationScreen.tsx`: Wired up the version hook. Rendered `VersionCompareSheet` at the root and passed `versions` to the Header. Bound the compare modal's open state to the command callback.

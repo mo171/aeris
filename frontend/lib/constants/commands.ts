@@ -74,6 +74,9 @@ export const COMMAND_IDS = {
     toggleCanvas: "investigation.toggleCanvas",
     selectNode: "investigation.selectNode",
     rerunStep: "investigation.rerunStep",
+    saveVersion: "investigation.saveVersion",
+    compareVersions: "investigation.compareVersions",
+    restoreVersion: "investigation.restoreVersion",
   },
   assistant: {
     ask: "assistant.ask",

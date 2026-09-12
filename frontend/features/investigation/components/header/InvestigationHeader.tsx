@@ -38,7 +38,9 @@ import { cn } from "@/lib/utils";
 
 import { useInvestigationStore } from "../../store/investigation-store";
 import type { Investigation, InvestigationSceneSlot } from "../../types/investigation.types";
+import type { InvestigationVersion } from "../../types/version.types";
 import { SceneSlotChips } from "./SceneSlotChips";
+import { VersionListPopover } from "../versions/VersionListPopover";
 
 const COPY_FEEDBACK_MS = 1_400;
 
@@ -49,6 +51,7 @@ interface InvestigationHeaderProps {
   onSaveAsMission: () => void;
   isSavingMission: boolean;
   isSavedAsMission: boolean;
+  versions: InvestigationVersion[];
 }
 
 export function InvestigationHeader({
@@ -57,6 +60,7 @@ export function InvestigationHeader({
   onSaveAsMission,
   isSavingMission,
   isSavedAsMission,
+  versions,
 }: InvestigationHeaderProps) {
   const isPresentMode = useInvestigationStore((state) => state.isPresentMode);
   const [hasCopiedTraceId, setHasCopiedTraceId] = useState(false);
@@ -113,6 +117,16 @@ export function InvestigationHeader({
               Copy the provenance id. Every claim here is re-executable from it.
             </TooltipContent>
           </Tooltip>
+
+          <VersionListPopover versions={versions}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-5 px-1.5 ml-2 rounded-sm text-[10px] font-mono text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+            >
+              v{versions.length}
+            </Button>
+          </VersionListPopover>
         </div>
       </div>
 

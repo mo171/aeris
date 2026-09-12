@@ -59,6 +59,7 @@ import { useInvestigationStore } from "../store/investigation-store";
 import type { EvidenceItem } from "../types/evidence.types";
 import type { Acquisition } from "../types/investigation.types";
 import type { ParameterValue } from "@/lib/constants/parameters";
+import type { InvestigationVersion } from "../types/version.types";
 
 interface InvestigationCommandOptions {
   ask: (query: string, options?: { operationId?: string }) => void;
@@ -74,6 +75,11 @@ interface InvestigationCommandOptions {
   areaOfInterest: { west: number; south: number; east: number; north: number } | null;
   /** Re-executes a run from a given step with updated parameter values. */
   rerunStep: (stepId: string, parameterOverrides: Record<string, ParameterValue>) => void;
+  
+  versions?: InvestigationVersion[];
+  saveVersion?: (label: string) => void;
+  compareVersions?: (versionAId: string, versionBId: string) => void;
+  restoreVersion?: (versionId: string) => void;
 }
 
 export function useInvestigationCommands({
@@ -84,6 +90,10 @@ export function useInvestigationCommands({
   evidenceById,
   areaOfInterest,
   rerunStep,
+  versions,
+  saveVersion,
+  compareVersions,
+  restoreVersion,
 }: InvestigationCommandOptions): void {
   const commands = useMemo(() => {
     const store = () => useInvestigationStore.getState();
@@ -685,8 +695,57 @@ export function useInvestigationCommands({
           rerunStep(stepId, parameterOverrides as Record<string, ParameterValue>);
         },
       }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.saveVersion,
+        title: "Save current state as a version",
+        description: "Snapshots the current workspace state so it can be compared later.",
+        group: "investigation",
+        keywords: ["save", "version", "snapshot", "keep"],
+        icon: Play, // using Play as fallback, typically would use Save or Bookmark
+        paramsSchema: z.object({
+          label: z.string().min(1),
+        }),
+        isPaletteVisible: false,
+        handler: ({ label }) => {
+          if (saveVersion) saveVersion(label);
+        },
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.compareVersions,
+        title: "Compare two versions",
+        description: "Shows the differences between two saved versions.",
+        group: "investigation",
+        keywords: ["compare", "diff", "version", "difference"],
+        icon: Target, // fallback
+        paramsSchema: z.object({
+          versionAId: z.string().min(1),
+          versionBId: z.string().min(1),
+        }),
+        isPaletteVisible: false,
+        handler: ({ versionAId, versionBId }) => {
+          if (compareVersions) compareVersions(versionAId, versionBId);
+        },
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.restoreVersion,
+        title: "Restore a saved version",
+        description: "Restores inputs and parameters from a saved version.",
+        group: "investigation",
+        keywords: ["restore", "revert", "version", "rollback"],
+        icon: Target, // fallback
+        paramsSchema: z.object({
+          versionId: z.string().min(1),
+        }),
+        isPaletteVisible: false,
+        handler: ({ versionId }) => {
+          if (restoreVersion) restoreVersion(versionId);
+        },
+      }),
     ];
-  }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous, rerunStep, saveCameraView]);
+  }, [acquisitions, areaOfInterest, ask, evidenceById, prepareAutonomous, rerunStep, saveCameraView, saveVersion, compareVersions, restoreVersion]);
 
   useRegisterCommands(commands);
 }

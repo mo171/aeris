@@ -59,6 +59,7 @@ import { searchCatalogue } from "../services/catalogue.service";
 import { useEvidenceGraph } from "../hooks/use-evidence-graph";
 import { useInvestigation } from "../hooks/use-investigation";
 import { useInvestigationCommands } from "../hooks/use-investigation-commands";
+import { useInvestigationVersions } from "../hooks/use-investigation-versions";
 import { useRegionSelection } from "../hooks/use-region-selection";
 import { useScenePopout } from "../hooks/use-scene-popout";
 import { useReferenceLayers } from "../hooks/use-reference-layers";
@@ -73,6 +74,7 @@ import { LeftPanelTabs } from "./inputsPanel/LeftPanelTabs";
 import { ReportDrawer } from "./report/ReportDrawer";
 import { ExecutionSpine } from "./tracePanel/ExecutionSpine";
 import { StepInspector } from "./inspector/StepInspector";
+import { VersionCompareSheet } from "./versions/VersionCompareSheet";
 import { CameraControls } from "./viewer/CameraControls";
 import { DrawToolbar } from "./viewer/DrawToolbar";
 import { EvidenceLegend } from "./viewer/EvidenceLegend";
@@ -93,7 +95,11 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const { investigation, isLoading, error, assignSceneRole, saveCameraView } =
     useInvestigation(investigationId);
   const { graph, layers, featureIdsForClaim } = useEvidenceGraph(investigationId);
+  const { versions, saveVersion, restoreVersion } = useInvestigationVersions(investigationId);
+  
   const [isAutoFetchingSar, setIsAutoFetchingSar] = useState(false);
+  const [compareVersionAId, setCompareVersionAId] = useState<string | null>(null);
+  const [compareVersionBId, setCompareVersionBId] = useState<string | null>(null);
 
   // Which catalogue products are actually on the scene, so the overlay browser can mark them rather than
   // listing every capability with no indication of which ones the operator is already looking at.
@@ -304,6 +310,13 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
     evidenceById: graph.evidenceById,
     areaOfInterest: investigation?.areaOfInterest ?? { west: 0, south: 0, east: 0, north: 0 },
     rerunStep,
+    versions,
+    saveVersion: (label) => saveVersion(label, graph),
+    restoreVersion,
+    compareVersions: (a, b) => {
+      setCompareVersionAId(a);
+      setCompareVersionBId(b);
+    },
   });
 
   const handleAutoFetchCrossModal = useCallback(
@@ -459,6 +472,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               onSaveAsMission={mission.save}
               isSavingMission={mission.isSaving}
               isSavedAsMission={mission.savedMission !== null}
+              versions={versions}
             />
           </PanelErrorBoundary>
 
@@ -628,6 +642,16 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
       )}
 
       <ReportDrawer investigationId={investigationId} investigationName={investigation.name} />
+
+      <VersionCompareSheet 
+        versionAId={compareVersionAId}
+        versionBId={compareVersionBId}
+        versions={versions}
+        onClose={() => {
+          setCompareVersionAId(null);
+          setCompareVersionBId(null);
+        }}
+      />
     </>
   );
 }
