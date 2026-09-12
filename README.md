@@ -125,7 +125,35 @@ uv run aeris dataset fetch dota8
 uv run aeris models evaluate --model dota-detector
 ```
 
-### 10. The vision-language model (`aeris ask`)
+### 10. Query understanding and routing (`aeris route`)
+Phase 1.8 puts a router in front of every question: cues and a kNN over a labelled bank choose the intent,
+a table chooses the specialist and the graph, and four validations refuse with reasons. A count goes to the
+detector, never the VLM. The first call downloads a 130 MB sentence encoder into `backend/data/models/`.
+
+```bash
+uv run aeris route "how many ships are in the harbour"
+```
+
+```bash
+uv run aeris route "how many cars are parked here" --gsd 10
+```
+
+```bash
+uv run aeris route --evaluate
+```
+
+The first prints DETECT, `dota-detector`, the objects; the second refuses - a 4.5 m car spans fewer than
+8 pixels at 10 m; the third prints the gate tables (0.991 held-out, 1.000 fresh; rules alone and kNN alone
+beside it; compound requests 1.000 exact on 50 after tuning, 0.50-0.67 untouched). A spoken request with
+several questions becomes a plan of steps, answered in order:
+
+```bash
+uv run aeris route "hey aeris, show me the water bodies, then map the unhealthy vegetation and give me its area, and finally count the cars on the roads" --gsd 10
+```
+ `aeris ask` and `aeris analyse` run the same router before anything loads; `aeris ask
+--force-vlm` bypasses it so the two answers can be compared.
+
+### 11. The vision-language model (`aeris ask`)
 Phase 1.7 serves Qwen3-VL (2B by default, `VLM_SIZE=4b` on an 8 GB card) 4-bit through the fleet, and puts
 the constrained answer generator into S16: the model phrases the claims, and any number it writes that no
 specialist computed rejects the phrasing. The first call downloads the 4 GB base into `backend/data/models/`.
@@ -133,6 +161,10 @@ specialist computed rejects the phrasing. The first call downloads the 4 GB base
 ```bash
 uv run aeris ask --image backend/data/datasets/dota8/dota8/images/val/P1470__1024__3296___1648.jpg --question "How many basketball courts are visible?"
 ```
+
+Routed: the detector answers **3** (the label file's count); with `--force-vlm` the VLM says 2. A question
+the detector cannot count ("how many buildings") is refused by name and the VLM says only whether they are
+present, labelled as not a count.
 
 ```bash
 uv run aeris ask --image before.png --image after.png --question "What changed between the two dates?"

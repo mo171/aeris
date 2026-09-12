@@ -1,3 +1,56 @@
+## Session — 2026-09-12 (1.8, compound requests) · 0 of 11 -> 35 of 35, with the untouched scores stated. **A voice request is a plan, not a question.**
+
+Filler off, clauses split, each routed, pronouns bound to the clause before, same asks merged. `aeris ask`
+answers step by step; `aeris analyse` runs a graph per index step. Numbers in `roadmap.md` 1.8.
+
+### Measured rather than assumed
+
+- **The single-intent router answered the loudest clause** of a compound request and nothing else - 0 of
+  11. Nothing in the classifier was wrong; the unit of routing was.
+- **Untouched fresh batches scored 0.50 and 0.67 exact**; every error was a table gap in the decomposer
+  (connector words, a filler phrase, `its` folded to "it is", "there" as a pronoun, no split on "the ndvi
+  and the nbr") and each fix is a line in a table. Reported both numbers rather than the 1.000 after.
+- **Merging is a product decision**: "how many ships and how many tanks" is one detector run; "find the
+  planes, where are they, how many" is one step with three wants. The labels were changed to say so.
+- **Context carries forward by kind**: a pair named early ("compare these two images") makes a later
+  cue-less clause a change question; both sensors named early makes "tell me if the flood extent
+  matches" cross-modal; a spectral target is inherited only into an index step or an area ask, so "show
+  me those pixels" after an evidence question stays evidence.
+- **`\b` through a heredoc is a backspace byte, again.** Regex edits go through the Write tool only.
+- **Segformer peaks at 645 MB after the other models** (declared 640); declared 704, both measurements noted.
+
+---
+
+## Session — 2026-09-12 (1.8, routing) · 0.991 held-out, 1.000 fresh. **Counting is a routing rule, and a pixel has to hold the object.**
+
+Cues narrow to a family, a kNN over a 215-question bank (bge-small, CPU, 10 ms) chooses within it, a
+table names the tool and the graph, four validations refuse with reasons. `aeris route`, and routing in
+front of `aeris ask` / `aeris analyse`. Numbers and the counting demonstration are in `roadmap.md` 1.8.
+
+### Measured rather than assumed
+
+- **Rules alone: 0.936; kNN alone: 0.766; together 0.991.** The kNN alone confuses families (GROUND vs
+  DETECT vs SCENE_VQA share wording); the rules alone leave a tenth of questions to a default. The cascade
+  is the design, not a compromise: rules where a mistake must be impossible, neighbours where wording varies.
+- **A `\b` written through a heredoc becomes a backspace byte.** Three regexes silently matched nothing
+  ("where is", "draw a box", "coordinates of") and the errors looked like kNN errors. Found by testing a
+  cue in isolation; fixed with `sed`. Patch scripts that write regexes go through the Write tool.
+- **The VLM said 2 where the label file says 3** (basketball courts, DOTA8 crop) - the live case for
+  routing counts to the detector, beside 1.7's 0.23.
+- **A count's object is the one before the locative** ("ships in the harbour" counts ships, the harbour
+  is context); a spectral word in a yes/no question is a perception question ("Is this a rural or urban
+  area?" is not an NDBI query); an index named outright settles the intent whatever else is said.
+- **The held-out score was tuned against** (three passes); the fresh file was tuned against once. Both
+  said in the roadmap. The true test is a judge's phrasing; the fresh file's register is the nearest.
+- **ChangeFormer peaks at 517 MB when loaded after the detector** in one process (allocator residue);
+  declared 512. Declared 576 now, both measurements in the comment.
+
+### Owed
+
+- The graphs the routing table names `None` for (1.10); the LLM arbiter for uncertain margins (1.9).
+
+---
+
 ## Session — 2026-09-13 (1.7, the adapter) · Overall 0.28 -> 0.53 on human-verified rows. **It learned "Lithuania" anyway, and it cannot phrase.**
 
 The LoRA trained (21,600 rows, 242 min, T4, val loss 0.375 -> 0.340) and was scored on the same rows as

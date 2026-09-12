@@ -255,6 +255,15 @@ backend/
 │   │   ├── prompts/                     # Every prompt put in front of a language model, as strings. DONE (1.7)
 │   │   │   └── vlm.py                   # system prompt, SAR note, VQA / caption / constrained-answer templates
 │   │   │
+│   │   ├── query/                       # DONE (1.8). Query understanding: what is being asked, of what.
+│   │   │   ├── classifier.py            # cues narrow to a family, kNN over the bank votes within it
+│   │   │   ├── decomposer.py            # filler off, clauses split at connectives, pronouns flagged
+│   │   │   ├── entities.py              # objects -> detector classes, region, temporal, sensor, wants
+│   │   │   ├── bank.py                  # the labelled bank + held-out + fresh files, embedded once, cached
+│   │   │   ├── intent_bank.jsonl        # 215 learned from; intent_holdout.jsonl 235 and intent_fresh.jsonl 45 scored
+│   │   │   ├── intent_compound.jsonl    # 15 compound requests developed against; intent_compound_fresh.jsonl 35 scored
+│   │   │   └── math/nearest.py          # weighted kNN vote, confidence and margin
+│   │   │
 │   │   ├── answer/                      # S16  DONE (1.7)
 │   │   │   └── constrained.py           # claims -> facts with {m1} holes -> VLM prose -> numeral check ->
 │   │   │                                #   holes filled from the claims. A hallucinated digit rejects the
@@ -303,7 +312,11 @@ backend/
 │   │   ├── graph.py                     # the agent StateGraph, with interrupt() for plan approval
 │   │   ├── state.py
 │   │   ├── planner.py
-│   │   ├── router.py                    # deterministic: intent -> table -> pipeline graph (PDF p.24)
+│   │   ├── router.py                    # DONE (1.8). `route_plan`: a request -> ordered steps (pronouns bound,
+│   │   │                                #   same asks merged); `route`: deterministic intent -> table -> tool + graph (PDF p.24),
+│   │   │                                #   then validation: two images for a pair, both sensors for cross-
+│   │   │                                #   modal, an index the engine has, a class the detector knows and a
+│   │   │                                #   pixel that can hold it. Refuses with the numbers.
 │   │   ├── tools/
 │   │   │   ├── analysis_tools.py        # backend functions bound with LangChain bind_tools
 │   │   │   └── interface_tools.py       # mirrors the frontend command registry -> ui-command events
@@ -327,6 +340,8 @@ backend/
 │   │   │                                #   at the boundary, 1024 windows, seam-cut boxes dropped, rotated NMS
 │   │   ├── vendor/
 │   │   │   └── changeformer_v6.py       # wgcban's architecture, verbatim, MIT, licence in the header
+│   │   ├── encoder.py                   # DONE (1.8). bge-small sentence encoder, CPU, CLS-pooled; a cached
+│   │   │                                #   singleton, not a fleet member (no device budget, no claim)
 │   │   ├── vlm.py                       # DONE (1.7). Qwen3-VL at `settings.vlm_size`, NF4 on CUDA, PEFT LoRA
 │   │   │                                #   from `settings.vlm_adapter_repository`; version says `-unadapted`
 │   │   │                                #   when none is attached. `vlm_record()` is what the manager admits by.
@@ -395,6 +410,8 @@ backend/
 │       │                                #   VRAM profile tiers (4 GB is a tier); engine vs learned.
 │       ├── change.py                    # (Phase 1.6) the change threshold and the SAR log-ratio dB threshold
 │       ├── detection.py                 # (Phase 1.6) DOTA's fifteen classes in checkpoint order, thresholds, tiling
+│       ├── routing.py                   # (Phase 1.8) intent -> graph table, object synonyms -> DOTA classes,
+│       │                                #   object lengths for the resolution gate, the cue regexes, the encoder
 │       ├── vlm.py                       # (Phase 1.7) the Qwen3-VL variants and footprints, the image size, the
 │       │                                #   token budgets, the numeral rule, the BigEarthNet.txt categories (not)
 │       │                                #   trained. The prompt strings are services/prompts/vlm.py.

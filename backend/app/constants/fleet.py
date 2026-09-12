@@ -95,8 +95,9 @@ FLEET: Final[dict[ModelId, FleetRecord]] = {
         capability=ModelCapability.CHANGE_DETECTION,
         stages=(PipelineStage.S13,),
         weights=WeightsSource("HZDR-FWGEL/UCD-LEVIRCD256-ChangeFormer", "model.safetensors", "main"),
-        # Measured on the RTX 3050: 157 MB of weights, 461 MB peak through a 256 tile. Declared with margin.
-        vram_megabytes=512,
+        # Measured on the RTX 3050: 157 MB of weights, 461 MB peak through a 256 tile alone; 517 MB when
+        # loaded after the detector in the same process (the allocator keeps a few MB). Declared above both.
+        vram_megabytes=576,
         tile_size=256,
     ),
     ModelId.SEGFORMER_LANDCOVER: FleetRecord(
@@ -105,8 +106,9 @@ FLEET: Final[dict[ModelId, FleetRecord]] = {
         capability=ModelCapability.SEGMENTATION,
         stages=(PipelineStage.S13,),
         weights=WeightsSource("wu-pr-gw/segformer-b2-finetuned-with-LoveDA", None, "main"),
-        # Measured on the RTX 3050: 104 MB of weights, 556 MB peak through a 512 tile. Declared with margin.
-        vram_megabytes=640,
+        # Measured on the RTX 3050: 104 MB of weights, 556 MB peak through a 512 tile alone; 645 MB when
+        # loaded after the other models in one process (allocator residue). Declared above both.
+        vram_megabytes=704,
         tile_size=512,
     ),
     ModelId.SAR_CHANGE: FleetRecord(

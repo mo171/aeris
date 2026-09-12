@@ -39,6 +39,7 @@ from app.cli import figures as figures_command
 from app.cli import ingest as ingest_command
 from app.cli import models as models_command
 from app.cli import preprocess as preprocess_command
+from app.cli import route as route_command
 from app.cli import run as run_command
 from app.config import settings
 from app.constants.datasets import DatasetId, DatasetSplit
@@ -471,10 +472,35 @@ def ask(
     image: list[Path] = typer.Option(..., "--image", help="One picture, or two for a pair (bi-temporal or optical/SAR)."),
     question: str | None = typer.Option(None, "--question", help="What to ask. Omit for a caption."),
     sar: list[bool] = typer.Option([], "--sar", help="Per image, in order: true if it is radar backscatter."),
+    force_vlm: bool = typer.Option(False, "--force-vlm", help="Bypass the router and ask the VLM regardless. For comparison only."),
 ) -> None:
-    """Ask the remote-sensing VLM about a picture. The 1.7 gate; no run, no claims - the model's reading, labelled as such."""
+    """Ask about a picture: the router picks the specialist (a count goes to the detector, never the VLM). No run, no claims."""
     flags = list(sar) + [False] * (len(image) - len(sar))
-    asyncio.run(_run_models(ask_command.execute_ask(images=image, question=question, sar=flags[: len(image)], console=console)))
+    answered = asyncio.run(
+        _run_models(ask_command.execute_ask(images=image, question=question, sar=flags[: len(image)], console=console, force_vlm=force_vlm))
+    )
+    if not answered:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def route(
+    query: str = typer.Argument("", help="The question to route. Omit with --evaluate."),
+    evaluate: bool = typer.Option(False, "--evaluate", help="Score the classifier on the held-out questions: the 1.8 gate."),
+    gsd: float | None = typer.Option(None, "--gsd", help="Metres per pixel of the scene, for the resolution gate."),
+    images: int = typer.Option(1, "--images", help="How many images the question would be asked over."),
+    sar: bool = typer.Option(False, "--sar", help="The image is radar."),
+) -> None:
+    """Show what the router makes of a question - intent, entities, specialist, graph - without running anything."""
+    if evaluate:
+        passed = asyncio.run(_run_models(route_command.execute_route_evaluate(console=console)))
+    elif query:
+        passed = asyncio.run(_run_models(route_command.execute_route(query=query, ground_sample_distance=gsd, image_count=images, sar=sar, console=console)))
+    else:
+        console.print("[red]Pass a question, or --evaluate.[/red]")
+        raise typer.Exit(code=2)
+    if not passed:
+        raise typer.Exit(code=1)
 
 
 @models_app.command("evaluate")

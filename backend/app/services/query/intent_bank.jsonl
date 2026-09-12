@@ -1,0 +1,215 @@
+{"query": "What kind of area is this?", "intent": "SCENE_VQA"}
+{"query": "Are there any ships visible?", "intent": "SCENE_VQA"}
+{"query": "What season does this look like?", "intent": "SCENE_VQA"}
+{"query": "Is this a coastline?", "intent": "SCENE_VQA"}
+{"query": "Does this image show farmland?", "intent": "SCENE_VQA"}
+{"query": "Summarise what this satellite image shows.", "intent": "SCENE_VQA"}
+{"query": "What type of crops might be growing here?", "intent": "SCENE_VQA"}
+{"query": "Are there clouds in this image?", "intent": "SCENE_VQA"}
+{"query": "What is the general layout of this city?", "intent": "SCENE_VQA"}
+{"query": "Is the harbour busy?", "intent": "SCENE_VQA"}
+{"query": "Tell me about this image.", "intent": "SCENE_VQA"}
+{"query": "Can you see a runway?", "intent": "SCENE_VQA"}
+{"query": "Is this a desert?", "intent": "SCENE_VQA"}
+{"query": "What does the image show?", "intent": "SCENE_VQA"}
+{"query": "Is it a port or an airport?", "intent": "SCENE_VQA"}
+{"query": "Is the land here flat?", "intent": "SCENE_VQA"}
+{"query": "Are these residential buildings?", "intent": "SCENE_VQA"}
+{"query": "Is there any visible damage?", "intent": "SCENE_VQA"}
+{"query": "Is this a night image?", "intent": "SCENE_VQA"}
+{"query": "Are there mountains in the background?", "intent": "SCENE_VQA"}
+{"query": "Would you say this is a village or a town?", "intent": "SCENE_VQA"}
+{"query": "Is there a lake in this scene?", "intent": "SCENE_VQA"}
+{"query": "Is the vegetation natural or planted?", "intent": "SCENE_VQA"}
+{"query": "Are there parked aircraft?", "intent": "SCENE_VQA"}
+{"query": "Where is the airport?", "intent": "GROUND"}
+{"query": "Point out the bridge.", "intent": "GROUND"}
+{"query": "Show me where the runway is.", "intent": "GROUND"}
+{"query": "Find the stadium in this image.", "intent": "GROUND"}
+{"query": "Where is the harbour?", "intent": "GROUND"}
+{"query": "Find the parking lot next to the mall.", "intent": "GROUND"}
+{"query": "Where is the ship closest to the pier?", "intent": "GROUND"}
+{"query": "Pinpoint the water tower.", "intent": "GROUND"}
+{"query": "Locate the school campus.", "intent": "GROUND"}
+{"query": "Show me the location of the power plant.", "intent": "GROUND"}
+{"query": "Box the plane at the end of the runway.", "intent": "GROUND"}
+{"query": "Identify where the quarry is.", "intent": "GROUND"}
+{"query": "Point to the red-roofed building.", "intent": "GROUND"}
+{"query": "Locate the storage tanks near the coast.", "intent": "GROUND"}
+{"query": "Where is the container yard?", "intent": "GROUND"}
+{"query": "Show where the canal enters the city.", "intent": "GROUND"}
+{"query": "Highlight the oil refinery.", "intent": "GROUND"}
+{"query": "Where is the cricket ground?", "intent": "GROUND"}
+{"query": "Mark the intersection near the park.", "intent": "GROUND"}
+{"query": "Find the temple complex.", "intent": "GROUND"}
+{"query": "Point out the reservoir.", "intent": "GROUND"}
+{"query": "Locate the dockyard.", "intent": "GROUND"}
+{"query": "Which building is the airport terminal?", "intent": "GROUND"}
+{"query": "Where is the greenhouse cluster?", "intent": "GROUND"}
+{"query": "Find the sports complex.", "intent": "GROUND"}
+{"query": "How much of the scene is vegetated?", "intent": "INDEX_QUERY"}
+{"query": "Where is the vegetation stressed?", "intent": "INDEX_QUERY"}
+{"query": "What is the built-up area in hectares?", "intent": "INDEX_QUERY"}
+{"query": "Show me the NDWI map.", "intent": "INDEX_QUERY"}
+{"query": "Which areas have dense healthy vegetation?", "intent": "INDEX_QUERY"}
+{"query": "How much water is in this image?", "intent": "INDEX_QUERY"}
+{"query": "What's the flood extent?", "intent": "INDEX_QUERY"}
+{"query": "Where is the urban footprint according to NDBI?", "intent": "INDEX_QUERY"}
+{"query": "How many hectares of open water are there?", "intent": "INDEX_QUERY"}
+{"query": "Show me the vegetation cover.", "intent": "INDEX_QUERY"}
+{"query": "Where is sparse vegetation?", "intent": "INDEX_QUERY"}
+{"query": "Which regions have low NDVI?", "intent": "INDEX_QUERY"}
+{"query": "Measure the area covered by vegetation.", "intent": "INDEX_QUERY"}
+{"query": "How much of the land is built up?", "intent": "INDEX_QUERY"}
+{"query": "Estimate vegetated area in square kilometres.", "intent": "INDEX_QUERY"}
+{"query": "Where is the crop health poor?", "intent": "INDEX_QUERY"}
+{"query": "Highlight areas with bare soil.", "intent": "INDEX_QUERY"}
+{"query": "Show me the NDBI.", "intent": "INDEX_QUERY"}
+{"query": "How large is the water surface?", "intent": "INDEX_QUERY"}
+{"query": "Compute the vegetation index.", "intent": "INDEX_QUERY"}
+{"query": "How much area do the lakes cover?", "intent": "INDEX_QUERY"}
+{"query": "Delineate flood water with MNDWI.", "intent": "INDEX_QUERY"}
+{"query": "Area of green cover?", "intent": "INDEX_QUERY"}
+{"query": "Water body area in hectares.", "intent": "INDEX_QUERY"}
+{"query": "What's the NDVI in the north?", "intent": "INDEX_QUERY"}
+{"query": "Count the planes on the tarmac.", "intent": "DETECT"}
+{"query": "Detect all vehicles.", "intent": "DETECT"}
+{"query": "Count the swimming pools.", "intent": "DETECT"}
+{"query": "Count the tennis courts.", "intent": "DETECT"}
+{"query": "How many storage tanks are near the port?", "intent": "DETECT"}
+{"query": "Find all the soccer fields.", "intent": "DETECT"}
+{"query": "Total number of ships?", "intent": "DETECT"}
+{"query": "Find all small vehicles.", "intent": "DETECT"}
+{"query": "Give me the count of oil tanks.", "intent": "DETECT"}
+{"query": "Detect and count the planes.", "intent": "DETECT"}
+{"query": "Enumerate the vehicles.", "intent": "DETECT"}
+{"query": "How many sports fields are in the image?", "intent": "DETECT"}
+{"query": "How many bridges cross the river?", "intent": "DETECT"}
+{"query": "Count the cars in the north-east.", "intent": "DETECT"}
+{"query": "Find all the tanks.", "intent": "DETECT"}
+{"query": "How many airplanes are on the runway?", "intent": "DETECT"}
+{"query": "Number of vehicles on the highway?", "intent": "DETECT"}
+{"query": "Detect the aircraft.", "intent": "DETECT"}
+{"query": "Count the container ships.", "intent": "DETECT"}
+{"query": "How many parked aircraft are visible?", "intent": "DETECT"}
+{"query": "Give me a land-cover map.", "intent": "SEGMENT"}
+{"query": "What is the land use breakdown?", "intent": "SEGMENT"}
+{"query": "Segment water and land.", "intent": "SEGMENT"}
+{"query": "Outline every building footprint.", "intent": "SEGMENT"}
+{"query": "Produce a segmentation mask of the urban area.", "intent": "SEGMENT"}
+{"query": "Classify each pixel into land-cover classes.", "intent": "SEGMENT"}
+{"query": "Show a land cover classification.", "intent": "SEGMENT"}
+{"query": "Segment the barren land.", "intent": "SEGMENT"}
+{"query": "Segment the farmland.", "intent": "SEGMENT"}
+{"query": "Outline the coastline.", "intent": "SEGMENT"}
+{"query": "Extract the road network.", "intent": "SEGMENT"}
+{"query": "Segment the vegetation from the built area.", "intent": "SEGMENT"}
+{"query": "Mask the agricultural land.", "intent": "SEGMENT"}
+{"query": "Which land-cover classes are present?", "intent": "SEGMENT"}
+{"query": "Outline the lake boundary.", "intent": "SEGMENT"}
+{"query": "Extract the footprint of the industrial area.", "intent": "SEGMENT"}
+{"query": "Segment paved surfaces.", "intent": "SEGMENT"}
+{"query": "Partition the image into land-cover types.", "intent": "SEGMENT"}
+{"query": "Segment out the water.", "intent": "SEGMENT"}
+{"query": "Trace the field boundaries.", "intent": "SEGMENT"}
+{"query": "Outline the parking areas.", "intent": "SEGMENT"}
+{"query": "Map land cover classes for this tile.", "intent": "SEGMENT"}
+{"query": "Segment roads and buildings.", "intent": "SEGMENT"}
+{"query": "Outline the airport apron.", "intent": "SEGMENT"}
+{"query": "Compare these two images and show where new buildings appeared.", "intent": "CHANGE_DETECT"}
+{"query": "Show me the change map.", "intent": "CHANGE_DETECT"}
+{"query": "Highlight areas that changed.", "intent": "CHANGE_DETECT"}
+{"query": "Map deforestation between these two scenes.", "intent": "CHANGE_DETECT"}
+{"query": "Detect new roads between T0 and T1.", "intent": "CHANGE_DETECT"}
+{"query": "Find the differences between the two images.", "intent": "CHANGE_DETECT"}
+{"query": "Highlight demolished buildings.", "intent": "CHANGE_DETECT"}
+{"query": "Show flood extent change between the two dates.", "intent": "CHANGE_DETECT"}
+{"query": "Locate changes in the port area.", "intent": "CHANGE_DETECT"}
+{"query": "Highlight the regions that changed the most.", "intent": "CHANGE_DETECT"}
+{"query": "Detect building changes.", "intent": "CHANGE_DETECT"}
+{"query": "Where did new roads appear?", "intent": "CHANGE_DETECT"}
+{"query": "Map areas of growth in the city.", "intent": "CHANGE_DETECT"}
+{"query": "Change detection between these two scenes.", "intent": "CHANGE_DETECT"}
+{"query": "Show where the glacier retreated.", "intent": "CHANGE_DETECT"}
+{"query": "Find areas that turned from vegetation to built-up.", "intent": "CHANGE_DETECT"}
+{"query": "Where is the new development?", "intent": "CHANGE_DETECT"}
+{"query": "Detect changes in the mining area.", "intent": "CHANGE_DETECT"}
+{"query": "Show the difference map.", "intent": "CHANGE_DETECT"}
+{"query": "Map where buildings were destroyed.", "intent": "CHANGE_DETECT"}
+{"query": "Where has land been reclaimed from the sea?", "intent": "CHANGE_DETECT"}
+{"query": "Locate new industrial buildings.", "intent": "CHANGE_DETECT"}
+{"query": "Did the lake shrink?", "intent": "CHANGE_VQA"}
+{"query": "How much has the city grown?", "intent": "CHANGE_VQA"}
+{"query": "What changed between the two images?", "intent": "CHANGE_VQA"}
+{"query": "Did new buildings appear?", "intent": "CHANGE_VQA"}
+{"query": "Is the water level higher in the second image?", "intent": "CHANGE_VQA"}
+{"query": "How much farmland was lost between the two dates?", "intent": "CHANGE_VQA"}
+{"query": "Has anything changed here?", "intent": "CHANGE_VQA"}
+{"query": "Did construction happen in this area?", "intent": "CHANGE_VQA"}
+{"query": "Has the river changed course?", "intent": "CHANGE_VQA"}
+{"query": "Which image has more buildings?", "intent": "CHANGE_VQA"}
+{"query": "Is the second image greener?", "intent": "CHANGE_VQA"}
+{"query": "Has the coastline eroded?", "intent": "CHANGE_VQA"}
+{"query": "Has the reservoir filled up?", "intent": "CHANGE_VQA"}
+{"query": "Is the crop cover different in the second date?", "intent": "CHANGE_VQA"}
+{"query": "Did the mine grow?", "intent": "CHANGE_VQA"}
+{"query": "What is the percentage change in vegetation?", "intent": "CHANGE_VQA"}
+{"query": "Did the settlement expand towards the river?", "intent": "CHANGE_VQA"}
+{"query": "Did the harbour get busier?", "intent": "CHANGE_VQA"}
+{"query": "How has the land use changed?", "intent": "CHANGE_VQA"}
+{"query": "Was the bridge built between these dates?", "intent": "CHANGE_VQA"}
+{"query": "How much area changed from water to land?", "intent": "CHANGE_VQA"}
+{"query": "What changed between the optical and SAR images?", "intent": "CROSS_MODAL"}
+{"query": "Use both Sentinel-1 and Sentinel-2 to map the flood.", "intent": "CROSS_MODAL"}
+{"query": "Fuse the SAR and optical data to detect ships.", "intent": "CROSS_MODAL"}
+{"query": "What does the SAR show that the optical image doesn't?", "intent": "CROSS_MODAL"}
+{"query": "Cross-check the water extent between radar and optical.", "intent": "CROSS_MODAL"}
+{"query": "Compare backscatter with NDVI.", "intent": "CROSS_MODAL"}
+{"query": "Do the optical and SAR images agree on the flood extent?", "intent": "CROSS_MODAL"}
+{"query": "Analyse both the radar and optical scenes together.", "intent": "CROSS_MODAL"}
+{"query": "Which sensor shows the ships better, SAR or optical?", "intent": "CROSS_MODAL"}
+{"query": "Joint analysis of Sentinel-1 and Sentinel-2.", "intent": "CROSS_MODAL"}
+{"query": "Map flooding using radar where the optical is cloudy.", "intent": "CROSS_MODAL"}
+{"query": "Detect oil spills using SAR and confirm with optical.", "intent": "CROSS_MODAL"}
+{"query": "Fuse the two modalities and describe the scene.", "intent": "CROSS_MODAL"}
+{"query": "Is there anything in the SAR image not visible in the optical one?", "intent": "CROSS_MODAL"}
+{"query": "Combine the radar and optical images to find the coastline.", "intent": "CROSS_MODAL"}
+{"query": "Corroborate the optical change map with the SAR data.", "intent": "CROSS_MODAL"}
+{"query": "Explain the differences between the SAR and optical views.", "intent": "CROSS_MODAL"}
+{"query": "Multi-sensor flood mapping with Sentinel-1 and Sentinel-2.", "intent": "CROSS_MODAL"}
+{"query": "Confirm the urban extent with radar backscatter.", "intent": "CROSS_MODAL"}
+{"query": "Does the radar agree with the optical water mask?", "intent": "CROSS_MODAL"}
+{"query": "Look at both sensors and tell me if the dam is intact.", "intent": "CROSS_MODAL"}
+{"query": "Overlay the radar detections on the optical image.", "intent": "CROSS_MODAL"}
+{"query": "What does the SAR reveal about the built-up area seen in the optical?", "intent": "CROSS_MODAL"}
+{"query": "Combine both images, one radar and one optical.", "intent": "CROSS_MODAL"}
+{"query": "Is the SAR flood extent larger than the optical one?", "intent": "CROSS_MODAL"}
+{"query": "Use the radar to verify the ships found in the optical image.", "intent": "CROSS_MODAL"}
+{"query": "Do the two sensors show the same coastline?", "intent": "CROSS_MODAL"}
+{"query": "Interpret the SAR alongside the optical scene.", "intent": "CROSS_MODAL"}
+{"query": "Fuse Sentinel-1 backscatter with Sentinel-2 indices.", "intent": "CROSS_MODAL"}
+{"query": "Where do the radar and optical images disagree?", "intent": "CROSS_MODAL"}
+{"query": "Compare radar and optical for the mining site.", "intent": "CROSS_MODAL"}
+{"query": "Show the region responsible for your answer.", "intent": "EVIDENCE_RECALL"}
+{"query": "Which area did you base that on?", "intent": "EVIDENCE_RECALL"}
+{"query": "Show me what you found earlier in the north-east.", "intent": "EVIDENCE_RECALL"}
+{"query": "Where did that number come from?", "intent": "EVIDENCE_RECALL"}
+{"query": "Point to the pixels behind the area estimate.", "intent": "EVIDENCE_RECALL"}
+{"query": "What did you find in the south of the scene?", "intent": "EVIDENCE_RECALL"}
+{"query": "Show me the mask you used.", "intent": "EVIDENCE_RECALL"}
+{"query": "What was the confidence of your previous answer?", "intent": "EVIDENCE_RECALL"}
+{"query": "Which part of the image made you say it was flooded?", "intent": "EVIDENCE_RECALL"}
+{"query": "Highlight the areas you counted.", "intent": "EVIDENCE_RECALL"}
+{"query": "What was the area you reported before?", "intent": "EVIDENCE_RECALL"}
+{"query": "Zoom to the region you flagged.", "intent": "EVIDENCE_RECALL"}
+{"query": "Which detections did you use for the count?", "intent": "EVIDENCE_RECALL"}
+{"query": "Recall the evidence from the last query.", "intent": "EVIDENCE_RECALL"}
+{"query": "Show me the map behind your answer.", "intent": "EVIDENCE_RECALL"}
+{"query": "Which bands were used in the last computation?", "intent": "EVIDENCE_RECALL"}
+{"query": "Go back to what you found in the west.", "intent": "EVIDENCE_RECALL"}
+{"query": "Justify the number you gave.", "intent": "EVIDENCE_RECALL"}
+{"query": "Show the evidence layer for the flood answer.", "intent": "EVIDENCE_RECALL"}
+{"query": "Point me to the evidence.", "intent": "EVIDENCE_RECALL"}
+{"query": "Retrieve the mask from the previous answer.", "intent": "EVIDENCE_RECALL"}
+{"query": "What supports your claim about the harbour?", "intent": "EVIDENCE_RECALL"}
+{"query": "Show the region you used earlier.", "intent": "EVIDENCE_RECALL"}

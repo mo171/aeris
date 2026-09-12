@@ -95,9 +95,10 @@ async def fetch_weights(source: WeightsSource) -> Path:
     return await asyncio.to_thread(_download_file, source)
 
 
-async def fetch_repository(source: WeightsSource) -> Path:
-    """A whole repository snapshot - what `transformers.from_pretrained` wants - at the pinned revision."""
-    return await asyncio.to_thread(_download_repository, source)
+async def fetch_repository(source: WeightsSource, *, allow_patterns: tuple[str, ...] | None = None) -> Path:
+    """A whole repository snapshot - what `transformers.from_pretrained` wants - at the pinned revision.
+    `allow_patterns` narrows it: a repository that ships the same weights three ways is fetched once."""
+    return await asyncio.to_thread(_download_repository, source, allow_patterns)
 
 
 def _download_file(source: WeightsSource) -> Path:
@@ -120,7 +121,7 @@ def _download_file(source: WeightsSource) -> Path:
     return Path(path)
 
 
-def _download_repository(source: WeightsSource) -> Path:
+def _download_repository(source: WeightsSource, allow_patterns: tuple[str, ...] | None = None) -> Path:
     from huggingface_hub import snapshot_download
     from huggingface_hub.errors import HfHubHTTPError
 
@@ -128,6 +129,7 @@ def _download_repository(source: WeightsSource) -> Path:
         path = snapshot_download(
             repo_id=source.repository,
             revision=source.revision,
+            allow_patterns=list(allow_patterns) if allow_patterns else None,
             cache_dir=settings.model_weights_path,
             token=settings.huggingface_token.get_secret_value() if settings.huggingface_token else None,
         )

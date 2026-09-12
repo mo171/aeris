@@ -1,0 +1,35 @@
+{"query": "hey aeris so i have this image of a port, tell me how many ships are docked and also how many storage tanks there are near the jetty", "intents": ["DETECT"]}
+{"query": "ok can u check if this is an urban area or not and then map the built-up extent in hectares", "intents": ["SCENE_VQA", "INDEX_QUERY"]}
+{"query": "please compare these two images and highlight where the forest was cleared, and tell me how much forest area was lost", "intents": ["CHANGE_DETECT", "CHANGE_VQA"]}
+{"query": "i need the ndwi map of this tile and after that count the boats on the lake", "intents": ["INDEX_QUERY", "DETECT"]}
+{"query": "locate the airport runway and then count the aircraft parked next to it", "intents": ["GROUND", "DETECT"]}
+{"query": "what kind of terrain is this, is it hilly, and are there any roads visible", "intents": ["SCENE_VQA"]}
+{"query": "show me where the vegetation is unhealthy in the south west and give me its area, and also tell me if there is a river nearby", "intents": ["INDEX_QUERY", "SCENE_VQA"]}
+{"query": "use the sar and optical together to map the flood and then tell me which sensor showed it better", "intents": ["CROSS_MODAL"]}
+{"query": "segment the water and the buildings and then tell me what percentage of the tile is water", "intents": ["SEGMENT", "INDEX_QUERY"]}
+{"query": "why did u say the built-up area was 2400 hectares, show me the region behind that number", "intents": ["EVIDENCE_RECALL"]}
+{"query": "has the reservoir dried up since 2021 and where exactly has the shoreline moved", "intents": ["CHANGE_VQA", "CHANGE_DETECT"]}
+{"query": "count the trucks on the highway and the cars in the parking lot, and mark where the roundabout is", "intents": ["DETECT", "GROUND"]}
+{"query": "describe this scene for me and then find the largest bridge in it", "intents": ["SCENE_VQA", "GROUND"]}
+{"query": "give me the ndvi and the nbr for this scene and tell me if there was a fire recently", "intents": ["INDEX_QUERY", "INDEX_QUERY", "SCENE_VQA"]}
+{"query": "how many helicopters are on the helipad, and is the helipad on top of a building", "intents": ["DETECT", "SCENE_VQA"]}
+{"query": "alright first detect the planes, then tell me how many there are, then show me where the biggest one is", "intents": ["DETECT"]}
+{"query": "is there open water in this image and how much of it is there in hectares", "intents": ["SCENE_VQA", "INDEX_QUERY"]}
+{"query": "compare the radar image with the optical one and say whether the ships you find in the optical are also in the radar", "intents": ["CROSS_MODAL"]}
+{"query": "map the burn scar with nbr and then outline the coastline for me", "intents": ["INDEX_QUERY", "SEGMENT"]}
+{"query": "what did you find in the north east earlier and how confident were you about it", "intents": ["EVIDENCE_RECALL"]}
+{"query": "aeris please look at this image and tell me first of all is this a coastal city, then how many ships are there in the port and finally give me the area of vegetation in hectares", "intents": ["SCENE_VQA", "DETECT", "INDEX_QUERY"]}
+{"query": "so what i want is basically a map of the water bodies and after that i want to know how many bridges cross the river", "intents": ["INDEX_QUERY", "DETECT"]}
+{"query": "compare the 2019 and the 2023 images, highlight the new buildings and then tell me by roughly what percentage the built-up area increased", "intents": ["CHANGE_DETECT", "CHANGE_VQA"]}
+{"query": "can you locate the stadium for me and also count the cars parked around it", "intents": ["GROUND", "DETECT"]}
+{"query": "i want the ndvi map, and then in the north east tell me how much of the vegetation is stressed", "intents": ["INDEX_QUERY", "INDEX_QUERY"]}
+{"query": "is there a runway in this picture, and if there is, how many planes are on it", "intents": ["SCENE_VQA", "DETECT"]}
+{"query": "outline the buildings, then give me a land cover map, and finally tell me if this is an industrial area", "intents": ["SEGMENT", "SCENE_VQA"]}
+{"query": "use the radar image and the optical image together and tell me if the flood extent matches, and where they disagree", "intents": ["CROSS_MODAL"]}
+{"query": "the number you gave for the water area earlier, where did it come from, show me those pixels", "intents": ["EVIDENCE_RECALL"]}
+{"query": "did the glacier retreat between these two dates and by how much, and show me the change map", "intents": ["CHANGE_VQA", "CHANGE_DETECT"]}
+{"query": "describe the scene briefly, count the storage tanks, and tell me whether the tanks are near the coast", "intents": ["SCENE_VQA", "DETECT", "SCENE_VQA"]}
+{"query": "hey give me the burn scar area from nbr and then count the helicopters at the base", "intents": ["INDEX_QUERY", "DETECT"]}
+{"query": "map where the vegetation is dense and healthy and also where the water is, then tell me what fraction of the scene is built up", "intents": ["INDEX_QUERY", "INDEX_QUERY", "INDEX_QUERY"]}
+{"query": "find every swimming pool in this neighbourhood, count them, and show me the biggest one", "intents": ["DETECT"]}
+{"query": "has anything changed in the harbour since last year, and if yes show me where", "intents": ["CHANGE_VQA", "CHANGE_DETECT"]}
