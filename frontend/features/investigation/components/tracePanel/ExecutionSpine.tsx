@@ -30,13 +30,22 @@ import { cn } from "@/lib/utils";
 import { useInvestigationStore } from "../../store/investigation-store";
 import type { AnalysisRun } from "../../types/analysis.types";
 import { TraceStepNode } from "./TraceStepNode";
+import { AnalysisCanvas } from "./AnalysisCanvas";
+import type { Claim } from "../../schemas/evidence.schema";
+import type { EvidenceLayer } from "../../schemas/layer.schema";
+import type { SceneAcquisition } from "../../schemas/acquisition.schema";
 
 interface ExecutionSpineProps {
   run: AnalysisRun | null;
+  layersById: Map<string, EvidenceLayer>;
+  claimsById: Map<string, Claim>;
+  sceneSlots: readonly SceneAcquisition[];
 }
 
-export function ExecutionSpine({ run }: ExecutionSpineProps) {
+export function ExecutionSpine({ run, layersById, claimsById, sceneSlots }: ExecutionSpineProps) {
   const isExpanded = useInvestigationStore((state) => state.isTraceExpanded);
+  const traceView = useInvestigationStore((state) => state.traceView);
+  const setTraceView = useInvestigationStore((state) => state.setTraceView);
   const toggleTraceExpanded = useInvestigationStore((state) => state.toggleTraceExpanded);
   const artefactLayerId = useInvestigationStore((state) => state.artefactLayerId);
 
@@ -110,32 +119,63 @@ export function ExecutionSpine({ run }: ExecutionSpineProps) {
       </header>
 
       {isExpanded ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          <ol className="flex flex-col gap-0.5">
-            {steps.map((step) => (
-              <li key={step.id}>
-                <TraceStepNode
-                  step={step}
-                  variant="row"
-                  isArtefactActive={artefactLayerId === step.artefactLayerId}
-                  onPeekArtefact={handleArtefactPeek}
-                />
-              </li>
-            ))}
-          </ol>
+        traceView === "canvas" ? (
+          <div className="flex-1 min-h-0 relative">
+            <div className="absolute top-2 right-2 z-10">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTraceView("rows")}
+                className="bg-background/80 backdrop-blur"
+              >
+                Show Rows
+              </Button>
+            </div>
+            <AnalysisCanvas
+              run={run}
+              layersById={layersById}
+              claimsById={claimsById}
+              sceneSlots={sceneSlots}
+            />
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            <div className="flex justify-end mb-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTraceView("canvas")}
+                className="h-7 text-xs"
+              >
+                Show Canvas
+              </Button>
+            </div>
+            <ol className="flex flex-col gap-0.5">
+              {steps.map((step) => (
+                <li key={step.id}>
+                  <TraceStepNode
+                    step={step}
+                    variant="row"
+                    isArtefactActive={artefactLayerId === step.artefactLayerId}
+                    onPeekArtefact={handleArtefactPeek}
+                  />
+                </li>
+              ))}
+            </ol>
 
-          {artefactLayerId !== null ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="mt-1 h-6 text-aeris-teal"
-              onClick={() => void dispatchCommand(COMMAND_IDS.investigation.clearArtefact)}
-            >
-              Clear inspected output
-            </Button>
-          ) : null}
-        </div>
+            {artefactLayerId !== null ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="mt-1 h-6 text-aeris-teal"
+                onClick={() => void dispatchCommand(COMMAND_IDS.investigation.clearArtefact)}
+              >
+                Clear inspected output
+              </Button>
+            ) : null}
+          </div>
+        )
       ) : null}
     </section>
   );

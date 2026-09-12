@@ -165,6 +165,8 @@ interface InvestigationState {
 
   // ── Panels ───────────────────────────────────────────────────────────────────────────────────────
   isTraceExpanded: boolean;
+  traceView: "rows" | "canvas";
+  selectedNodeId: string | null;
   isReportOpen: boolean;
   activePlan: AnalysisPlan | null;
 
@@ -224,6 +226,8 @@ interface InvestigationState {
   setActiveRegionId: (regionId: string | null) => void;
 
   toggleTraceExpanded: (isExpanded?: boolean) => void;
+  setTraceView: (traceView: "rows" | "canvas") => void;
+  setSelectedNodeId: (nodeId: string | null) => void;
   setReportOpen: (isOpen: boolean) => void;
   setActivePlan: (plan: AnalysisPlan | null) => void;
   togglePlanStep: (stepId: string) => void;
@@ -295,6 +299,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   activeRegionId: null,
 
   isTraceExpanded: false,
+  traceView: "rows",
+  selectedNodeId: null,
   isReportOpen: false,
   activePlan: null,
 
@@ -333,6 +339,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       drawnRegions: [],
       activeRegionId: null,
       isTraceExpanded: false,
+      traceView: "rows",
+      selectedNodeId: null,
       isReportOpen: false,
       activePlan: null,
       runs: [],
@@ -495,6 +503,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
 
   toggleTraceExpanded: (isExpanded) =>
     set((state) => ({ isTraceExpanded: isExpanded ?? !state.isTraceExpanded })),
+  setTraceView: (traceView) => set({ traceView }),
+  setSelectedNodeId: (selectedNodeId) => set({ selectedNodeId }),
   setReportOpen: (isReportOpen) => set({ isReportOpen }),
   setActivePlan: (activePlan) => set({ activePlan }),
 

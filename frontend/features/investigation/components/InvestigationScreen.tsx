@@ -72,6 +72,7 @@ import { InvestigationHeader } from "./header/InvestigationHeader";
 import { LeftPanelTabs } from "./inputsPanel/LeftPanelTabs";
 import { ReportDrawer } from "./report/ReportDrawer";
 import { ExecutionSpine } from "./tracePanel/ExecutionSpine";
+import { StepInspector } from "./inspector/StepInspector";
 import { CameraControls } from "./viewer/CameraControls";
 import { DrawToolbar } from "./viewer/DrawToolbar";
 import { EvidenceLegend } from "./viewer/EvidenceLegend";
@@ -541,6 +542,11 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
                 </div>
               ) : null}
 
+              {/* Node Inspector pops up on the left side, below the legend */}
+              <div className="pointer-events-auto absolute top-16 left-0 z-10 h-[600px] max-h-[calc(100vh-200px)]">
+                <StepInspector run={runs.at(-1) ?? null} />
+              </div>
+
               <div className="flex-1" aria-hidden="true" />
 
               <SceneReadout />
@@ -610,7 +616,12 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
           </div>
 
           <PanelErrorBoundary panelName="Execution trace">
-            <ExecutionSpine run={runs.at(-1) ?? null} />
+            <ExecutionSpine
+              run={runs.at(-1) ?? null}
+              layersById={graph.layersById}
+              claimsById={graph.claimsById}
+              sceneSlots={investigation.sceneSlots}
+            />
           </PanelErrorBoundary>
         </div>
       )}
