@@ -58,7 +58,7 @@ from app.services.pipeline.node import (
     describe_trace_step,
     pipeline_node,
 )
-from app.services.pipeline.state import IndexQueryState, MeasurementState
+from app.services.pipeline.state import AnalysisState, MeasurementState
 from app.services.pipeline.stream import emit
 from app.services.rendering.figures import render_mask_overlay, render_rgb_composite
 from app.services.spectral.indices import locate_bands, read_scene_bands
@@ -75,7 +75,7 @@ TRUE_COLOUR_ROLES = (BandRole.RED, BandRole.GREEN, BandRole.BLUE)
     model_id=ModelId.GEOSPATIAL_ENGINE,
     model_version=GEOSPATIAL_ENGINE_VERSION,
 )
-async def localise_evidence(state: IndexQueryState) -> dict[str, object]:
+async def localise_evidence(state: AnalysisState) -> dict[str, object]:
     """S15. Threshold, measure against observed ground, retain, vectorise, claim, draw."""
     index = SpectralIndex(state["index"])
     run_id = state["run_id"]
@@ -171,7 +171,7 @@ def _emit_evidence(run_id: str, evidence: RegionEvidence) -> None:
 
 
 async def _draw(
-    state: IndexQueryState,
+    state: AnalysisState,
     detected: np.ndarray,
     quantity_label: str,
     crs: str,

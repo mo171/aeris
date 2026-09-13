@@ -1,3 +1,133 @@
+## Session — 2026-09-13 (1.10) · **The graphs.** Every specialist a branch of one state; inputs one vocabulary; the gate measured against sixty pairs and rewritten.
+
+Two graphs (`single-image`, `temporal`) replace the 1.4 index-query graph and the agent's model-calling
+tools; the cross-modal graph moves to 1.11 with the radar branch it would fuse, because a fan-in with
+nothing to join is a placeholder. `roadmap.md` 1.10 has the runs and the numbers.
+
+### Measured rather than assumed
+
+- **LangGraph filters a node's input by its parameter annotation.** A node typed with a narrower
+  TypedDict than the graph's sees holes: S19 recorded no detection artefacts from a checkpoint that held
+  them. Annotate every node with the graph's full state (`node.py` header).
+- **Change breaks phase correlation, and RMS cannot tell it from misregistration.** The 1.3 residual was
+  32 px on a LEVIR-CD pair registered to ~2 px. Median tile disagreement, whole-frame correlation with a
+  quorum, and ORB+RANSAC were each measured on sixty pairs and forty deliberately offset ones; the first
+  two in turn is the gate now, the tolerance is 5 m on the ground in the grid's pixels, and the
+  systematic shift is gated too. What no route can measure is refused with the numbers and admitted only
+  on the operator's declaration (`--registered`), recorded as a declaration.
+- **The resolution gate must apply to the output.** The detector asked for bridges at 10 m also drew
+  planes; the gate on the question does not stop a model from drawing what it cannot see. Boxes below
+  the gate stay in the artefact and out of the claims.
+- **Models out of their training resolution answer confidently and wrongly.** LoveDA's segmenter at
+  10 m: 77% of Mumbai is "background". ChangeFormer at 10 m: the tide is change. The pipeline reports
+  the model's confidence and the roadmap names the fix (10 m-trained models); in their own domain both
+  are right (LEVIR pair F1 0.805 in the graph).
+- **A label for a class that was not drawn makes the VLM describe boxes that are not there.** Read what is
+  drawn; read nothing when nothing is.
+- **Hectare decimals are a property of the pixel** (1 at 10 m, 4 at 0.5 m), and a COG's profile must not
+  be a JPEG's (`PHOTOMETRIC=YCBCR` on one band fails to write).
+- **The guard's rules belong in the prompt.** The model dropped a supporting finding and rounded 0.56 to
+  0.5 until told: every placeholder once, figures copied or left out.
+
+---
+
+## Session — 2026-09-13 (1.9 review) · **The instance fix was not the class fix.** Enrich the previous step; provenance is not an answer; dedupe by id; the template speaks to the operator.
+
+The product owner reviewed a pre-fix record and named the class of each defect where I had fixed the
+instance: "their area" -> pronoun rule (instance) vs *any* property follow-up enriches the previous step
+(class); recall reading earlier requests only (instance) vs claims unique by id at synthesis (class);
+the recall's metadata sentence (in the claims) vs provenance on the step result (class). All four are
+in `roadmap.md` 1.9.
+
+### Measured rather than assumed
+
+- **A framing sentence passed as a fact is reproduced verbatim** - the guard requires facts to be
+  honoured, so the model wrote "Earlier in this conversation the analysis found the following." in
+  the middle of the answer. Wording context is a `notes` argument to `phrase_claims`, never a fact.
+- **The bare word "area" is a place-word half the time** ("industrial area"); as a measurement cue it
+  needs "the/its/total ... area" or "area of/in". Found by the compound gate dropping to 0.971.
+- **A perception question that mentions an area is its own step** ("is the area near the coast built
+  up?"); only an undecided clause is read as a property of the step before.
+
+---
+
+## Session — 2026-09-13 (1.9, the agent) · **The model routes nothing.** It arbitrates 3 questions in 330, phrases a plan it did not write, phrases claims it did not measure, and names ids that are checked.
+
+`init_chat_model` behind two settings; understand -> plan -> approve (`interrupt()`) -> execute -> synthesise;
+tools dispatched by the routing table; `aeris agent`. Numbers in `roadmap.md` 1.9.
+
+### Measured rather than assumed
+
+- **Bare, gpt-5-mini classified "how many ships are there" as SCENE_VQA.** The policy has to be in the
+  prompt, and even then the rule fires first; the arbiter sees only uncertain margins.
+- **With the arbiter on, the gates do not move** (0.991 / 1.000 / 1.000): three calls across 330
+  questions. The tests that were green stay green because the model is added behind the router, not in it.
+- **A 19-numeral answer, every numeral a claim's or the refusal's**, checked over `record.json` - the
+  guard `phrase_claims` was built for the VLM and did not change for the LLM.
+- **Running found five defects the unit tests did not** (their/its pronouns, no GSD in the agent, recall
+  echoing the current request, "vegetation is stressed" word order, `Command(resume=None)`). Each was a
+  line; each is a test now.
+- **`.env` is not the process environment**: the OpenAI client could not see `OPENAI_API_KEY` until the
+  key was passed explicitly; LangSmith's variables are exported by `lib/llm/tracing.py`, the one place
+  the process writes to `os.environ`.
+- **Heredocs through the Bash tool un-escape `\\`**: three regex edits lost their `\b`. Regex edits go
+  through the Write tool, full stop.
+
+---
+
+## Session — 2026-09-12 (1.8, compound requests) · 0 of 11 -> 35 of 35, with the untouched scores stated. **A voice request is a plan, not a question.**
+
+Filler off, clauses split, each routed, pronouns bound to the clause before, same asks merged. `aeris ask`
+answers step by step; `aeris analyse` runs a graph per index step. Numbers in `roadmap.md` 1.8.
+
+### Measured rather than assumed
+
+- **The single-intent router answered the loudest clause** of a compound request and nothing else - 0 of
+  11. Nothing in the classifier was wrong; the unit of routing was.
+- **Untouched fresh batches scored 0.50 and 0.67 exact**; every error was a table gap in the decomposer
+  (connector words, a filler phrase, `its` folded to "it is", "there" as a pronoun, no split on "the ndvi
+  and the nbr") and each fix is a line in a table. Reported both numbers rather than the 1.000 after.
+- **Merging is a product decision**: "how many ships and how many tanks" is one detector run; "find the
+  planes, where are they, how many" is one step with three wants. The labels were changed to say so.
+- **Context carries forward by kind**: a pair named early ("compare these two images") makes a later
+  cue-less clause a change question; both sensors named early makes "tell me if the flood extent
+  matches" cross-modal; a spectral target is inherited only into an index step or an area ask, so "show
+  me those pixels" after an evidence question stays evidence.
+- **`\b` through a heredoc is a backspace byte, again.** Regex edits go through the Write tool only.
+- **Segformer peaks at 645 MB after the other models** (declared 640); declared 704, both measurements noted.
+
+---
+
+## Session — 2026-09-12 (1.8, routing) · 0.991 held-out, 1.000 fresh. **Counting is a routing rule, and a pixel has to hold the object.**
+
+Cues narrow to a family, a kNN over a 215-question bank (bge-small, CPU, 10 ms) chooses within it, a
+table names the tool and the graph, four validations refuse with reasons. `aeris route`, and routing in
+front of `aeris ask` / `aeris analyse`. Numbers and the counting demonstration are in `roadmap.md` 1.8.
+
+### Measured rather than assumed
+
+- **Rules alone: 0.936; kNN alone: 0.766; together 0.991.** The kNN alone confuses families (GROUND vs
+  DETECT vs SCENE_VQA share wording); the rules alone leave a tenth of questions to a default. The cascade
+  is the design, not a compromise: rules where a mistake must be impossible, neighbours where wording varies.
+- **A `\b` written through a heredoc becomes a backspace byte.** Three regexes silently matched nothing
+  ("where is", "draw a box", "coordinates of") and the errors looked like kNN errors. Found by testing a
+  cue in isolation; fixed with `sed`. Patch scripts that write regexes go through the Write tool.
+- **The VLM said 2 where the label file says 3** (basketball courts, DOTA8 crop) - the live case for
+  routing counts to the detector, beside 1.7's 0.23.
+- **A count's object is the one before the locative** ("ships in the harbour" counts ships, the harbour
+  is context); a spectral word in a yes/no question is a perception question ("Is this a rural or urban
+  area?" is not an NDBI query); an index named outright settles the intent whatever else is said.
+- **The held-out score was tuned against** (three passes); the fresh file was tuned against once. Both
+  said in the roadmap. The true test is a judge's phrasing; the fresh file's register is the nearest.
+- **ChangeFormer peaks at 517 MB when loaded after the detector** in one process (allocator residue);
+  declared 512. Declared 576 now, both measurements in the comment.
+
+### Owed
+
+- The graphs the routing table names `None` for (1.10); the LLM arbiter for uncertain margins (1.9).
+
+---
+
 ## Session — 2026-09-13 (1.7, the adapter) · Overall 0.28 -> 0.53 on human-verified rows. **It learned "Lithuania" anyway, and it cannot phrase.**
 
 The LoRA trained (21,600 rows, 242 min, T4, val loss 0.375 -> 0.340) and was scored on the same rows as

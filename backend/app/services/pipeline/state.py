@@ -31,6 +31,18 @@ from operator import add
 from typing import Annotated, Any, NotRequired, TypedDict
 
 
+def unique_by_path(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reducer for `input_files`: every stage that reads a file records it, and a file read by two
+    stages (the red band, by S12 for an index and by S13 for a picture) is recorded once."""
+    merged = list(left)
+    known = {record.get("path") for record in merged}
+    for record in right:
+        if record.get("path") not in known:
+            merged.append(record)
+            known.add(record.get("path"))
+    return merged
+
+
 class PipelineState(TypedDict, total=False):
     """The state one run carries from its first node to its last."""
 
@@ -85,8 +97,9 @@ class MeasurementState(TypedDict):
     1.5 lifts this dictionary into claim metrics and a rename across that boundary is the bug
     `code-standards.md` §3 forbids."""
 
-    areaHectares: float
-    observedHectares: float
+    # `None` over a picture with no grid and no declared pixel size: pixels were counted, ground was not.
+    areaHectares: float | None
+    observedHectares: float | None
     coverageFraction: float
     pixelCount: int
     regionCount: int
@@ -135,8 +148,10 @@ class IndexQueryState(PipelineState, total=False):
     index_figure_id: str
     # The tile layer over the index artefact - what the S12 trace step's `artefactLayerId` names.
     index_layer_id: str
-    # `InputFileRecord`s in wire form: every band file read, with its hash (PDF §21.2).
-    input_files: list[dict[str, Any]]
+    # `InputFileRecord`s in wire form: every file a stage read, with its hash (PDF §21.2). Accumulated by
+    # the stages that read - S7 the classification layer, S12 the index bands, S13/S14 the picture's
+    # bands or file - and never by a stage that only looked at a header.
+    input_files: Annotated[list[dict[str, Any]], unique_by_path]
 
     # S15.
     mask_path: str | None
@@ -166,3 +181,108 @@ class IndexQueryState(PipelineState, total=False):
     confidence_aggregation_rule: str
     provenance_path: str
     evidence_graph_path: str
+
+
+class AnalysisState(IndexQueryState, total=False):
+    """`IndexQueryState` plus what the 1.10 graphs carry: what was handed in (S1), and what the detector,
+    the segmenter and the change model produced (S13) for S15 to bind to ground.
+
+    The index-query keys are inherited unchanged - `scene_directory`, `scene_id`, `declared_level`, the
+    target - because the single-image graph *is* the index-query graph when the intent is an index, and
+    one state means one set of nodes. Every key below is read by a node or by S19; the rule from the
+    header holds: data only, wire form for anything a record copies.
+    """
+
+    # --- Set by the caller. --------------------------------------------------------------------------------
+    # The operator's declared pixel size for a picture with no grid, metres; `None` means not declared.
+    declared_resolution_metres: float | None
+    # Whether the primary input is radar (a picture cannot say so itself).
+    is_sar: bool
+    # The earlier date of a pair (temporal graph): a scene directory or an image file, and its flags.
+    reference_directory: str
+    reference_scene_id: str
+    reference_is_sar: bool
+    # The operator's word that the pair is co-registered (a benchmark its authors aligned): S9 measures
+    # and records regardless, and admits the pair on the declaration when the measurement cannot.
+    declared_registered: bool
+    # The specialist the router chose (a `ModelId` value): GROUND goes to the detector for a class it
+    # knows and to the VLM for a phrase it does not, and the graph's edge reads this to tell them apart.
+    tool: str | None
+    # What the question asked for, from the router's entities: the detector classes, and whether a
+    # location was wanted (S15 then states where the best-scoring one is).
+    objects: list[str]
+    wants_location: bool
+    # The land-cover class names the question resolved to (SEGMENT); empty means every class.
+    classes: list[str]
+
+    # --- S1. `AnalysisInput.to_wire()` per input, primary first; the primary's grid facts for S13/S15. ------
+    input_records: list[dict[str, Any]]
+    georeferenced: bool
+    crs: str | None
+    transform: list[float]
+    resolution_metres: float | None
+    resolution_declared: bool
+    # `InputKind` value of the primary input: a scene directory runs S7, a picture does not.
+    input_kind: str
+    modality: str
+
+    # --- S7 over the reference date (temporal graph); the primary date uses the inherited keys. -------------
+    reference_cloud_mask_path: str | None
+    reference_cloud_mask_object_key: str | None
+    reference_obscured_fraction: float | None
+
+    # --- S13 detection. Boxes in wire form: class name, score, four pixel corners. ---------------------------
+    detections: list[dict[str, Any]]
+    detections_path: str
+    detections_object_key: str
+    detections_storage_uri: str
+    detection_figure_id: str | None
+    detection_layer_id: str | None
+    detection_counts: dict[str, int]
+    # Boxes S15 left out of the claims because their class cannot span enough pixels at this resolution.
+    detections_below_resolution: dict[str, int]
+    detection_score_threshold: float
+    frame_observed_fraction: float
+    frame_figure_id: str | None
+
+    # --- S13 segmentation. The class map and the model's per-pixel confidence, both retained. ----------------
+    class_map_path: str
+    class_map_object_key: str
+    class_map_storage_uri: str
+    class_confidence_path: str
+    class_confidence_object_key: str
+    class_confidence_storage_uri: str
+    class_names: list[str]
+    # Share of observed pixels per class name, and the mean confidence per class.
+    class_fractions: dict[str, float]
+    class_mean_confidence: dict[str, float]
+    class_confidence_layer_id: str | None
+    class_confidence_figure_id: str | None
+    segmentation_confidence: float | None
+
+    # --- S9 (temporal). The co-registration measurement in wire form, and whether it admitted the pair. ------
+    registration: dict[str, Any]
+
+    # --- S13 change. -----------------------------------------------------------------------------------------
+    change_probability_path: str
+    change_probability_object_key: str
+    change_probability_storage_uri: str
+    change_mask_path: str
+    change_mask_object_key: str
+    change_mask_storage_uri: str
+    change_threshold: float
+    change_confidence: float | None
+    change_model_id: str
+    change_model_version: str
+    changed_fraction: float
+    change_probability_figure_id: str | None
+    comparison_figure_id: str | None
+    change_layer_id: str | None
+
+    # --- S15, any branch: which figure the run stands behind, for S14 to read and the record to name. --------
+    primary_figure_id: str | None
+    # Artefacts a stage retained beyond the named keys above - one mask per land-cover class, say - as
+    # `ArtefactRecord`s in wire form, for S19. `add`, because a stage may retain several.
+    artefact_records: Annotated[list[dict[str, Any]], add]
+    # Figures in the order they were drawn, for S19; every renderer's id lands here.
+    figure_ids: Annotated[list[str], add]

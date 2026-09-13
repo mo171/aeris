@@ -2,7 +2,7 @@
 
 what  : `FigureReadyEvent`, `FigureLegend`, `LegendEntry` and `RenderSpec`.
 where : Emitted by `services/rendering/figures.py` on the analysis and assistant streams. Consumed by
-        `cli/renderers/figure_writer.py` in Phase 1, and by the frontend's figure panel in Phase 2.
+        `services/sessions/figure_writer.py` in Phase 1, and by the frontend's figure panel in Phase 2.
 how   : `api-contract.md` §6, and its eight rules are what shapes every field below. Three of them are
         enforced by the model itself rather than left to a caller to remember.
 

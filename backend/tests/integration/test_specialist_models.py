@@ -184,10 +184,15 @@ async def test_declared_footprints_are_not_smaller_than_measured(manager: ModelM
         (ModelId.DOTA_DETECTOR, lambda m: m.predict(np.zeros((1024, 1024, 3), dtype=np.uint8))),
     ):
         await manager.unload_all()
+        # The model's own footprint: what it adds over whatever earlier tests left resident in the
+        # allocator. Measured absolute, this test failed by 5-10 MB depending on which models the suite
+        # had loaded before it (memory.md 2026-09-12); the budget is per model, so the baseline is subtracted.
+        torch.cuda.empty_cache()
+        baseline = torch.cuda.memory_allocated()
         torch.cuda.reset_peak_memory_stats()
         async with manager.lease(model_id) as model:
             await asyncio.to_thread(run, model)
-            peak = int(torch.cuda.max_memory_allocated() // (1 << 20))
+            peak = int((torch.cuda.max_memory_allocated() - baseline) // (1 << 20))
         assert FLEET[model_id].vram_megabytes >= peak, (
             f"{model_id.value} peaked at {peak} MB; constants/fleet.py declares {FLEET[model_id].vram_megabytes}"
         )

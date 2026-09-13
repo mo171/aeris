@@ -31,6 +31,13 @@ how   : Two obligations sit on every node, and both are the kind that get forgot
         **Timing is `perf_counter`, never wall time.** A duration measured across an NTP correction is how
         a stage comes to report a negative number of milliseconds.
 
+        **The node's first parameter must be annotated with the graph's full state.** LangGraph reads
+        the annotation of a node's first parameter as that node's *input schema* and hands the node only
+        the keys that schema declares. A node annotated with a narrower TypedDict than the graph's
+        silently sees a state with holes in it - measured in 1.10: S19 annotated `IndexQueryState` inside
+        the single-image graph recorded no detection artefacts and no figures, because the keys S13
+        wrote were not in its annotation. Every node is annotated `AnalysisState` for that reason.
+
         **The step id reaches the node body through a context variable**, the same mechanism LangGraph
         uses for `get_stream_writer()`. A figure rendered inside a node must carry the id of the stage that
         drew it (`api-contract.md` §6 rule 1), and the id is minted here, before the body runs - so the

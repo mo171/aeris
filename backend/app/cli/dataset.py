@@ -32,6 +32,7 @@ from app.services.datasets.acquisition import (
     download_archive,
     fetch_hub_split,
     fetch_scene,
+    fetch_scene_window,
     search_scenes,
 )
 from app.services.datasets.catalogue import Availability, inspect_catalogue, inspect_dataset
@@ -223,6 +224,8 @@ async def execute_fetch(
     asset_names: tuple[str, ...] | None,
     console: Console,
     split: DatasetSplit | None = None,
+    clip: bool = False,
+    name: str | None = None,
 ) -> bool:
     """Acquire a dataset by whichever of the four routes its record declares."""
     record = DATASET_CATALOGUE[dataset_id]
@@ -272,6 +275,12 @@ async def execute_fetch(
     if not scenes:
         return False
 
+    if clip:
+        # The window over the box, not the tile: ten megabytes for a town, on the asset's own grid (1.10).
+        console.print(f"\nFetching the window of {escape(scenes[0].scene_id)} over {bounding_box}...")
+        destination = await fetch_scene_window(dataset_id, scenes[0], bounding_box=bounding_box, asset_names=asset_names, name=name)
+        console.print(f"[green]Fetched[/green] {escape(str(destination))}")
+        return True
     console.print(f"\nFetching {escape(scenes[0].scene_id)}...")
     destination = await fetch_scene(dataset_id, scenes[0], asset_names=asset_names)
     console.print(f"[green]Fetched[/green] {escape(str(destination))}")

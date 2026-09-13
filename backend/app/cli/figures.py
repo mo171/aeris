@@ -30,7 +30,6 @@ import rasterio
 from rich.console import Console
 from rich.markup import escape
 
-from app.cli.renderers.figure_writer import FigureWriter, open_figure_writer
 from app.constants.raster import BandRole, ProcessingLevel
 from app.constants.spectral import INTERPRETATION_BANDS, SpectralIndex
 from app.db.identifiers import IdentifierPrefix, new_identifier
@@ -45,6 +44,7 @@ from app.services.rendering.figures import (
     render_mask_overlay,
     render_rgb_composite,
 )
+from app.services.sessions.figure_writer import FigureWriter, open_figure_writer
 from app.services.spectral.indices import locate_bands, require_surface_reflectance
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,9 @@
 
 what  : `measure_area()` - pixel count, square metres and hectares of a boolean mask on a georeferenced
         grid; `polygon_area()` - the same measurement for a vector outline; `count_regions()` - how many
-        connected regions the mask has; `local_equal_area_crs()` - the projection all three use.
+        connected regions the mask has; `local_equal_area_crs()` - the projection all three use;
+        `measure_area_nominal()` - the one case with no projection: a picture whose pixel size the
+        operator declared, labelled nominal so it is never quoted as a geodetic area.
 where : Called by `services/evidence/spatial.py` through `asyncio.to_thread`. The number it returns is
         the one a report quotes, which is why it is the most carefully bounded function in Phase 1.4.
 how   : **Pure, sync; NumPy, pyproj and SciPy** (`architecture-context.md` §12). Knows a grid as six
@@ -100,6 +102,36 @@ def measure_area(
         square_metres=float((counts * block_pixel_area).sum()),
         equal_area_crs=equal_area_crs,
     )
+
+
+def measure_area_nominal(mask: np.ndarray, *, resolution_metres: float) -> AreaMeasurement:
+    """Square metres of the `True` pixels at a *declared* ground sample distance - a picture with no grid.
+
+    Not a projection and not a measurement of the ground: `count * gsd^2`, which is exact for what it
+    claims (the pixels) and only as true as the operator's declaration. The record says `nominal` so a
+    report cannot quote it as a geodetic area.
+    """
+    if mask.ndim != 2 or mask.dtype != bool:
+        raise ValueError(f"A mask is a 2-D boolean array; got {mask.ndim}-D {mask.dtype}.")
+    if resolution_metres <= 0.0:
+        raise ValueError("A declared ground sample distance must be positive metres per pixel.")
+    count = int(mask.sum())
+    return AreaMeasurement(pixel_count=count, square_metres=count * resolution_metres**2, equal_area_crs=nominal_crs_label(resolution_metres))
+
+
+def measure_area_pixels(mask: np.ndarray) -> AreaMeasurement:
+    """The count alone, with the area explicitly unknown (NaN): a picture with no grid and no declaration."""
+    if mask.ndim != 2 or mask.dtype != bool:
+        raise ValueError(f"A mask is a 2-D boolean array; got {mask.ndim}-D {mask.dtype}.")
+    return AreaMeasurement(pixel_count=int(mask.sum()), square_metres=float("nan"), equal_area_crs=PIXELS_ONLY_LABEL)
+
+
+PIXELS_ONLY_LABEL = "pixels"
+
+
+def nominal_crs_label(resolution_metres: float) -> str:
+    """What `equal_area_crs` says when no projection was used: the declaration the number rests on."""
+    return f"nominal:{resolution_metres:g} m per pixel"
 
 
 def count_regions(mask: np.ndarray) -> RegionCount:

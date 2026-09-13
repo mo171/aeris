@@ -16,7 +16,9 @@ how   : Each claim's metric values are replaced in its own sentence by placehold
 
         Every placeholder must be spoken: the first adapted model answered the phrasing prompt with "{m1}"
         alone - one number, nothing else - and a guard that only forbids *invented* numbers let it through.
-        Phrasing runs on the base weights (`use_adapter=False`); the adapter's job is the picture.
+        Phrasing runs on the base weights (`use_adapter=False`); the adapter's job is the picture. From
+        1.9 the agent's language model phrases instead when one is configured - one call, no GPU - under
+        the same guard: `phrase_claims(..., model=chat_model)`.
 
         The check is the design (PDF §20, `product-truth.md` §1.3): "the VLM cannot emit a figure that no
         specialist produced" is not a prompt instruction, it is a regular expression that runs on the
@@ -52,6 +54,7 @@ class ConstrainedAnswer:
     source: str
     model_version: str | None
     rejected_phrasing: str | None = None
+    rejection_reason: str | None = None
 
 
 class Phraser(Protocol):
@@ -133,25 +136,61 @@ def template_answer(claims: list[dict[str, Any]]) -> str:
 
 
 async def phrase_claims(
-    question: str, claims: list[dict[str, Any]], *, manager: ModelManager | None
+    question: str, claims: list[dict[str, Any]], *, manager: ModelManager | None = None, model=None,  # noqa: ANN001 - a LangChain chat model
+    template: str = CONSTRAINED_ANSWER_TEMPLATE, source_name: str | None = None, notes: list[str] | None = None,
 ) -> ConstrainedAnswer:
-    """Ask the VLM to phrase the claims; keep its words only if they carry no number of their own."""
-    fallback = ConstrainedAnswer(template_answer(claims), "template", None)
-    if manager is None or not claims:
+    """Ask a model to phrase the claims; keep its words only if they carry no number of their own.
+
+    `model` is a LangChain chat model (1.9, the fast path: one call, no GPU); `manager` leases the VLM
+    (1.7). The guard is the same function either way. `template` lets the agent's synthesis prompt in
+    with several steps' findings; `source_name` is what the answer says phrased it. `notes` are context
+    for the phrasing that are not findings ("these were recalled from earlier") - the model is told them
+    and may say them once; the template says them first. They are never facts, so they carry no
+    placeholder and the guard does not require them to be repeated.
+    """
+    lead = " ".join(notes or [])
+    fallback = ConstrainedAnswer((lead + " " if lead else "") + template_answer(claims), "template", None)
+    if (manager is None and model is None) or not claims:
         return fallback
     facts = facts_from_claims(claims)
-    prompt = CONSTRAINED_ANSWER_TEMPLATE.format(
-        facts="\n".join(f"{index}. {fact.statement}" for index, fact in enumerate(facts, start=1)), question=question
-    )
+    context = ("Context for the wording, not findings (mention once, briefly, where it helps): " + " ".join(notes)) if notes else ""
     try:
-        async with manager.lease(ModelId.REMOTE_SENSING_VLM) as model:
-            generation = await asyncio.to_thread(model.generate, [], prompt, max_new_tokens=VLM_MAX_NEW_TOKENS, use_adapter=False)
+        prompt = template.format(facts="\n".join(f"{index}. {fact.statement}" for index, fact in enumerate(facts, start=1)), question=question, notes=context)
+    except KeyError:
+        prompt = template.format(facts="\n".join(f"{index}. {fact.statement}" for index, fact in enumerate(facts, start=1)), question=question)
+    if model is not None:
+        source, version, text = await _phrase_with_chat_model(model, prompt)
+    else:
+        source, version, text = await _phrase_with_vlm(manager, prompt)
+    if text is None:
+        return fallback
+    reason = verify_phrasing(text, facts)
+    if reason is not None:
+        logger.warning("phrasing rejected", extra={"reason": reason, "text": text, "source": source})
+        return ConstrainedAnswer(fallback.text, "template", version, rejected_phrasing=text, rejection_reason=reason)
+    return ConstrainedAnswer(fill_placeholders(text, facts), source_name or source, version)
+
+
+async def _phrase_with_vlm(manager: ModelManager, prompt: str) -> tuple[str, str | None, str | None]:
+    try:
+        async with manager.lease(ModelId.REMOTE_SENSING_VLM) as vlm:
+            generation = await asyncio.to_thread(vlm.generate, [], prompt, max_new_tokens=VLM_MAX_NEW_TOKENS, use_adapter=False)
     except AerisError as error:
         logger.info("vlm unavailable for phrasing; template answer used", extra={"reason": str(error)})
-        return fallback
-    version = getattr(model, "version", None)
-    reason = verify_phrasing(generation.text, facts)
-    if reason is not None:
-        logger.warning("vlm phrasing rejected", extra={"reason": reason, "text": generation.text})
-        return ConstrainedAnswer(fallback.text, "template", version, rejected_phrasing=generation.text)
-    return ConstrainedAnswer(fill_placeholders(generation.text, facts), "vlm", version)
+        return "vlm", None, None
+    return "vlm", getattr(vlm, "version", None), generation.text
+
+
+async def _phrase_with_chat_model(model, prompt: str) -> tuple[str, str | None, str | None]:  # noqa: ANN001
+    from app.lib.llm.chat_model import chat_model_record
+    from app.services.prompts.agent import AGENT_SYSTEM_PROMPT
+
+    record = chat_model_record()
+    version = record.version if record else "llm"
+    try:
+        reply = await model.ainvoke([("system", AGENT_SYSTEM_PROMPT), ("human", prompt)])
+    except Exception as error:  # noqa: BLE001 - the template answer is always available
+        logger.warning("llm unavailable for phrasing; template answer used", extra={"reason": str(error)})
+        return "llm", version, None
+    text = reply.content if isinstance(reply.content, str) else "".join(part.get("text", "") for part in reply.content if isinstance(part, dict))
+    return "llm", version, text

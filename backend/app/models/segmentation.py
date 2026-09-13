@@ -31,14 +31,16 @@ import numpy as np
 from app.constants.fleet import FLEET
 from app.constants.model_ids import ModelId
 from app.constants.raster import INFERENCE_TILE_OVERLAP
+from app.constants.segmentation import LOVEDA_CLASS_NAMES, SEGMENTATION_IGNORE_LABEL
 from app.models.loader import fetch_repository
 from app.services.imagery.math.windowing import plan_tile_grid, stitch_windows
 
 logger = logging.getLogger(__name__)
 
-IGNORE_LABEL = 0
-# LoveDA's label order, as the checkpoint's `id2label` states it. Index is the class id.
-CLASS_NAMES = ("Ignore", "Background", "Building", "Road", "Water", "Barren", "Forest", "Agricultural")
+# LoveDA's label order, as the checkpoint's `id2label` states it. Index is the class id. One source
+# (`constants/segmentation.py`), so the node that names a class and the adapter that predicts it agree.
+IGNORE_LABEL = SEGMENTATION_IGNORE_LABEL
+CLASS_NAMES = LOVEDA_CLASS_NAMES
 
 
 @dataclass(frozen=True, slots=True)

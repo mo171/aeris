@@ -1,0 +1,15 @@
+{"query": "Hey Aeris, can you please take a look at this satellite image and tell me roughly how many ships are sitting in the harbour right now, and also whether the port area looks busy?", "intents": ["DETECT", "SCENE_VQA"]}
+{"query": "I want you to look at these two images from 2020 and 2024 and show me where new buildings have come up, then tell me by how much the built-up area has grown in hectares", "intents": ["CHANGE_DETECT", "CHANGE_VQA"]}
+{"query": "Okay so first map the water bodies in this scene using NDWI and then count the boats you can see near the shoreline", "intents": ["INDEX_QUERY", "DETECT"]}
+{"query": "Could you check whether this area is mostly farmland or forest, and if it is farmland, show me the parts where the crops look stressed", "intents": ["SCENE_VQA", "INDEX_QUERY"]}
+{"query": "Um, compare the SAR and the optical image of this delta and tell me if the flooding they show agrees, and also give me the total flooded area", "intents": ["CROSS_MODAL", "INDEX_QUERY"]}
+{"query": "Find all the planes on the apron, mark where they are, and tell me how many of them there are", "intents": ["DETECT"]}
+{"query": "Segment the buildings and the roads in this tile and then give me the percentage of the tile that is built up", "intents": ["SEGMENT", "INDEX_QUERY"]}
+{"query": "Show me the region you used for that vegetation number earlier and then explain why the confidence was low", "intents": ["EVIDENCE_RECALL"]}
+{"query": "So basically what I need is the NDVI over the whole scene, the area of unhealthy vegetation in the north-east, and a count of the storage tanks near the refinery", "intents": ["INDEX_QUERY", "INDEX_QUERY", "DETECT"]}
+{"query": "Has the lake shrunk between the two dates, and if so, where exactly did the water recede?", "intents": ["CHANGE_VQA", "CHANGE_DETECT"]}
+{"query": "Detect the vehicles in the car park, count them, and tell me if this looks like a shopping mall", "intents": ["DETECT", "SCENE_VQA"]}
+{"query": "Alright, I would like a quick description of this scene please, nothing fancy, just what you see", "intents": ["SCENE_VQA"]}
+{"query": "Where are the water bodies and how many hectares do they cover?", "intents": ["INDEX_QUERY"]}
+{"query": "Locate the bridge over the river and then count the large vehicles on it", "intents": ["GROUND", "DETECT"]}
+{"query": "Is there an airport in this picture? If yes, how many aircraft are parked there and where is the runway?", "intents": ["SCENE_VQA", "DETECT", "GROUND"]}

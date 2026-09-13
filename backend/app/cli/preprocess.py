@@ -24,7 +24,6 @@ from rich.console import Console
 from rich.markup import escape
 from scipy.ndimage import shift as shift_array
 
-from app.cli.renderers.figure_writer import open_figure_writer
 from app.constants.preprocessing import MAXIMUM_COREGISTRATION_RESIDUAL_PIXELS
 from app.constants.scenes import Polarisation
 from app.db.identifiers import IdentifierPrefix, new_identifier
@@ -33,6 +32,7 @@ from app.services.preprocessing.coregistration import measure_coregistration, re
 from app.services.preprocessing.elevation import elevation_on_grid
 from app.services.preprocessing.sar_calibration import preprocess_sar
 from app.services.rendering.figures import render_sar_backscatter
+from app.services.sessions.figure_writer import open_figure_writer
 
 logger = logging.getLogger(__name__)
 

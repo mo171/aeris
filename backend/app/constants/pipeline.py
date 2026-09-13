@@ -5,10 +5,11 @@ what  : `GraphName`, the memory namespace root, the journal file suffix, and the
 where : Read by `app/services/pipeline/`, `app/services/sessions/` and the CLI renderers. Paths and
         timeouts are **not** here - those vary between machines and live in `config.py` (code-standards.md
         §4). What is here is the vocabulary, which does not.
-how   : `GraphName` started with one member on purpose. Phase 1.4 added `index-query`; 1.10 adds
-        `single_image`, `temporal` and `cross_modal`. The probe graph is the throwaway that proves the
-        spine before any of them exist. A named set rather than a free string means `aeris run --graph
-        typo` fails at the argument rather than at a lookup three layers down.
+how   : `GraphName` started with one member on purpose. Phase 1.4 added `index-query`; 1.10 replaced it
+        with `single-image` (the index query is one branch of it) and added `temporal`; 1.11 adds
+        `cross-modal`. The probe graph is the throwaway that proves the spine before any of them exist. A
+        named set rather than a free string means `aeris run --graph typo` fails at the argument rather
+        than at a lookup three layers down.
 
         `MEMORY_NAMESPACE_ROOT` is the prefix of every long-term memory key. LangGraph's `BaseStore`
         namespaces are tuples, and a shared prefix means one deployment's memories can be listed, exported
@@ -28,9 +29,14 @@ class GraphName(StrEnum):
     # run when the question is "is the spine broken, or is my pipeline broken?".
     PROBE = "probe"
 
-    # S7 -> S12 -> S15 -> S16 over one optical scene: the Phase 1.4 vertical slice. Phase 1.10's
-    # `single_image` graph composes these same nodes with S13/S14 between them.
-    INDEX_QUERY = "index-query"
+    # One picture, one question: S1 -> (S7) -> a specialist branch by intent (an index at S12, the
+    # detector or the segmenter at S13, the VLM at S14) -> S15 -> S14 -> S16 -> S18 -> S19. The 1.4
+    # index-query graph is its INDEX_QUERY branch.
+    SINGLE_IMAGE = "single-image"
+
+    # Two dates of one sensor: S1 -> (S7) -> S9 (the residual gate) -> S13 change -> S15 -> S14 -> S16 ->
+    # S18 -> S19. CHANGE_DETECT reads the comparison figure; CHANGE_VQA asks the question over the pair.
+    TEMPORAL = "temporal"
 
 
 # The first element of every long-term memory namespace: `("aeris", "memory", <scope>, ...)`.

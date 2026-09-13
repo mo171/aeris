@@ -1,8 +1,9 @@
 """Turns an array into a finished, self-contained picture with its legend and its provenance, and puts it where the operator can see it.
 
-what  : `render_index_map()`, `render_rgb_composite()`, `render_mask_overlay()` and `render_from_spec()`.
+what  : `render_index_map()`, `render_rgb_composite()`, `render_mask_overlay()`, `render_from_spec()`; from
+        1.10 `render_detection_overlay()` and `render_comparison()`.
 where : Called by pipeline nodes from Phase 1.4 onwards, each emitting its figure the moment its stage
-        produces an array. `cli/renderers/figure_writer.py` consumes the events in Phase 1.
+        produces an array. `services/sessions/figure_writer.py` consumes the events in Phase 1.
 how   : This module *chooses* - which ramp, which stretch, what the legend says - and `math/` executes.
         That split is `architecture-context.md` §12, and here it carries a second meaning: the choices
         this file makes are the ones §8 rule 13 requires be recorded, so they all end up in `renderSpec`.
@@ -45,11 +46,21 @@ from app.db.identifiers import IdentifierPrefix, new_identifier
 from app.lib import storage
 from app.lib.exceptions import InvalidRequestError
 from app.schemas.events.figure import FigureLegend, FigureReadyEvent, LegendEntry, RenderSpec
+from app.services.detection.math.oriented_boxes import OrientedBox
 from app.services.rendering.math.color_ramps import blend_over, colourise, hex_colour_at
-from app.services.rendering.math.rasterize import ImageFormat, draw_colourbar, draw_discrete_legend, encode_image
+from app.services.rendering.math.rasterize import (
+    ImageFormat,
+    draw_colourbar,
+    draw_discrete_legend,
+    encode_image,
+    stack_horizontally,
+)
 from app.services.rendering.math.stretch import StretchBounds, StretchMethod, apply_stretch, compute_stretch
 
 logger = logging.getLogger(__name__)
+
+# Pixels. Thin enough not to hide a small vehicle, thick enough to read on a 1024-pixel crop.
+DETECTION_OUTLINE_WIDTH = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +80,7 @@ class RenderedFigure:
 def figure_object_key(run_id: str, figure_id: str, suffix: str) -> str:
     """Where a figure lives in storage. Keyed by run then figure, so a run's figures list with one prefix.
 
-    Public, and the single source of truth for the key. `cli/renderers/figure_writer.py` fetches figures
+    Public, and the single source of truth for the key. `services/sessions/figure_writer.py` fetches figures
     back out and must derive the same key; the alternative - parsing it out of the event's `imageUrl` -
     couples a storage layout to a Phase 2 route and breaks the first time the route changes.
     """
@@ -516,7 +527,7 @@ async def write_figure_locally(figure: RenderedFigure, directory: Path) -> Path:
     """Also write a figure to disk, so Phase 1 can look at it without a browser or a bucket.
 
     The same reasoning as `journal_writer.py`: the whole capability is exercisable in the terminal before
-    a route exists. `cli/renderers/figure_writer.py` is what calls this.
+    a route exists. `services/sessions/figure_writer.py` is what calls this.
     """
     destination = directory / f"{figure.event.figure_id}.{figure.image_format.value}"
     # Both offloaded - `code-standards.md` §7 keeps blocking calls off the loop, and `mkdir` against a
@@ -524,3 +535,153 @@ async def write_figure_locally(figure: RenderedFigure, directory: Path) -> Path:
     await asyncio.to_thread(directory.mkdir, parents=True, exist_ok=True)
     await asyncio.to_thread(destination.write_bytes, figure.image_bytes)
     return destination
+
+
+# --- 1.10: the specialists' figures -----------------------------------------------------------------------
+
+
+async def render_frame(
+    rgb: np.ndarray,
+    observed: np.ndarray,
+    *,
+    run_id: str,
+    trace_step_id: str,
+    title: str,
+    stretch: str,
+    bands: list[str] | None = None,
+    scene_ids: list[str] | None = None,
+    crs: str | None = None,
+    caption: str | None = None,
+    claim_ids: list[str] | None = None,
+    is_primary: bool = False,
+) -> RenderedFigure:
+    """The picture a specialist was shown, exactly (`imagery/frames.py`), as a composite figure.
+
+    The stretch that made the 8-bit picture is recorded by name (`FrameStretch`), not recomputed here:
+    the frame is already bytes, and the figure's job is to show what the model saw. Unobserved pixels
+    (cloud, shadow, nodata) are transparent, so what the model was *not* shown is visible as absence.
+    """
+    specification = RenderSpec(
+        scene_ids=scene_ids or [], bands=bands or [],
+        stretch={"min": 0.0, "max": 255.0, "method": StretchMethod.FIXED.value, "frame": stretch},
+        color_ramp=ColorRampId.TRUE_COLOR, resampling="none", crs=crs, mask_applied=bool((~observed).any()),
+    )
+    legend = FigureLegend(
+        kind=LegendKind.CATEGORICAL, label="As shown to the model", color_ramp=ColorRampId.TRUE_COLOR, domain=None,
+        entries=[LegendEntry(color="#c0392b", label="Red"), LegendEntry(color="#27ae60", label="Green"), LegendEntry(color="#2980b9", label="Blue")],
+    )
+    base_rgba = await asyncio.to_thread(_compose_frame, rgb, observed)
+    return await _publish(
+        base_rgba, base_rgba=base_rgba, run_id=run_id, kind=FigureKind.RGB_COMPOSITE, title=title, caption=caption,
+        trace_step_id=trace_step_id, claim_ids=claim_ids or [], legend=legend, specification=specification,
+        is_primary=is_primary, lossy=False,
+    )
+
+
+def _compose_frame(rgb: np.ndarray, observed: np.ndarray) -> np.ndarray:
+    if rgb.ndim != 3 or rgb.shape[2] != 3 or rgb.dtype != np.uint8:
+        raise ValueError(f"A frame is (H, W, 3) uint8; got {rgb.shape} {rgb.dtype}.")
+    rgba = np.zeros((*rgb.shape[:2], 4), dtype=np.uint8)
+    rgba[..., :3] = rgb
+    rgba[..., 3] = np.where(observed, OPAQUE_ALPHA, 0)
+    return rgba
+
+
+async def render_detection_overlay(
+    boxes: list[OrientedBox],
+    class_names: tuple[str, ...],
+    base_rgba: np.ndarray,
+    *,
+    run_id: str,
+    trace_step_id: str,
+    title: str,
+    scene_ids: list[str] | None = None,
+    crs: str | None = None,
+    caption: str | None = None,
+    claim_ids: list[str] | None = None,
+    is_primary: bool = False,
+) -> RenderedFigure:
+    """A detector's oriented boxes drawn as outlines over the picture it saw, labelled by class.
+
+    Outlines, not fills: the operator judges a detection by what is inside the box, and a filled box
+    hides exactly that. One hue (`DETECTION_TEAL`) because a detection is present or it is not; the class
+    is written beside the box and listed in the legend.
+    """
+    ramp = ColorRampId.DETECTION_TEAL
+    present = sorted({class_names[box.class_index] for box in boxes})
+    specification = RenderSpec(
+        scene_ids=scene_ids or [], bands=[],
+        stretch={"min": 0.0, "max": 1.0, "method": StretchMethod.FIXED.value},
+        color_ramp=ramp, resampling="none", crs=crs, mask_applied=False,
+    )
+    legend = FigureLegend(
+        kind=LegendKind.CATEGORICAL, label="Detections", color_ramp=ramp, domain=None,
+        entries=[LegendEntry(color=hex_colour_at(ramp, 0.85), label=name) for name in present] or [LegendEntry(color=hex_colour_at(ramp, 0.85), label="none")],
+    )
+    overlay_rgba = await asyncio.to_thread(_compose_detection_overlay, boxes, class_names, base_rgba, hex_colour_at(ramp, 0.85))
+    entries = [(entry.color, entry.label) for entry in legend.entries or []]
+    final_rgba = await asyncio.to_thread(draw_discrete_legend, overlay_rgba, entries=entries, label=legend.label)
+    return await _publish(
+        final_rgba, base_rgba=overlay_rgba, run_id=run_id, kind=FigureKind.DETECTION_OVERLAY, title=title, caption=caption,
+        trace_step_id=trace_step_id, claim_ids=claim_ids or [], legend=legend, specification=specification,
+        is_primary=is_primary, lossy=False,
+    )
+
+
+def _compose_detection_overlay(
+    boxes: list[OrientedBox], class_names: tuple[str, ...], base_rgba: np.ndarray, colour: str
+) -> np.ndarray:
+    """Draw each box's four corners as a closed outline with its class name. Sync, for `to_thread`."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.fromarray(np.ascontiguousarray(base_rgba), mode="RGBA")
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    for box in boxes:
+        corners = [(float(x), float(y)) for x, y in box.corners]
+        draw.polygon(corners, outline=colour, width=DETECTION_OUTLINE_WIDTH)
+        top = min(corners, key=lambda point: point[1])
+        draw.text((top[0] + 2, max(top[1] - 11, 0)), class_names[box.class_index], fill=colour, font=font)
+    return np.asarray(image)
+
+
+async def render_comparison(
+    before_rgba: np.ndarray,
+    after_rgba: np.ndarray,
+    change_mask: np.ndarray,
+    *,
+    run_id: str,
+    trace_step_id: str,
+    title: str,
+    label: str,
+    scene_ids: list[str] | None = None,
+    crs: str | None = None,
+    caption: str | None = None,
+    claim_ids: list[str] | None = None,
+    is_primary: bool = False,
+) -> RenderedFigure:
+    """Before | after | after with the change mask over it - the strongest single figure this system draws.
+
+    Three panels on one grid at one scale, so the eye does the comparison the model did. The mask is
+    drawn over the *later* date because that is where the change is, at the same alpha as every other
+    mask overlay, for the same reason: what changed must be judged against what is there now.
+    """
+    ramp = ColorRampId.MASK_AMBER
+    specification = RenderSpec(
+        scene_ids=scene_ids or [], bands=[],
+        stretch={"min": 0.0, "max": 1.0, "method": StretchMethod.FIXED.value},
+        color_ramp=ramp, resampling="nearest", crs=crs, mask_applied=True,
+    )
+    legend = FigureLegend(
+        kind=LegendKind.BINARY, label=label, color_ramp=ramp, domain=None,
+        entries=[LegendEntry(color=hex_colour_at(ramp, 0.85), label=label), LegendEntry(color="#000000", label="Unchanged")],
+    )
+    overlay = await asyncio.to_thread(_compose_mask_overlay, change_mask, after_rgba, ramp)
+    composed = await asyncio.to_thread(stack_horizontally, [before_rgba, after_rgba, overlay])
+    entries = [(entry.color, entry.label) for entry in legend.entries or []]
+    final_rgba = await asyncio.to_thread(draw_discrete_legend, composed, entries=entries, label=f"{label}: before | after | change")
+    return await _publish(
+        final_rgba, base_rgba=composed, run_id=run_id, kind=FigureKind.COMPARISON, title=title, caption=caption,
+        trace_step_id=trace_step_id, claim_ids=claim_ids or [], legend=legend, specification=specification,
+        is_primary=is_primary, lossy=False,
+    )

@@ -129,6 +129,18 @@ class QueryTarget(NamedTuple):
 # above, never numbers invented here.
 QUERY_TARGETS: Final[dict[str, QueryTarget]] = {
     "unhealthy vegetation": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    # The same ask with the adjective after the noun ("where the vegetation is stressed"): longest phrase
+    # wins, so these beat the bare "vegetation" they contain. Measured: without them a spoken request
+    # for stressed vegetation was answered with all vegetation.
+    "vegetation is stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation is unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation looks stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation looks unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation stress": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops are stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops look stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops looking unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops look unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
     "stressed vegetation": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
     "sparse vegetation": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
     "healthy vegetation": QueryTarget(SpectralIndex.NDVI, 0.4, 1.0, "Dense healthy vegetation"),
@@ -141,6 +153,23 @@ QUERY_TARGETS: Final[dict[str, QueryTarget]] = {
     "water": QueryTarget(SpectralIndex.NDWI, 0.0, 1.0, "Water"),
     "flood extent": QueryTarget(SpectralIndex.MNDWI, 0.0, 1.0, "Water"),
     "flood": QueryTarget(SpectralIndex.MNDWI, 0.0, 1.0, "Water"),
+    "flooded": QueryTarget(SpectralIndex.MNDWI, 0.0, 1.0, "Water"),
+    "flooding": QueryTarget(SpectralIndex.MNDWI, 0.0, 1.0, "Water"),
+    # Burned surfaces sit at low NBR, but so does bare ground: the label says both, and a burned-area claim
+    # proper is the dNBR of a pair (1.10).
+    "burn scar": QueryTarget(SpectralIndex.NBR, -1.0, 0.1, "Low NBR (burned or bare)"),
+    "burned area": QueryTarget(SpectralIndex.NBR, -1.0, 0.1, "Low NBR (burned or bare)"),
+    "burnt area": QueryTarget(SpectralIndex.NBR, -1.0, 0.1, "Low NBR (burned or bare)"),
+    "burn severity": QueryTarget(SpectralIndex.NBR, -1.0, 0.1, "Low NBR (burned or bare)"),
+    "unhealthy crops": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "stressed crops": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crop health poor": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "poor crop health": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crop health": QueryTarget(SpectralIndex.NDVI, 0.2, 1.0, "Vegetation"),
+    "crops": QueryTarget(SpectralIndex.NDVI, 0.2, 1.0, "Vegetation"),
+    "cropland": QueryTarget(SpectralIndex.NDVI, 0.2, 1.0, "Vegetation"),
+    "farmland": QueryTarget(SpectralIndex.NDVI, 0.2, 1.0, "Vegetation"),
+    "green cover": QueryTarget(SpectralIndex.NDVI, 0.2, 1.0, "Vegetation"),
     "built-up": QueryTarget(SpectralIndex.NDBI, 0.1, 1.0, "Built-up likelihood"),
     "built up": QueryTarget(SpectralIndex.NDBI, 0.1, 1.0, "Built-up likelihood"),
     "buildings": QueryTarget(SpectralIndex.NDBI, 0.1, 1.0, "Built-up likelihood"),

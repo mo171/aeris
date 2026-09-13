@@ -714,7 +714,7 @@ PNG/JPEG for benchmarks only (1.2, 1.1). What it changes:
   (0.6 m pan-sharpened) is the reason the LoRA data should include VRSBench-resolution imagery too, not
   BigEarthNet.txt's 10 m alone.
 
-## 1.8 — Query understanding and routing
+## 1.8 — Query understanding and routing — **done (2026-09-12): 0.991 held-out, 1.000 fresh; a count never reaches the VLM**
 
 **Research:** PDF pp.24–25 (why deterministic routing rather than an autonomous agent) and p.37 (six routing
 examples end to end).
@@ -730,7 +730,78 @@ A wrong intent is recoverable and visible; a hallucinated pipeline is neither.
 **Gate** — ≥95% intent accuracy on a labelled query set of at least 200 queries, held out. Matches the
 PDF's Phase 4 gate.
 
-## 1.9 — The agent, tool calling and the provider swap
+**What was built.** A cascade (`services/query/classifier.py`): cues in `constants/routing.py` narrow a
+question to an intent family (an evidence question, both sensors named, a change cue, a segmentation verb,
+"how many <object>", an index named, a perception opener, a locating verb), and a kNN over a labelled
+bank of 215 questions - embedded by `BAAI/bge-small-en-v1.5` on the CPU, ~10 ms a question - votes within
+the family. `services/query/entities.py` extracts objects (resolved to the detector's classes; a place
+after "in the" is context, not a target), compass region, temporal scope and dates, sensor, and what shape
+of answer is wanted. `agents/router.py` maps intent -> tool -> graph from a table and validates: two-image
+intents need two images, cross-modal needs both sensors, an index question needs an index the engine has,
+and **a count needs a class the detector knows and a pixel that can hold it** (`OBJECT_LENGTH_METRES /
+MIN_OBJECT_PIXELS`: a 4.5 m car needs <= 0.56 m pixels; a 10 m Sentinel-2 scene is refused with both
+numbers before the detector runs and reports zero). `aeris route "<q>"` prints a decision; `aeris route
+--evaluate` prints the gate; `aeris ask` and `aeris analyse` route before they run anything.
+
+**Measured** (`aeris route --evaluate`, 2026-09-12):
+
+    file                          n    rules alone   kNN alone   cascade   uncertain
+    held-out half of the bank   235        0.936       0.766      0.991          1
+    fresh, operator register     45        0.867       0.911      1.000          1
+
+Honest reading: the held-out half was split from the bank by text hash, never learned from - but the cues
+were tuned against its errors in three passes (0.877 -> 0.987 -> 0.991), so it is out-of-sample for the kNN
+and not for the rules. The fresh file was written afterwards in an operator's register ("how many ships r
+there", "why did u say its flooded"): first score 0.933, with three errors that were vocabulary gaps
+("since the first date", text-speak, "any X here?"), fixed in the tables and re-scored 1.000 - so that
+number was looked at once too, and says so here. Both files are one author's phrasing; a judge's will be
+wider. The two remaining held-out errors are arguable labels ("What is the dominant land use here?" ->
+SEGMENT; "Which areas changed the most and why?" -> CHANGE_DETECT).
+
+**The counting decision, exercised end to end.** On the DOTA8 crop with three basketball courts in its
+label file: routed, `dota-detector` counts **3** (four boxes kept, mean score 0.85, 2.2 s), the VLM never
+leased - asserted by a test that spies on the manager. `--force-vlm` on the same question: the adapted VLM
+says **2** in 22.8 s. "How many buildings" is refused by name with the fifteen classes it can count, and
+the VLM answers *presence* ("Yes"), labelled as not a count. "Where are the basketball courts" grounds
+with the detector's three boxes and their centres.
+
+**Compound requests (added the same day).** A voice request holds several questions. Measured first: the
+single-intent router got 4 of 4 single asks and **0 of 11 compound ones** - it answered the loudest clause.
+`services/query/decomposer.py` strips filler ("hey aeris, can you please"), splits at sentence ends and
+connectives (", then", "and also", "after that", "finally", and " and " only before a clause opener so
+"ships and boats" stays one phrase), drops conditional leads ("if yes,"). `agents/router.py::route_plan`
+routes each clause, binds a pronoun clause to the clause before ("count them", "how much of it"), carries
+a pair or both-sensors context to later clauses with no cue of their own, and merges consecutive steps
+that are one run of one tool (find + where + how many of the planes -> one detector step with both wants;
+two change questions -> one comparison; a count of ships and of tanks -> one detector run). `aeris ask`
+answers every step in order; `aeris analyse` runs one graph per index step.
+
+    file                              n   exact sequence   steps found   first untouched score
+    compound, developed against      15        1.000          1.000      0.333 (single-intent router)
+    compound, fresh (two batches)    35        1.000          1.000      0.500 (batch 1), 0.667 (batch 2)
+
+The untouched scores are the honest ones: each fresh batch was scored once, its errors were vocabulary
+gaps in the decomposer (a connector, a filler phrase, "its" mis-folded, "there" taken for a pronoun) and
+were fixed by table, then it was scored again. A third batch would score somewhere between. Two labels
+were changed to what the plan should be rather than what was first written: "how many ships and how many
+tanks" is one detector run, not two steps.
+
+**Owed:** ~~the DETECT / SEGMENT / CHANGE graphs the table names `None` for~~ (built in 1.10); ~~an LLM
+arbiter~~ (1.9); a query set written by someone other than the author; a conditional step ("if yes, ...")
+executed conditionally rather than always (1.9's agent).
+
+**On objects the detector does not know - the recommendation, for after the product is whole.** No
+fine-tuning now: a demo that routes well over fifteen classes and a segmentation model beats one with a
+sixteenth class and no agent. Then, in order: (1) route building *area* and an approximate building
+*count* to `segformer-landcover` (LoveDA has a building class; connected components over its mask; zero
+training, 1.10's segmentation graph) - a building footprint is a segmentation problem, and touching roofs
+make box counting unreliable in exactly the dense scenes people ask about; (2) if instance counts of
+buildings are still wanted, fine-tune YOLO11-OBB on the *union* of DOTA v1.0 and a building-instance set
+(xView's building class, or SpaceNet footprints converted to oriented boxes) on the same Kaggle T4 path
+as the VLM - the union, not buildings alone, so the fifteen classes are not forgotten; (3) the VLM's second
+run on scrubbed captions for captions and VQA, never for counting.
+
+## 1.9 — The agent, tool calling and the provider swap — **done (2026-09-13): plan paused, steps run, every number a claim's; gate proven with a second model**
 
 **Research:** PDF pp.24–25. LangGraph `interrupt()` and LangChain `bind_tools` / `with_structured_output`.
 Frontend `lib/command-bus/` and `lib/constants/commands.ts`.
@@ -748,7 +819,80 @@ Frontend `lib/command-bus/` and `lib/constants/commands.ts`.
 This was previously "write a second adapter", which `init_chat_model` reduces to a configuration change; the
 gate is kept because the *claim* still needs proving, only the work shrank.
 
-## 1.10 — Pipeline graphs
+**What was built.** `lib/llm/chat_model.py` (`init_chat_model` from `LLM_PROVIDER`/`LLM_MODEL`; the key
+read under the provider's own name; `LLM_PROVIDER=none` is a first-class path with a template behind every
+model call; a doctor row that round-trips). The model has **four jobs, none of them routing**:
+
+1. **Arbiter** (`agents/arbiter.py`): asked only on an uncertain kNN margin, only within the family the
+   cues allowed, never over a rule. Measured: 3 questions in 330 reach it; the gate is unchanged with it
+   on (0.991 / 1.000 / 1.000). Asked bare, without the policy, gpt-5-mini put "how many ships are there"
+   under SCENE_VQA - the reason it is behind the router, not in front of it.
+2. **Planner prose** (`agents/planner.py`): the steps are the router's; the model writes the summary and
+   one description per step, checked - same count, no numeral that the template did not already state.
+   Rejected prose is the template. `agents/graph.py::approve` pauses on the plan with `interrupt()`;
+   the operator's resume carries the step ids kept (`--skip step-2`, or the terminal prompt).
+3. **Synthesis**: every step's findings are claims in wire form (a detector count is a claim with a
+   metric; a VLM answer a claim with none, labelled a reading; a refusal a negative claim) and the model
+   phrases them through the 1.7 guard unchanged - placeholders in, every placeholder spoken, no numeral
+   that is not a fact's. S16 also phrases with it now (`ANSWER_GENERATOR=llm`: one call, no GPU, the
+   VLM as fallback).
+4. **Interface commands**: bound with `bind_tools` over `spotlight_claim`, `focus_evidence`,
+   `toggle_layer` (`constants/ui_commands.py` mirrors `commands.ts`; a test parses the file); every id
+   the model names is checked against the run's claims, evidence and layers, and a made-up one is dropped.
+
+Dispatch is the table's: `agents/graph.py::execute` sends each enabled step to `agents/tools/`
+(`run_index_query` runs the real graph through `services/pipeline/runner.py` - journal, figures,
+provenance, checkpoint; `count_objects`; `answer_visual_question`; `recall_evidence` reads earlier
+requests on the thread, no model). `aeris agent "<request>" --scene|--image [--yes|--skip] [--thread]`;
+every request writes `runs/<request_id>/agent/{record.json, answer.txt, README.md}` beside the graph runs it made.
+
+**Measured (2026-09-13).** DOTA8 crop, "how many basketball courts are there, and does it look like a
+school?": plan by the model (2 steps, no numerals), detector **3** (the label file's count), VLM "yes",
+answer by the model with every numeral a claim's; a step struck out at the pause is skipped and said so.
+Mumbai scene, "map the water bodies and give me their area, then show me where the vegetation is stressed,
+and finally count the cars on the roads": 4 clauses -> 3 steps; two graph runs (water 2,667.3 ha, sparse
+vegetation 2,471.0 ha), the count refused at *planning* with the resolution numbers, and the answer's
+**19 numerals all traced to claims or the refusal** - checked mechanically over the record. Evidence
+recalled across requests on a thread in 0 ms. **Gate:** the doctor probe, plan prose, arbiter and phrasing
+run against `gpt-4.1-mini` with two settings changed and no code edit (`test_the_gate_a_second_model...`);
+a second *provider* is the same two settings and its key, untested for want of one.
+
+**Defects found by running, fixed:** "give me *their* area" was not a pronoun clause; the agent did not
+compute the scene's resolution so a car count was skipped at execution instead of refused at planning;
+evidence recall echoed the current request's claims (duplicate placeholders made the guard reject the
+phrasing); "where the vegetation is stressed" resolved to all vegetation (word order) - inverted phrases
+added; LangGraph 1.2 trips over `Command(resume=None)`.
+
+**The product owner's review (2026-09-13), adopted in full.** Reviewing a record from before the fixes
+above, four structural rules were proposed; each was right and more general than the instance fix it
+replaced, and each is now code and a test:
+
+1. *A follow-up that asks for a property computable from the previous step enriches that step's wants;
+   it does not become an EVIDENCE_RECALL step.* `route_plan` merges a clause that names no subject of
+   its own and asks for an area, map, location, count or the evidence into the step before it - unless
+   it points at an earlier request ("earlier", "previous", "you found"), which stays a recall. Caught
+   "give me the area in hectares as well", which the pronoun rule had not.
+2. *Recall produces claims, not metadata.* "Recalled from run X: 2 claims on 4 evidence items" moved
+   from the claims into `StepResult.provenance` (request, run, step, counts) - the record, not the answer.
+3. *Synthesis input is structurally unique.* `synthesis_facts` keeps each claim id once; the answer
+   cannot repeat a claim because the facts do not. A recall is said to be one through a note to the
+   phrasing, never a fact (a fact is honoured verbatim; the model reproduced the framing sentence mid-answer
+   until it was moved).
+4. *The template fallback speaks to the operator.* "The request to count the cars on the roads was not
+   done: <reason>", not "Step 3 (DETECT) was not done". The reason - the resolution numbers - is kept:
+   it is the operator's next action.
+
+Found on the way: the bare word "area" made "is this an industrial area" an area ask; the cue now needs
+"the/its/total ... area" or "area of/in". Re-run of the reviewed request: one INDEX step with
+`wants_area`, the count refused at planning, answer by the model in two sentences plus the refusal; the
+template path (`LLM_PROVIDER=none`) reads the same way; a recall on the thread carries provenance in
+`record.json` and none in the answer. Suite 594 passed.
+
+**Owed:** the `ui-command` event on the assistant stream (Phase 2); a conditional step ("if yes, ...")
+executed conditionally (the agent runs it and the answer says whether it applied); ~~the 1.10 graphs the
+plan still names as unbuilt~~ (built: every step is a graph run from 1.10).
+
+## 1.10 — Pipeline graphs — **done (2026-09-13): two graphs, every specialist a branch; the third moves to 1.11 with its content**
 
 **Deliverable** — `single_image_graph`, `temporal_graph`, `cross_modal_graph`, each a `StateGraph` composing
 the nodes built in 1.2–1.9, each routing with `add_conditional_edges` over a plain lookup table (the
@@ -757,6 +901,102 @@ LangGraph stream.
 
 **Gate** — all three graphs run end to end from the CLI, resume correctly after a kill, and their journals
 validate against the contracts.
+
+**Result.** Two graphs built, run from the CLI and the agent, resumed from their checkpoints, journals and
+evidence graphs validating against the vendored contracts; 664 tests green (349 unit, the rest integration
+on real weights and real imagery), ruff clean.
+
+- `single-image` (`graphs/single_image.py`): S1 -> (S7) -> a branch by intent from a table -> S15 -> S14
+  -> S16 -> S18 -> S19. INDEX_QUERY is the 1.4 graph as one branch (S12); DETECT and GROUND run
+  `dota-detector` at S13 and bind its boxes to ground at S15; SEGMENT runs `segformer-landcover` at S13
+  and measures the classes asked for at S15; SCENE_VQA (and GROUND of a phrase no detector knows) has the
+  VLM as its S14 specialist. One S1, one S14 reading, one S16, one S18, one S19 for every branch.
+- `temporal` (`graphs/temporal.py`): S1 -> (S7 on both dates) -> S9 -> S13 `changeformer` -> S15 -> S14 ->
+  S16 -> S18 -> S19. CHANGE_DETECT reads the comparison figure; CHANGE_VQA asks the model over both
+  pictures and keeps the measured change beside its answer.
+- `cross-modal` is **not built here**: without the radar measurement it would fuse (1.11's log-ratio and
+  dark-target branch) the fan-in has nothing to do, and a graph whose join is a placeholder is the thing
+  this project does not ship. The routing table names 1.11 for it; the reducers in `state.py` were
+  written for its shape in 1.0 and still wait for it.
+
+**Inputs are one vocabulary** (`services/imagery/frames.py`): a scene directory, a georeferenced raster,
+or a picture with no grid. A picture is not refused - a count over a benchmark crop is a real answer - and
+never pretended: figures and pixel claims, no layer on the globe, hectares only at a pixel size the
+operator declared (`--gsd`, labelled *nominal* on every metric), pixels alone otherwise. S1 records what
+each input is and refuses what the question cannot be answered from: an index over a picture, a detector
+over radar, a pair on two grids, a class that spans fewer than eight pixels at this resolution - the
+router's gate again, because a run can start without a router.
+
+**The agent's runs are graph runs.** `count_objects_step` and `answer_visual_question_step` - the 1.9
+tools that called a model with no journal, no figure, no record and no checkpoint - are gone; every
+plan step is `run_graph_step` through `services/pipeline/runner.py`, the function `aeris analyse` uses,
+with the decision turned into a request by `agents/requests.py`. `aeris agent` and `aeris analyse` take
+`--before` for a pair and `--registered` to vouch for one.
+
+    aeris analyse --scene .../P1470__1024__3296___1648.jpg --query "count the basketball courts"
+      S1 picture 1024x1024, no georeference -> S13 4 boxes (mean 0.85): 3 basketball courts, 1 soccer field
+      -> S15 3 basketball courts; 2 claims; no georeference, so no layer -> S14 reads the overlay -> S16
+      "The detector found 3 basketball courts in P1470..., with a mean score of 0.86. Also found ..."
+
+    aeris analyse --scene mumbai_gate --level L2A --query "segment the buildings and give me their area"
+      S7 no SCL -> S13 1066x1120, 97.6% observed; background 77.2%, water 12.0%, building 6.0% -> S15
+      Building covers 693.4 ha (6.0% of 11,651.6 ha observed, 12 regions; 11 drawn as polygons)
+
+    aeris analyse --scene levir/B/0271.png --before levir/A/0271.png --gsd 0.5 --registered --query "what changed"
+      S9 residual 20.41 px, 12% of tiles agree: declared-by-operator -> S13 30.5% changed, p 0.96 -> S15
+      0.5001 ha (nominal, at 0.5 m per pixel), 25 regions -> F1 0.805 against the dataset's label
+
+    aeris analyse --scene mumbai_gate_2026 --before mumbai_gate_2023 --level L2A --query "what has changed"
+      S7 SCL on both dates -> S9 residual 0.10 px, shift 0.14 px, 86% of 64 tiles agree: tiles-agree ->
+      S13 1.1% changed -> S15 135.7 ha in 54 regions; the comparison figure is tide and turbidity in
+      Mahim Bay, which is what a building-change model finds at 10 m (below)
+
+**Measured rather than assumed**
+
+- **LangGraph hands a node only the keys its first parameter's annotation declares.** S19, still annotated
+  `IndexQueryState`, recorded no detections and no figures from a run whose checkpoint held both. Every
+  node is annotated with the graph's full state now, and `node.py` says why.
+- **The 1.3 registration residual conflated change with misregistration.** The RMS of per-tile phase
+  correlation shifts was 32 px on a LEVIR-CD pair its authors registered to about 2 px, because tiles
+  whose ground changed report content, not geometry. Measured on sixty pairs, with four options: the
+  median tile disagreement (a minority of changed tiles cannot move it; a half-scene warp still does)
+  admits 14/60; the whole-frame correlation with a quarter of the tiles behind it admits 32/60; ORB
+  features match 0-1 keypoints across seasons and admit none; and none of them admits one of forty pairs
+  offset on purpose by 25-30 px. The gate is now the first two in turn, with the systematic shift gated
+  too (a consistent 2 px offset at 10 m is 20 m, which a change model reads as every edge moving), and
+  the tolerance is **5 m on the ground** converted to pixels - the 1.3 value at Sentinel-2's pixel,
+  which held a 0.5 m pair to a quarter-metre wobble under 15 m buildings. The 28 pairs neither route
+  admits are refused with every number and the way out: `--registered`, the operator's word, recorded as
+  such (§8 rule 5, the same rule as `--level` and `--gsd`). On the Sentinel-2 pair the tiles agree at
+  0.10 px.
+- **The specialists are out of their domain at 10 m, and the pipeline says what they said, not what is
+  true.** SegFormer-LoveDA (0.3 m) calls 77% of Mumbai "background" and 6% "building"; ChangeFormer
+  (0.5 m, buildings) marks tide and sediment in Mahim Bay as change; the DOTA detector, asked for bridges
+  over the 10 m subset, also drew planes and storage tanks it could not have seen at three pixels a
+  side. The last is fixed structurally - the resolution gate is applied to the *output* as well as the
+  question, and boxes below it stay in the artefact and out of the claims - and the first two are
+  stated: a land-cover and a change model trained at Sentinel-2's resolution are what the scene path
+  needs (BigEarthNet land cover; OSCD or the 1.11 radar log-ratio for change). On their own resolution
+  both are right: the LEVIR pair scores F1 0.805 against its label in the graph, as the 1.6 harness did.
+- **A negative reading over a figure with nothing on it is a hallucination waiting to happen.** Asked
+  to describe "tennis courts" on a figure where the detector drew none, the VLM placed them top-middle.
+  S14 now reads the classes that were drawn, and reads nothing when nothing was.
+- **`PHOTOMETRIC=YCBCR` in a JPEG's profile broke a one-band COG.** The writer copied the reference's
+  whole creation profile; it copies its georeferencing and nothing else now.
+- **Hectares to one decimal is a statement about a 10 m pixel.** 0.5 m pixels are 0.000025 ha each and a
+  building's change read as "0.0 ha"; the decimals follow the pixel (1 at 10 m, 4 at 0.5 m, the
+  contract's ceiling).
+- **The phrasing prompt did not state the guard's rule.** gpt-5-mini left the supporting "also found"
+  finding out and the guard rejected the answer; told that every placeholder is used once and a figure
+  written in a finding is copied or left out, never rounded, it complies (two runs, stable).
+- **A windowed STAC fetch** (`fetch_scene_window`) moves 10 MB for a 10 km subset of five bands where the
+  whole-band fetch moved 489 MB for two; the March 2026 and January 2023 subsets over the Mumbai box
+  land on one grid (their S9 residual is 0.10 px) and both carry the SCL the 1.4 subset lacked.
+
+**Owed:** the cross-modal graph with its radar branch (1.11); a categorical colour ramp in the frontend
+vocabulary so a class map can be a figure (today the segmenter's figures are the confidence surface and
+one amber mask per class); models trained at 10 m for land cover and change on scenes; the frontend's
+`cancelled` trace state; the S7 vocabulary entry for Sen2Cor.
 
 ## 1.11 — Cross-modal fusion
 

@@ -29,11 +29,13 @@ how   : **What a COG actually is, because every constant in `constants/raster.py
 import asyncio
 import logging
 import math
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import rasterio
+from rasterio.errors import NotGeoreferencedWarning
 from rasterio.io import MemoryFile
 from rio_cogeo.cogeo import cog_translate, cog_validate
 from rio_cogeo.profiles import cog_profiles
@@ -219,20 +221,28 @@ async def write_cog_from_array(
 def _write_array(
     array: np.ndarray, reference: RasterMetadata, destination: Path, nodata: float, categorical: bool
 ) -> None:
-    """Georeference an array and translate it to a COG. Sync."""
-    with rasterio.open(reference.path) as source:
-        profile = source.profile.copy()
+    """Georeference an array and translate it to a COG. Sync.
 
-    profile.update(
-        {
-            "driver": "GTiff",
-            "dtype": array.dtype.name,
-            "count": 1,
-            "nodata": nodata,
-            "height": array.shape[0],
-            "width": array.shape[1],
-        }
-    )
+    Only the *georeferencing* is taken from the reference - its CRS and transform. Copying its whole
+    creation profile carried a JPEG's `PHOTOMETRIC=YCBCR` into a one-band GeoTIFF and GDAL refused to
+    write it (measured in 1.10 on a benchmark crop); a computed array is its own raster and describes
+    itself.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", NotGeoreferencedWarning)
+        with rasterio.open(reference.path) as source:
+            crs, transform = source.crs, source.transform
+
+    profile = {
+        "driver": "GTiff",
+        "dtype": array.dtype.name,
+        "count": 1,
+        "nodata": nodata,
+        "height": array.shape[0],
+        "width": array.shape[1],
+        "crs": crs,
+        "transform": transform,
+    }
 
     # Written through a MemoryFile rather than to a temporary path: `cog_translate` needs a readable
     # source, and going via memory avoids leaving a non-COG GeoTIFF on disk that something could pick up

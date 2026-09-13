@@ -34,6 +34,7 @@ from rich.table import Table
 
 from app.config import MASKED_URL_PROPERTIES, Settings, settings
 from app.lib import database, inngest, redis, storage
+from app.lib.llm import chat_model
 from app.models import loader as fleet_loader
 
 # What a masked value prints as. Short, and obviously not a value that was truncated.
@@ -109,6 +110,9 @@ async def collect_report(read_only: bool = False) -> DoctorReport:
     # Last, and not gathered with the others: importing torch costs seconds, and a failure here is a
     # missing accelerator rather than a broken stack - reported, never fatal to the exit code.
     rows.append(await _fleet_row(await fleet_loader.check_health()))
+    # The language model: one round trip. Unconfigured is healthy - the agent has a template path for
+    # everything - and is said so; configured-but-unreachable is a failure with the provider's reason.
+    rows.append(await _chat_model_row(await chat_model.probe_chat_model()))
 
     return DoctorReport(
         rows=tuple(rows),
@@ -210,6 +214,13 @@ async def _inngest_row(health: inngest.InngestHealth) -> DependencyRow:
         version=health.server_version,
         latency_ms=health.latency_ms,
         detail=health.failure_reason or "no functions bound until Phase 2.5 (ADR-002)",
+    )
+
+
+async def _chat_model_row(health: chat_model.ChatModelHealth) -> DependencyRow:
+    return DependencyRow(
+        name="Language model", is_healthy=health.reachable or not health.configured, version=health.version,
+        latency_ms=health.latency_ms, detail=health.detail,
     )
 
 

@@ -37,8 +37,10 @@ CAPTION_TEMPLATE: Final[str] = (
 CONSTRAINED_ANSWER_TEMPLATE: Final[str] = (
     "The analysis produced these findings:\n{facts}\n\n"
     "Write a short plain-English answer to the question \"{question}\" using only these findings. Copy each "
-    "placeholder such as {{m1}} exactly where its value belongs. Do not invent any number, area, "
-    "percentage or count that is not a placeholder. Do not add findings."
+    "placeholder such as {{m1}} exactly where its value belongs, and use every placeholder exactly once - a "
+    "finding left out is a number the operator never hears, so mention the supporting findings too, briefly. "
+    "Do not invent any number, area, percentage or count that is not a placeholder; a figure written out in a "
+    "finding is copied exactly as written or left out, never rounded. Do not add findings."
 )
 
 # S14 over a run's evidence figure. The highlighted regions are named by the claim's own label; the model

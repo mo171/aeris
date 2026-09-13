@@ -167,6 +167,18 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
         "Internal. Which Qwen3-VL base a machine is configured to serve. The frontend sees the model's "
         "version string on `modelStatusSchema`, which names the size and whether an adapter is attached."
     ),
+    "routing.Modality": (
+        "Internal to query understanding (1.8): which sensor a question names. The frontend sends the "
+        "question and receives the intent (`analysisIntentSchema`); the extracted entities reach it in "
+        "1.9 as the plan's step descriptions, as prose."
+    ),
+    "routing.SpatialRegion": "Internal to query understanding (1.8): the compass sector a question points at. See routing.Modality.",
+    "routing.TemporalScope": "Internal to query understanding (1.8): single image, a pair, or earlier evidence. See routing.Modality.",
+    "ui_commands.UiCommand": (
+        "Mirrors `COMMAND_IDS` in `frontend/lib/constants/commands.ts`, a const object rather than a Zod "
+        "schema, so the exporter never sees it. `tests/unit/test_agent.py` parses that file and fails if the "
+        "two lists drift. The `ui-command` wire event joins the assistant stream in Phase 2."
+    ),
     "spectral.SpectralIndex": (
         "Shared in substance, not in Zod: the frontend declares `SPECTRAL_INDEX_IDS` in "
         "`lib/constants/overlays/spectral-indices.ts` as a constants array rather than a schema, so the "

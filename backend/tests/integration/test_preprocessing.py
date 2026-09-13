@@ -204,13 +204,61 @@ async def test_two_rasters_that_were_never_aligned_are_refused_by_grid(tmp_path:
 
 async def test_a_well_registered_pair_is_accepted_with_its_residual_reported() -> None:
     reference = np.random.default_rng(21).normal(size=(256, 256)).astype(np.float32)
-    moving = np.roll(reference, 2, axis=1)
+    # Sub-pixel jitter of the whole frame: registered to within the tolerance, not to the sample.
+    moving = 0.7 * reference + 0.3 * np.roll(reference, 1, axis=1)
 
     result = await measure_coregistration(reference, moving, tile_size=64, minimum_valid_tiles=4)
 
     await require_comparison_ready(result)
     assert result.is_accepted
     assert result.measurement.residual_pixels < result.tolerance_pixels
+    assert result.measurement.shift_magnitude_pixels < result.tolerance_pixels
+    assert result.agreeing_fraction == 1.0
+
+
+async def test_a_consistently_offset_pair_is_refused_for_its_shift_not_its_residual() -> None:
+    """1.10: a pair every tile agrees is offset by two pixels has a residual of zero and is still not
+    comparable - a change model reads a 20 m systematic offset as every edge having moved. The refusal
+    names the shift, so the operator aligns the pair rather than lowering a threshold."""
+    reference = np.random.default_rng(21).normal(size=(256, 256)).astype(np.float32)
+    moving = np.roll(reference, 2, axis=1)
+
+    result = await measure_coregistration(reference, moving, tile_size=64, minimum_valid_tiles=4)
+
+    assert result.measurement.residual_pixels < 0.05
+    assert not result.is_accepted
+    with pytest.raises(InvalidRequestError, match="shift 2.00 px") as error:
+        await require_comparison_ready(result)
+    assert error.value.details["shiftPixels"] > error.value.details["tolerancePixels"]
+
+
+async def test_the_tolerance_is_a_ground_distance_when_the_resolution_is_known() -> None:
+    """The same two-pixel offset is 20 m at 10 m per pixel and 1 m at 0.5 m; §8 rule 2 is about metres."""
+    reference = np.random.default_rng(21).normal(size=(256, 256)).astype(np.float32)
+    moving = np.roll(reference, 2, axis=1)
+
+    coarse = await measure_coregistration(reference, moving, resolution_metres=10.0, tile_size=64)
+    fine = await measure_coregistration(reference, moving, resolution_metres=0.5, tile_size=64)
+
+    assert coarse.tolerance_pixels == 0.5 and coarse.tolerance_metres == 5.0 and not coarse.is_accepted
+    assert fine.tolerance_pixels == 10.0 and fine.tolerance_metres == 5.0 and fine.is_accepted
+
+
+async def test_changed_tiles_do_not_move_the_residual_of_an_aligned_pair() -> None:
+    """A minority of tiles whose content changed report translations that are content, not geometry;
+    the median residual ignores them where the RMS did not (measured: 32 px on a registered LEVIR pair)."""
+    generator = np.random.default_rng(8)
+    reference = generator.normal(size=(256, 256)).astype(np.float32)
+    moving = reference.copy()
+    # Six of sixteen tiles are replaced by unrelated ground.
+    for row, column in ((0, 0), (0, 128), (64, 64), (128, 192), (192, 0), (192, 128)):
+        moving[row : row + 64, column : column + 64] = generator.normal(size=(64, 64))
+
+    result = await measure_coregistration(reference, moving, tile_size=64, minimum_valid_tiles=4)
+
+    assert result.is_accepted
+    assert result.measurement.residual_pixels < 0.05
+    assert 0.6 <= result.agreeing_fraction < 1.0
 
 
 async def test_bad_coregistration_pair_is_refused_with_its_measured_reason() -> None:

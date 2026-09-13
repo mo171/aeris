@@ -64,11 +64,18 @@ POLYGON_SIMPLIFICATION_TOLERANCE_METRES: Final[float] = 5.0
 # pixel; what the floor bounds is the vector payload, which otherwise carries thousands of one-pixel rings.
 MINIMUM_FEATURE_REGION_PIXELS: Final[int] = 25
 
-# How many decimals each metric is meaningful to (`claimMetricSchema.precision`). Hectares to one decimal:
-# a 10 m pixel is 0.01 ha, so the second decimal is one pixel and the third is noise.
+# How many decimals each metric is meaningful to (`claimMetricSchema.precision`). Hectares to one decimal
+# at Sentinel-2's 10 m: a 10 m pixel is 0.01 ha, so the second decimal is one pixel and the third is
+# noise. That is a statement about the pixel, so the builder derives the decimals from the pixel size
+# (`hectares_precision_for`) and this is the value at 10 m and the floor everywhere: a 0.5 m aerial pixel
+# is 0.000025 ha and a change of a few hundred of them reads as "0.0 ha" at one decimal.
 HECTARES_PRECISION: Final[int] = 1
+# The contract's ceiling for a metric's decimals (`claimMetricSchema.precision`).
+MAXIMUM_METRIC_PRECISION: Final[int] = 4
 PERCENTAGE_PRECISION: Final[int] = 1
 COUNT_PRECISION: Final[int] = 0
+# A model's score or probability, on [0, 1]: two decimals is what a threshold is stated to.
+SCORE_PRECISION: Final[int] = 2
 INDEX_VALUE_PRECISION: Final[int] = 2
 
 # The rule S18 applies and S19 records (PDF §21.2: "aggregation rule recorded, not just shown"). The run's
