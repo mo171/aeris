@@ -43,7 +43,7 @@ export function buildWorkflowGraph({
   sceneSlots,
 }: BuildWorkflowGraphParams): WorkflowGraph {
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", ranksep: 80, nodesep: 50 });
+  g.setGraph({ rankdir: "TB", ranksep: 80, nodesep: 50 });
   g.setDefaultEdgeLabel(() => ({}));
 
   const nodes: WorkflowNode[] = [];

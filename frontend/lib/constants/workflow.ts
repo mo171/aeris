@@ -12,6 +12,7 @@ export const WORKFLOW_NODE_KINDS = [
   "layer",
   "figure",
   "claim",
+  "version",
 ] as const;
 
 export type WorkflowNodeKind = (typeof WORKFLOW_NODE_KINDS)[number];

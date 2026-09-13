@@ -152,7 +152,7 @@ const SESSION_STORAGE_KEY = "aeris.mock.investigations";
  * reports "no evidence yet" with nothing anywhere saying why. It costs a session's history to discard
  * the cache; it costs an afternoon to debug a schema change against data that predates it.
  */
-const SESSION_STORAGE_VERSION = 5;
+const SESSION_STORAGE_VERSION = 8;
 
 const investigationsById = new Map<string, GeneratedInvestigation>(loadPersisted());
 
@@ -380,7 +380,7 @@ function generate(
   };
 
   const sceneLayers = buildSceneLayers(investigationId, areaOfInterest, sceneSlots, acquisitions);
-  const analysis = buildAnalysisProducts(investigationId, random, area, areaOfInterest, hasSar);
+  const analysis = buildAnalysisProducts(investigationId, random, area, areaOfInterest, hasSar, sceneSlots);
 
   return {
     investigation,
@@ -553,6 +553,7 @@ function buildAnalysisProducts(
   area: (typeof MOCK_AREAS)[number],
   bounds: { west: number; south: number; east: number; north: number },
   hasSar: boolean,
+  sceneSlots: InvestigationSceneSlot[],
 ): AnalysisProducts {
   const changeLayerId = `${investigationId}-layer-change`;
   const detectionLayerId = `${investigationId}-layer-buildings`;
@@ -1113,7 +1114,7 @@ function buildAnalysisProducts(
       residualLayerId,
       changeLayerId,
       detectionLayerId,
-    }),
+    }, sceneSlots),
   };
 }
 
@@ -1126,6 +1127,7 @@ function buildTraceSteps(
     changeLayerId: string;
     detectionLayerId: string;
   },
+  sceneSlots: InvestigationSceneSlot[],
 ): AnalysisTraceStep[] {
   const step = (
     stageCode: AnalysisTraceStep["stageCode"],
@@ -1146,15 +1148,17 @@ function buildTraceSteps(
     outputs,
     model,
     rationale,
-    dependsOn,
+    dependsOn: dependsOn.map((dep) => `${investigationId}-step-${dep}`),
     detail: null,
     state: "pending",
     durationMs: null,
     artefactLayerId,
   });
 
+  const s1Inputs = sceneSlots.map((slot) => ({ kind: "scene" as const, id: slot.sceneId }));
+
   const steps: AnalysisTraceStep[] = [
-    step("S1", null, "2 scenes referenced", null, [], [], [], {}, null),
+    step("S1", null, "2 scenes referenced", null, s1Inputs, [], [], {}, null),
     step("S3", null, "Sentinel-2 L2A, 2018-03-14 and 2026-07-29", null, [], [], ["S1"], {}, null),
     step("S4", null, "EPSG:32643 confirmed on both", null, [], [], ["S3"], {}, null),
     step("S6", null, "Nodata 0.4%, histograms nominal", null, [], [], ["S4"], {}, null),
@@ -1162,7 +1166,7 @@ function buildTraceSteps(
     step("S8", null, "Reprojected to analysis grid", null, [], [], ["S7"], {}, null),
     step("S9", null, "Residual 0.61 px RMSE", { id: "co-registration", version: "0.7.1" }, [], [], ["S8"], {}, artefactLayerIds.residualLayerId),
     step("S11", null, "512 px windows, 10% overlap", null, [], [], ["S9"], {}, null),
-    step("S12", "index-ndvi", "NDBI and NDVI computed", { id: "index-engine", version: "4.0.0" }, [], [{ kind: "layer", id: "ndvi" }], ["S11"], {}, null),
+    step("S12", "index-ndvi", "NDBI and NDVI computed", { id: "index-engine", version: "4.0.0" }, [], [{ kind: "layer", id: `${investigationId}-layer-ndvi` }], ["S11"], {}, null),
     step("S13", "change-detection", "Bi-temporal change detection", { id: "changeformer", version: "3.0.1" }, [], [{ kind: "layer", id: artefactLayerIds.changeLayerId }], ["S9"], { threshold: 0.35 }, artefactLayerIds.changeLayerId),
     step("S15", "object-detection", "Change bound to 14 georeferenced regions", { id: "dota-detector", version: "2.3.4" }, [{ kind: "layer", id: artefactLayerIds.changeLayerId }], [{ kind: "layer", id: artefactLayerIds.detectionLayerId }], ["S13"], { targetClass: "building" }, artefactLayerIds.detectionLayerId),
     step("S16", null, "Answer rendered from validated results", { id: "rs-vlm", version: "1.4.2" }, [], [], ["S15"], {}, null),

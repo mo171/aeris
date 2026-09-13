@@ -38,7 +38,7 @@ export function AnalysisCanvas({ run, layersById, claimsById, sceneSlots }: Anal
     <WorkflowCanvas
       graph={graph}
       onNodeSelect={setSelectedNodeId}
-      className="h-full w-full bg-slate-50/50"
+      className="h-full w-full bg-slate-950/95"
     />
   );
 }

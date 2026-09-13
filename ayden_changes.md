@@ -120,3 +120,19 @@ Added a 13th Model ID representing Sentinel-2's native Scene Classification Laye
   - `frontend/features/investigation/components/inputsPanel/RampOverrideSelect.tsx` [NEW]: Created the per-layer color ramp override selector.
   - `frontend/features/investigation/store/investigation-store.ts`: Added view state for the active basemap, ramp overrides, and layer annotations.
   - `frontend/features/investigation/schemas/investigation.schema.ts`: Added `events` (using the new `timelineEventAnnotationSchema`) and `layerNotes` to the investigation schema.
+
+## 13. Phase G - Graph Layout & Visual Enhancements
+- **Action**: Improved the layout, sizes, and colors of the React Flow nodes and edges in the Analysis and Version canvases.
+- **Files Modified**:
+  - `frontend/features/investigation/lib/workflow-graph.ts` & `frontend/features/investigation/lib/version-graph.ts`: Switched dagre layout from Left-to-Right (`LR`) to Top-to-Bottom (`TB`).
+  - `frontend/components/sharedUI/workflowCanvas/nodes.tsx`: Compressed custom node sizes down to `220px-260px` to resolve DAG overlapping. Re-mapped Handles to `Position.Top` and `Position.Bottom`.
+  - `frontend/components/sharedUI/workflowCanvas/WorkflowCanvas.tsx`: Injected edge styles (`stroke: "#6366f1"`) and styled the `Controls` panel to blend with the dark slate theme.
+
+## 14. Phase G - Mock Data Pipeline Fixes
+- **Action**: Repaired multiple `ReferenceError` crashes and disconnected DAG nodes in the mock trace generator.
+- **Files Modified**:
+  - `frontend/mock/data/investigation.data.ts`:
+    - Re-mapped upstream `dependsOn` arrays from shorthand (e.g. `"S1"`) to fully qualified IDs to ensure React Flow resolves the edges.
+    - Added `sceneSlots` inputs into step `S1` and updated `buildAnalysisProducts`/`buildTraceSteps` signatures to pipe `sceneSlots` into the generator, fixing floating scene nodes and a `ReferenceError`.
+    - Corrected the `id` of the `ndvi` layer output in step `S12`.
+    - Bumped `SESSION_STORAGE_VERSION` to `8` to clear stale, invalid mock cache on client reload.

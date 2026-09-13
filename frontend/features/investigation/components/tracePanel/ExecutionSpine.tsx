@@ -27,6 +27,13 @@ import { INVESTIGATION_LAYOUT } from "@/lib/constants/investigation";
 import { formatDurationMs } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+
 import { useInvestigationStore } from "../../store/investigation-store";
 import type { AnalysisRun } from "../../types/analysis.types";
 import { TraceStepNode } from "./TraceStepNode";
@@ -34,15 +41,19 @@ import { AnalysisCanvas } from "./AnalysisCanvas";
 import type { Claim } from "../../types/evidence.types";
 import type { EvidenceLayer } from "../../types/layer.types";
 import type { InvestigationSceneSlot } from "../../types/investigation.types";
+import type { InvestigationVersion } from "../../types/version.types";
+import { VersionCanvas } from "./VersionCanvas";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface ExecutionSpineProps {
   run: AnalysisRun | null;
   layersById: Record<string, EvidenceLayer>;
   claimsById: Record<string, Claim>;
   sceneSlots: readonly InvestigationSceneSlot[];
+  versions: InvestigationVersion[];
 }
 
-export function ExecutionSpine({ run, layersById, claimsById, sceneSlots }: ExecutionSpineProps) {
+export function ExecutionSpine({ run, layersById, claimsById, sceneSlots, versions }: ExecutionSpineProps) {
   const isExpanded = useInvestigationStore((state) => state.isTraceExpanded);
   const traceView = useInvestigationStore((state) => state.traceView);
   const setTraceView = useInvestigationStore((state) => state.setTraceView);
@@ -119,36 +130,43 @@ export function ExecutionSpine({ run, layersById, claimsById, sceneSlots }: Exec
       </header>
 
       {isExpanded ? (
-        traceView === "canvas" ? (
-          <div className="flex-1 min-h-0 relative">
-            <div className="absolute top-2 right-2 z-10">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setTraceView("rows")}
-                className="bg-background/80 backdrop-blur"
-              >
-                Show Rows
-              </Button>
-            </div>
-            <AnalysisCanvas
-              run={run}
-              layersById={layersById}
-              claimsById={claimsById}
-              sceneSlots={sceneSlots}
-            />
-          </div>
-        ) : (
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             <div className="flex justify-end mb-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setTraceView("canvas")}
-                className="h-7 text-xs"
-              >
-                Show Canvas
-              </Button>
+              <Dialog open={traceView === "canvas"} onOpenChange={(open) => setTraceView(open ? "canvas" : "rows")}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    View Analysis Canvas
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="!max-w-[95vw] w-[1600px] h-[90vh] flex flex-col overflow-hidden p-0 border-border bg-slate-950">
+                  <DialogTitle className="sr-only">Analysis Canvas</DialogTitle>
+                  <Tabs defaultValue="trace" className="flex-1 flex flex-col min-h-0 h-full">
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 p-1 rounded-lg backdrop-blur-md border border-slate-700/50 shadow-2xl">
+                      <TabsList className="bg-transparent gap-1">
+                        <TabsTrigger value="trace" className="rounded-md px-6 py-2 data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">Analysis Trace</TabsTrigger>
+                        <TabsTrigger value="versions" className="rounded-md px-6 py-2 data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">Version History</TabsTrigger>
+                      </TabsList>
+                    </div>
+                    
+                    <TabsContent value="trace" className="flex-1 min-h-0 w-full h-full m-0 data-[state=inactive]:hidden outline-none">
+                      <AnalysisCanvas
+                        run={run}
+                        layersById={layersById}
+                        claimsById={claimsById}
+                        sceneSlots={sceneSlots}
+                      />
+                    </TabsContent>
+                    
+                    <TabsContent value="versions" className="flex-1 min-h-0 w-full h-full m-0 data-[state=inactive]:hidden outline-none">
+                      <VersionCanvas versions={versions} />
+                    </TabsContent>
+                  </Tabs>
+                </DialogContent>
+              </Dialog>
             </div>
             <ol className="flex flex-col gap-0.5">
               {steps.map((step) => (
@@ -175,7 +193,6 @@ export function ExecutionSpine({ run, layersById, claimsById, sceneSlots }: Exec
               </Button>
             ) : null}
           </div>
-        )
       ) : null}
     </section>
   );

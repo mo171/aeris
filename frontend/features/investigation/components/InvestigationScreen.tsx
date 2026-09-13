@@ -645,6 +645,7 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               layersById={graph.layersById}
               claimsById={graph.claimsById}
               sceneSlots={investigation.sceneSlots}
+              versions={versions}
             />
           </PanelErrorBoundary>
         </div>

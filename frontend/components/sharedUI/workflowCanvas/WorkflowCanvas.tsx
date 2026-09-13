@@ -39,8 +39,12 @@ export function WorkflowCanvas({ graph, onNodeSelect, className }: WorkflowCanva
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      animated: edge.isReused === false, // if not reused and running, could animate.
-      style: edge.isReused ? { strokeDasharray: "4 4" } : {},
+      animated: edge.isReused === false,
+      style: {
+        stroke: "#6366f1", // indigo-500
+        strokeWidth: 2,
+        ...(edge.isReused ? { strokeDasharray: "4 4", opacity: 0.5 } : {}),
+      },
     }));
   }, [graph.edges]);
 
@@ -72,7 +76,7 @@ export function WorkflowCanvas({ graph, onNodeSelect, className }: WorkflowCanva
         minZoom={0.2}
         maxZoom={2}
       >
-        <Background />
+        <Background color="#334155" variant="dots" gap={24} size={2} className="opacity-40" />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>
