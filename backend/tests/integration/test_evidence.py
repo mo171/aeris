@@ -49,7 +49,7 @@ from app.services.evidence.builder import build_region_evidence
 from app.services.evidence.spatial import measure_mask
 from app.services.evidence.trace import evidence_graph_path, provenance_path
 from app.services.pipeline.checkpointer import open_checkpointer, read_thread_state
-from app.services.pipeline.graphs.index_query import build_index_query_graph
+from app.services.pipeline.graphs.single_image import build_single_image_graph
 from app.services.pipeline.memory_store import open_memory_store
 from app.services.sessions.journal_writer import journal_path
 from tests.integration.test_spectral_engine import (
@@ -165,7 +165,7 @@ async def test_small_regions_are_measured_but_not_drawn() -> None:
 async def completed_run(scene: Path, isolated_pipeline_paths: Path):  # noqa: F811 - pytest fixture injection
     """One real run of the six-node graph, with its recorder and checkpoint values."""
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        graph = build_index_query_graph().compile(checkpointer=checkpointer, store=store)
+        graph = build_single_image_graph().compile(checkpointer=checkpointer, store=store)
         run_id, recorder, status = await run_index_query(scene, graph)
         snapshot = await read_thread_state(graph, run_id)
     assert status is RunStatus.COMPLETE
@@ -226,7 +226,9 @@ async def test_gate_2_artefact_producing_steps_name_their_layer_and_the_record_t
         assert artefact["storageUri"].startswith("s3://") and artefact["objectKey"].startswith(run_id)
     assert by_stage["S12"]["layerId"] == completed[PipelineStage.S12].artefact_layer_id
     assert by_stage["S7"]["layerId"] is None
-    assert {record["bandId"] for record in record["inputs"]} == {"B08", "B04"}
+    # Every file the run read: the two index bands (S12) and the classification layer the mask came from
+    # (S7, recorded from 1.10) - the record names what the numbers depend on, and the mask is one of those.
+    assert {record["bandId"] for record in record["inputs"]} == {"B08", "B04", "SCL"}
     assert all(len(record["sha256"]) == 64 for record in record["inputs"])
     assert record["confidenceAggregationRule"] == CONFIDENCE_AGGREGATION_RULE
     assert record["confidence"] is None

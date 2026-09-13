@@ -50,7 +50,7 @@ from app.services.pipeline.node import (
     describe_trace_step,
     pipeline_node,
 )
-from app.services.pipeline.state import IndexQueryState
+from app.services.pipeline.state import AnalysisState
 from app.services.pipeline.stream import emit
 from app.services.preprocessing.cloud_masking import OpticalMaskResult, decode_mask_raster
 from app.services.rendering.figures import render_index_map
@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
     model_id=ModelId.INDEX_ENGINE,
     model_version=INDEX_ENGINE_VERSION,
 )
-async def extract_features(state: IndexQueryState) -> dict[str, object]:
+async def extract_features(state: AnalysisState) -> dict[str, object]:
     """S12. Mask first, formula second; then artefact, layer and figure."""
     scene_directory = Path(state["scene_directory"])
     index = SpectralIndex(state["index"])
@@ -171,7 +171,7 @@ async def extract_features(state: IndexQueryState) -> dict[str, object]:
     }
 
 
-async def _mask_from_state(state: IndexQueryState) -> OpticalMaskResult | None:
+async def _mask_from_state(state: AnalysisState) -> OpticalMaskResult | None:
     """The S7 artefact, read back through the store - the same path a resumed run takes."""
     path = state.get("cloud_mask_path")
     key = state.get("cloud_mask_object_key")

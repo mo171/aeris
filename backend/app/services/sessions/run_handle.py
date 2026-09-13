@@ -79,6 +79,9 @@ class RunHandle:
         self.thread_id = thread_id
         self.intent = intent
         self.status = RunStatus.RUNNING
+        # Why the run ended, when it did not complete: the message the `run-error` event carried. Kept on
+        # the handle so a caller reports the reason without re-reading the journal (1.10).
+        self.error: str | None = None
 
         self._graph = graph
         # `None` means "resume this thread from its checkpoint" rather than "start with empty state" -
@@ -154,24 +157,23 @@ class RunHandle:
             await self._graph_task
         except RunCancelledError as error:
             self.status = RunStatus.CANCELLED
-            await self._publish(
-                RunErrorEvent.cancelled(self.run_id, self._signal.reason or str(error))
-            )
+            self.error = self._signal.reason or str(error)
+            await self._publish(RunErrorEvent.cancelled(self.run_id, self.error))
         except asyncio.CancelledError:
             # Either `abandon()` escalated, or this whole task is being torn down. Only the first is ours
             # to report; in the second case the process is going away and re-raising is correct.
             if not self._signal.is_requested:
                 raise
             self.status = RunStatus.CANCELLED
-            await self._publish(
-                RunErrorEvent.cancelled(self.run_id, self._signal.reason or "no reason given")
-            )
+            self.error = self._signal.reason or "no reason given"
+            await self._publish(RunErrorEvent.cancelled(self.run_id, self.error))
         except Exception as error:
             self.status = RunStatus.FAILED
             logger.exception("run failed", extra={"run_id": self.run_id})
             # `str(error)` and not the traceback: this string is rendered to the operator, and
             # `api-contract.md` §1 rule 4 means the wire carries what is safe to show.
-            await self._publish(RunErrorEvent(run_id=self.run_id, message=str(error) or type(error).__name__))
+            self.error = str(error) or type(error).__name__
+            await self._publish(RunErrorEvent(run_id=self.run_id, message=self.error))
         else:
             self.status = RunStatus.COMPLETE
             await self._publish(

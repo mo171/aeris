@@ -12,13 +12,28 @@ from typing import Final
 # and its evidence record cannot silently drift apart.
 CLOUD_PROBABILITY_THRESHOLD: Final[float] = 0.4
 
-# A temporal comparison is invalid once independently measured local translations disagree by half a pixel.
-# This is deliberately a refusal threshold: confidence cannot repair a comparison with uncertain geometry.
+# A temporal comparison is invalid once independently measured local translations disagree by more than
+# this distance on the ground - half a Sentinel-2 pixel, the 1.3 gate, stated in metres (1.10) because
+# `architecture-context.md` §8 rule 2 is about the feature under discussion, not about pixels: 5 m is
+# below any field, building block or shoreline the change models draw, and a 0.5 m aerial pair held to
+# half of *its* pixel would be refused for a quarter-metre wobble under 15 m buildings. This is
+# deliberately a refusal threshold: confidence cannot repair a comparison with uncertain geometry.
+MAXIMUM_COREGISTRATION_RESIDUAL_METRES: Final[float] = 5.0
+# The same gate in pixels, for an input whose pixel size nobody measured or declared.
 MAXIMUM_COREGISTRATION_RESIDUAL_PIXELS: Final[float] = 0.5
 
-# Local phase correlation needs enough texture to distinguish a translation from periodic or flat imagery.
+# Local phase correlation needs enough texture to distinguish a translation from periodic or flat imagery;
+# 128 px does on a 10 m scene. The residual is a median over tiles, so at least four must fit each way,
+# and the tile shrinks (never below 32 px) until they do: a 256 px benchmark crop is measured at 64 px.
 COREGISTRATION_TILE_SIZE_PIXELS: Final[int] = 128
+COREGISTRATION_MINIMUM_TILE_SIZE_PIXELS: Final[int] = 32
+COREGISTRATION_MINIMUM_TILES_PER_SIDE: Final[int] = 4
 COREGISTRATION_MINIMUM_VALID_TILES: Final[int] = 4
+# When the tiles disagree among themselves, the whole-frame correlation may still admit the pair if this
+# share of tiles agrees with it to within the tolerance. A quarter: enough tiles to rule out a peak that
+# is an artefact of one region, few enough that a pair with most of its ground changed can still be
+# compared. Measured on LEVIR-CD (1.10) - see `services/preprocessing/coregistration.py`.
+COREGISTRATION_GLOBAL_QUORUM: Final[float] = 0.25
 
 # Lee filtering is applied in linear power, never dB. A 5x5 window suppresses single-pixel speckle while
 # retaining the 10 m spatial detail Phase 1 analyses need.

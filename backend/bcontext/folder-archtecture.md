@@ -42,7 +42,7 @@ backend/
 │   │   ├── ingest.py                    # `aeris ingest inspect|scene|index`  DONE (1.2)
 │   │   ├── preprocess.py                # `aeris preprocess coregister|sar`  DONE (1.3)
 │   │   ├── analyse.py                   # `aeris analyse --scene --query`  DONE (1.4). Runs the
-│   │   │                                 #   index-query graph through the same session as `run`.
+│   │   │                                 #   routed graph through the same session as `run`.
 │   │   ├── run.py                       # `aeris run` - start | --resume | --replay  DONE (1.0). 1.10
 │   │   │                                 #   points it at the three real graphs; the flags do not change.
 │   │   ├── models.py                    # `aeris models status|warm|evaluate`  DONE (1.6). The fleet strip,
@@ -131,24 +131,26 @@ backend/
 │   │   │   │   ├── answer_generation.py     # S16 DONE (1.5, 1.7). The constrained generator's phrasing (or
 │   │   │   │   │                            #   the template), then the recorded caveats; trace says which.
 │   │   │   │   ├── confidence_estimation.py # S18 DONE (1.5). minimum-of-stated; None when nothing stated.
-│   │   │   │   ├── provenance_logging.py    # S19 DONE (1.5). provenance.json + evidence-graph.json from state.
-│   │   │   │   ├── input_validation.py
-│   │   │   │   ├── metadata_analysis.py
-│   │   │   │   ├── query_interpretation.py
-│   │   │   │   ├── task_classification.py
-│   │   │   │   ├── modality_check.py
-│   │   │   │   ├── temporal_check.py
-│   │   │   │   ├── mission_planning.py
-│   │   │   │   ├── model_routing.py
-│   │   │   │   └── inference.py
+│   │   │   │   ├── provenance_logging.py    # S19 DONE (1.5, 1.10). provenance.json + evidence-graph.json from
+│   │   │   │   │                            #   state; parameters and artefacts are the branch's own.
+│   │   │   │   ├── input_validation.py      # S1  DONE (1.10). What was handed in; refuses by name.
+│   │   │   │   ├── object_detection.py      # S13+S15 DONE (1.10). dota-detector; boxes -> layer + count claims;
+│   │   │   │   │                            #   the resolution gate applied to the output too.
+│   │   │   │   ├── segmentation.py          # S13+S15 DONE (1.10). segformer-landcover; class map + confidence
+│   │   │   │   │                            #   artefacts; the classes asked for as regions; the cover table.
+│   │   │   │   ├── change_detection.py      # S9+S13+S15 DONE (1.10). The residual gate as its own step,
+│   │   │   │   │                            #   changeformer, the change mask as regions, before|after|change.
+│   │   │   │   └── vlm_reading.py           # S14 DONE (1.7, 1.10). Reads the primary figure; or IS the
+│   │   │   │                                #   specialist for a perception question (a labelled claim).
+│   │   │   ├── inputs.py                # Nodes get the inspected input and the masked frame back from state
+│   │   │   ├── runner.py                # AnalysisRequest -> one graph run (CLI and agent share it)
 │   │   │   │
 │   │   │   └── graphs/                  # StateGraph composition + add_conditional_edges routing tables
 │   │   │       ├── probe.py             # DONE (1.0). Two nodes, no imagery - "is the spine broken?"
-│   │   │       ├── index_query.py       # DONE (1.4, 1.5). S7 -> S12 -> S15 -> S16 -> S18 -> S19.
-│   │   │       ├── investigation_graph.py
-│   │   │       ├── single_image_graph.py
-│   │   │       ├── temporal_graph.py
-│   │   │       └── cross_modal_graph.py
+│   │   │       ├── single_image.py      # DONE (1.10). S1 -> (S7) -> branch by intent (table) -> S15 -> S14
+│   │   │       │                        #   -> S16 -> S18 -> S19. The 1.4 index-query graph is its S12 branch.
+│   │   │       ├── temporal.py          # DONE (1.10). S1 -> (S7 x2) -> S9 gate -> S13 -> S15 -> S14 -> ...
+│   │   │       └── cross_modal_graph.py # 1.11, with the radar branch it fuses
 │   │   │
 │   │   ├── imagery/                     # S1-S6, S11  DONE (1.2)
 │   │   │   ├── metadata.py              # S1-S3. Driver, CRS, bands, processing level - all READ, never

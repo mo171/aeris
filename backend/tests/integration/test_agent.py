@@ -172,7 +172,7 @@ async def test_the_gate_a_second_model_with_only_settings_changed(monkeypatch: p
     monkeypatch.setattr(settings, "llm_reasoning_effort", None)
     health = await probe_chat_model()
     assert health.reachable and health.version.endswith(second), health.detail
-    steps = [StepRecord(id="step-1", query="where are the water bodies", intent="INDEX_QUERY", tool="index-engine", graph="index-query", method="rule",
+    steps = [StepRecord(id="step-1", query="where are the water bodies", intent="INDEX_QUERY", tool="index-engine", graph="single-image", method="rule",
                         rule="spectral target 'water bodies' asked as area, map or location", refusal=None, objects=[], unknown_objects=[],
                         spectral_phrase="water bodies", wants_count=False, wants_location=True, wants_area=False)]
     plan, source = await build_plan("where are the water bodies", steps, model=build_chat_model())

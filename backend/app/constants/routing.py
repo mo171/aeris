@@ -61,25 +61,19 @@ class TemporalScope(StrEnum):
 # Intent -> the graph that answers it, or `None` and the phase that builds it. Every intent is listed so
 # an unrouted one is a visible `None`, never a missing key.
 INTENT_GRAPHS: Final[dict[Intent, GraphName | None]] = {
-    Intent.INDEX_QUERY: GraphName.INDEX_QUERY,
-    Intent.SCENE_VQA: None,
-    Intent.GROUND: None,
-    Intent.DETECT: None,
-    Intent.SEGMENT: None,
-    Intent.CHANGE_DETECT: None,
-    Intent.CHANGE_VQA: None,
+    Intent.INDEX_QUERY: GraphName.SINGLE_IMAGE,
+    Intent.SCENE_VQA: GraphName.SINGLE_IMAGE,
+    Intent.GROUND: GraphName.SINGLE_IMAGE,
+    Intent.DETECT: GraphName.SINGLE_IMAGE,
+    Intent.SEGMENT: GraphName.SINGLE_IMAGE,
+    Intent.CHANGE_DETECT: GraphName.TEMPORAL,
+    Intent.CHANGE_VQA: GraphName.TEMPORAL,
     Intent.CROSS_MODAL: None,
     Intent.EVIDENCE_RECALL: None,
 }
 UNBUILT_GRAPH_PHASE: Final[dict[Intent, str]] = {
-    Intent.SCENE_VQA: "1.10 single-image graph (today: `aeris ask`)",
-    Intent.GROUND: "1.10 single-image graph (today: `aeris ask`)",
-    Intent.DETECT: "1.10 single-image graph (today: `aeris ask` counts with the detector)",
-    Intent.SEGMENT: "1.10 single-image graph",
-    Intent.CHANGE_DETECT: "1.10 temporal graph",
-    Intent.CHANGE_VQA: "1.10 temporal graph (today: `aeris ask` with two images)",
-    Intent.CROSS_MODAL: "1.11 cross-modal graph",
-    Intent.EVIDENCE_RECALL: "1.9 agent (evidence store lookup)",
+    Intent.CROSS_MODAL: "1.11 cross-modal graph (two per-sensor runs joined by late fusion)",
+    Intent.EVIDENCE_RECALL: "no graph: the agent answers it from the conversation's earlier results (1.9)",
 }
 
 # Which intents need two acquisitions, and which need both sensors.

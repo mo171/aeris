@@ -1,7 +1,8 @@
 """Keeps what a stage produced, on disk and in storage, so a later stage - or a resumed run - reads the artefact rather than the memory it came from.
 
 what  : `store_artefact()` - an array becomes a COG under the run's directory and in the `artefacts`
-        bucket; `read_artefact()` - the way back, from disk or, failing that, from the bucket.
+        bucket; `store_json_artefact()` - the same for a document (a detector's boxes); `read_artefact()` -
+        the way back, from disk or, failing that, from the bucket.
 where : Called by the S7, S12 and S15 nodes. From 1.5, the URI it returns is what a trace step and an
         evidence record point at (`api-contract.md` §1 rule 10).
 how   : `architecture-context.md` §8 rule 12: every intermediate a stage marks as producing an artefact is
@@ -19,9 +20,11 @@ how   : `architecture-context.md` §8 rule 12: every intermediate a stage marks 
 """
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -79,6 +82,21 @@ async def store_artefact(
     )
     return StoredArtefact(
         path=destination, object_key=result.object_key, storage_uri=result.storage_uri, stage=stage
+    )
+
+
+async def store_json_artefact(payload: Any, *, run_id: str, stage: PipelineStage, name: str) -> StoredArtefact:
+    """Write a JSON document - a detector's boxes, a registration measurement - locally and to the
+    `artefacts` bucket. The same two copies as a raster artefact, for the same reason (1.10)."""
+    destination = artefact_directory(run_id) / f"{stage.value}_{name}"
+    text = json.dumps(payload, indent=None, sort_keys=True)
+    await asyncio.to_thread(destination.parent.mkdir, parents=True, exist_ok=True)
+    await asyncio.to_thread(destination.write_text, text, "utf-8")
+    object_key = artefact_object_key(run_id, stage, name)
+    await storage.put_object(Bucket.ARTEFACTS, object_key, text.encode("utf-8"), content_type="application/json")
+    logger.info("artefact stored", extra={"run_id": run_id, "stage": stage.value, "object_key": object_key, "bytes": len(text)})
+    return StoredArtefact(
+        path=destination, object_key=object_key, storage_uri=f"s3://{await storage.bucket_name(Bucket.ARTEFACTS)}/{object_key}", stage=stage,
     )
 
 

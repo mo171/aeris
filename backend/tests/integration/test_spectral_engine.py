@@ -39,7 +39,7 @@ from app.lib.exceptions import ConflictError, InvalidRequestError
 from app.schemas.events import AnalysisStreamEvent, FigureReadyEvent, RunCompleteEvent, TraceStepEvent
 from app.services.evidence.spatial import measure_mask
 from app.services.pipeline.checkpointer import open_checkpointer, read_thread_state
-from app.services.pipeline.graphs.index_query import build_index_query_graph
+from app.services.pipeline.graphs.single_image import build_single_image_graph
 from app.services.pipeline.memory_store import open_memory_store
 from app.services.preprocessing.cloud_masking import (
     decode_mask_raster,
@@ -360,16 +360,16 @@ async def test_the_gate_the_graph_measures_the_sparse_region_and_says_so(
     """**The 1.4 gate on a scene whose answer is known.** Map, mask, hectares - and the hectares agree with
     an ellipsoidal integration that shares no code with the measurement."""
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        graph = build_index_query_graph().compile(checkpointer=checkpointer, store=store)
+        graph = build_single_image_graph().compile(checkpointer=checkpointer, store=store)
         run_id, recorder, status = await run_index_query(scene, graph)
         snapshot = await read_thread_state(graph, run_id)
 
     assert status is RunStatus.COMPLETE
     assert [s.step.stage_code for s in recorder.steps(TraceStepState.COMPLETED)] == [
-        PipelineStage.S7, PipelineStage.S12, PipelineStage.S15, PipelineStage.S14, PipelineStage.S16,
+        PipelineStage.S1, PipelineStage.S7, PipelineStage.S12, PipelineStage.S15, PipelineStage.S14, PipelineStage.S16,
         PipelineStage.S18, PipelineStage.S19,
     ]
-    assert len(recorder.steps(TraceStepState.RUNNING)) == 7
+    assert len(recorder.steps(TraceStepState.RUNNING)) == 8
 
     by_stage = {s.step.stage_code: s.step for s in recorder.steps(TraceStepState.COMPLETED)}
     assert "SCL mask" in (by_stage[PipelineStage.S7].detail or "")
@@ -398,7 +398,7 @@ async def test_every_figure_resolves_to_a_trace_step_of_this_run_and_one_is_prim
 ) -> None:
     """`api-contract.md` §6 rules 1 and 8, on figures a real run produced rather than hand-built ones."""
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        graph = build_index_query_graph().compile(checkpointer=checkpointer, store=store)
+        graph = build_single_image_graph().compile(checkpointer=checkpointer, store=store)
         _, recorder, _ = await run_index_query(scene, graph)
 
     figures = recorder.figures()
@@ -419,7 +419,7 @@ async def test_every_figure_resolves_to_a_trace_step_of_this_run_and_one_is_prim
 async def test_the_journal_validates_against_the_frontend_union(scene: Path, isolated_pipeline_paths: Path) -> None:
     """Every line the frontend can parse today validates; the ones it cannot yet are exactly the agreed set."""
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        graph = build_index_query_graph().compile(checkpointer=checkpointer, store=store)
+        graph = build_single_image_graph().compile(checkpointer=checkpointer, store=store)
         run_id, _, _ = await run_index_query(scene, graph)
 
     lines = [json.loads(line) for line in journal_path(run_id).read_text(encoding="utf-8").splitlines()]
@@ -444,19 +444,19 @@ async def test_a_run_resumed_after_s12_reads_the_retained_index_rather_than_memo
     S15 can only proceed by fetching it back from storage - which is what a resume on another machine does.
     """
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        paused = build_index_query_graph().compile(
+        paused = build_single_image_graph().compile(
             checkpointer=checkpointer, store=store, interrupt_after=["extract_features"]
         )
         run_id, first, _ = await run_index_query(scene, paused)
         snapshot = await read_thread_state(paused, run_id)
         assert snapshot.next == ("localise_evidence",)
-        assert [s.step.stage_code for s in first.steps(TraceStepState.COMPLETED)] == [PipelineStage.S7, PipelineStage.S12]
+        assert [s.step.stage_code for s in first.steps(TraceStepState.COMPLETED)] == [PipelineStage.S1, PipelineStage.S7, PipelineStage.S12]
 
         index_path = Path(snapshot.values["index_path"])
         assert await asyncio.to_thread(index_path.exists)
         await asyncio.to_thread(index_path.unlink)
 
-        graph = build_index_query_graph().compile(checkpointer=checkpointer, store=store)
+        graph = build_single_image_graph().compile(checkpointer=checkpointer, store=store)
         recorder = Recorder()
         fanout = EventFanout()
         fanout.register("recorder", recorder)
@@ -479,7 +479,7 @@ async def test_a_scene_without_a_mask_source_runs_and_says_it_was_unmasked(
 ) -> None:
     (scene / "SCL.tif").unlink()
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        graph = build_index_query_graph().compile(checkpointer=checkpointer, store=store)
+        graph = build_single_image_graph().compile(checkpointer=checkpointer, store=store)
         run_id, recorder, status = await run_index_query(scene, graph)
         snapshot = await read_thread_state(graph, run_id)
 
@@ -496,7 +496,7 @@ async def test_a_scene_without_a_mask_source_runs_and_says_it_was_unmasked(
 @pytest.mark.integration
 async def test_a_map_only_question_measures_nothing_and_draws_no_mask(scene: Path, isolated_pipeline_paths: Path) -> None:
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        graph = build_index_query_graph().compile(checkpointer=checkpointer, store=store)
+        graph = build_single_image_graph().compile(checkpointer=checkpointer, store=store)
         recorder = Recorder()
         fanout = EventFanout()
         fanout.register("recorder", recorder)

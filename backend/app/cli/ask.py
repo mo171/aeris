@@ -13,13 +13,12 @@ how   : The router (`agents/router.py`) decides first. A count or a detection go
         that answers it, rather than being answered badly here. `--force-vlm` bypasses the router so the
         two answers can be put side by side; the output says the router was bypassed.
 
-        PNG and JPEG are read as they are; a TIFF or GeoTIFF is read through rasterio, its first three
-        bands taken as red, green, blue, and stretched with the fixed Sentinel-2 window when the values
-        are reflectance rather than bytes - the same stretch the training renders used. `--sar` marks a
-        picture as radar so the model is told what it is looking at.
+        The picture is read by `services/imagery/frames.py` - the one door every specialist's picture
+        comes through (1.10): PNG and JPEG as they are, a (Geo)TIFF's first three bands stretched with
+        the fixed Sentinel-2 window when they are reflectance. `--sar` marks a picture as radar so the
+        model is told what it is looking at.
 """
 
-import asyncio
 from pathlib import Path
 
 import numpy as np
@@ -33,8 +32,8 @@ from app.constants.model_ids import ModelId
 from app.constants.routing import Modality
 from app.models.manager import ModelManager, get_manager
 from app.services.detection.detector import ObjectDetectionResult, detect_objects
+from app.services.imagery.frames import inspect_input, read_rgb_frame
 from app.services.prompts.vlm import SAR_IMAGE_NOTE
-from app.services.vlm.math.rendering import S2_REFLECTANCE_WINDOW, render_s1_false_colour, render_s2_true_colour
 from app.services.vlm.reading import Reading, answer_question, describe_image, read_pair
 
 # What `ask` can do without a scene. Everything else is named with where it is answered.
@@ -45,7 +44,7 @@ async def execute_ask(
     *, images: list[Path], question: str | None, sar: list[bool], console: Console, force_vlm: bool = False
 ) -> bool:
     """One or two pictures and a question - or no question, for a caption."""
-    pictures = [await asyncio.to_thread(read_picture, path, is_sar) for path, is_sar in zip(images, sar, strict=True)]
+    pictures = [await read_picture(path, is_sar) for path, is_sar in zip(images, sar, strict=True)]
     manager = await get_manager()
     if not question:
         _print_reading(await describe_image(pictures[0], manager=manager, is_sar=sar[0]), console)
@@ -128,23 +127,7 @@ def _print_detection(decision: RoutingDecision, result: ObjectDetectionResult, c
     console.print("  a count of boxes the detector kept, each with its own score - the VLM was not asked")
 
 
-def read_picture(path: Path, is_sar: bool) -> np.ndarray:
-    """An (H, W, 3) 8-bit RGB array from a PNG/JPEG, or from the first bands of a (Geo)TIFF."""
-    if path.suffix.lower() in {".tif", ".tiff"}:
-        import rasterio
-
-        with rasterio.open(path) as dataset:
-            bands = dataset.read(list(range(1, min(dataset.count, 3) + 1))).astype(np.float32)
-        if is_sar:
-            vv = bands[0]
-            vh = bands[1] if bands.shape[0] > 1 else bands[0]
-            return render_s1_false_colour(vv, vh, already_decibels=bool(np.nanmax(vv) <= 0))
-        if bands.shape[0] < 3:
-            bands = np.repeat(bands[:1], 3, axis=0)
-        if np.nanmax(bands) > 255 or np.nanmax(bands) <= S2_REFLECTANCE_WINDOW[1] / 10_000:
-            scale = 10_000.0 if np.nanmax(bands) <= 1.0 else 1.0
-            return render_s2_true_colour(bands[0] * scale, bands[1] * scale, bands[2] * scale)
-        return np.moveaxis(bands, 0, -1).clip(0, 255).astype(np.uint8)
-    from PIL import Image
-
-    return np.asarray(Image.open(path).convert("RGB"))
+async def read_picture(path: Path, is_sar: bool) -> np.ndarray:
+    """An (H, W, 3) 8-bit RGB array of a picture, a (Geo)TIFF or a scene directory - through `frames.py`."""
+    frame = await read_rgb_frame(await inspect_input(path, is_sar=is_sar))
+    return frame.rgb

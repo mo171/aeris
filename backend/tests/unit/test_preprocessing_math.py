@@ -162,10 +162,15 @@ def test_nodata_does_not_invent_a_registration_error() -> None:
 
 
 def test_the_reported_translation_is_the_one_most_of_the_scene_agrees_on() -> None:
-    """A quarter of the scene failing must not move the shift the rest of it measured.
+    """A quarter of the scene disagreeing must not move the shift the rest of it measured.
 
     The median is what makes that true: a mean over the same tiles lands between the two answers, at a
     translation no part of the image actually has, and a later stage would align the pair by it.
+
+    1.10: the residual is the *median* disagreement, so a quarter of the tiles reporting another
+    translation leaves it at zero - to the statistic a minority of tiles is content that changed, which
+    is what a change detector's pairs look like, and it cannot tell a changed strip from a warped one. The
+    disagreement is not lost: the tile translations are kept and the agreeing fraction says three quarters.
     """
     generator = np.random.default_rng(23)
     reference = generator.normal(size=(256, 256)).astype(np.float32)
@@ -175,8 +180,9 @@ def test_the_reported_translation_is_the_one_most_of_the_scene_agrees_on() -> No
     measurement = measure_registration_residual(reference, moving, tile_size=64, minimum_valid_tiles=4)
 
     assert measurement.column_shift_pixels == pytest.approx(-2.0, abs=0.1)
-    # And the disagreement is still reported, so the pair is refused rather than quietly aligned.
-    assert measurement.residual_pixels > 0.5
+    assert measurement.residual_pixels < 0.05
+    assert measurement.agreeing_fraction(0.5) == pytest.approx(0.75)
+    assert len(measurement.tile_shifts_pixels) == 16
 
 
 def test_registration_refuses_rather_than_reporting_a_shift_it_could_not_measure() -> None:

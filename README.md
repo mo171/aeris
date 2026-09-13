@@ -62,17 +62,40 @@ uv run aeris doctor
 If the command outputs an `ok` status for all services, your backend is perfectly configured and ready to use!
 
 ### 8. Run an analysis (`aeris analyse`)
-With the stack green, ask an index question over the bundled Sentinel-2 subset. The run streams its S7–S19
-trace, writes three figures under `backend/runs/<run_id>/figures/`, prints the measured area and the claims
-it rests on, and leaves `provenance.json` and `evidence-graph.json` beside the journal:
+With the stack green, ask a question over a scene directory, a GeoTIFF or a plain picture. The router
+names the graph (Phase 1.10: `single-image` or `temporal`), the run streams its S1–S19 trace, writes its
+figures under `backend/runs/<run_id>/figures/`, prints the claims and what each rests on, and leaves
+`provenance.json` and `evidence-graph.json` beside the journal:
 
 ```bash
 uv run aeris analyse --scene notebooks/01_remote_sensing/data --query "unhealthy vegetation" --level L2A
 ```
 
-`--level L2A` is needed for that subset because its files carry no product name; a scene fetched with
-`aeris dataset fetch` states its level in the path and does not need it. Other questions the phrase table
-answers: `"vegetation"`, `"water"`, `"flood extent"`, `"built-up"`, or a bare index name such as `"ndwi"`.
+```bash
+uv run aeris analyse --scene backend/data/datasets/dota8/dota8/images/val/P1470__1024__3296___1648.jpg --query "count the basketball courts"
+```
+
+```bash
+uv run aeris analyse --scene backend/data/datasets/sentinel2-l2a/mumbai_gate --level L2A --query "segment the buildings and give me their area"
+```
+
+```bash
+uv run aeris analyse --scene backend/data/datasets/levir-cd/test/B/0271.png --before backend/data/datasets/levir-cd/test/A/0271.png --gsd 0.5 --registered --query "what changed between the two images"
+```
+
+The two Sentinel-2 dates over Mumbai are fetched as windows over the box - ten megabytes each, on the tile's
+own grid, with the cloud-mask layer the older subset lacks:
+
+```bash
+uv run aeris dataset fetch sentinel2-l2a --bbox 72.8,19.0,72.9,19.1 --from 2026-03-22 --to 2026-03-23 --clip --name mumbai_gate_2026
+```
+
+`--level L2A` is needed for a subset whose files carry no product name. A picture with no georeference
+gets figures and pixel claims and nothing on the globe; `--gsd 0.5` declares its pixel size, and every
+hectare computed from it is labelled *nominal*. `--before` adds the earlier date of a pair; S9 measures
+the co-registration and refuses a pair it cannot vouch for, and `--registered` is the operator's word that
+the source already aligned it (recorded as a declaration, beside the measurement). A run stopped partway
+resumes from its checkpoint: `uv run aeris run --resume <run_id> --graph single-image --intent DETECT`.
 
 ---
 
@@ -167,6 +190,14 @@ uv run aeris agent "how many basketball courts are there, and does it look like 
 ```bash
 uv run aeris agent "map the water bodies and give me their area, then count the cars on the roads" --scene backend/data/datasets/sentinel2-l2a/mumbai_gate --level L2A --yes
 ```
+
+```bash
+uv run aeris agent "what changed between the two dates, then map the water and give me its area" --scene backend/data/datasets/sentinel2-l2a/mumbai_gate_2026 --before backend/data/datasets/sentinel2-l2a/mumbai_gate_2023 --level L2A --yes
+```
+
+From 1.10 every step the agent runs is a graph run - the same journal, figures, provenance record and
+checkpoint `aeris analyse` writes - so a count, a land-cover map, a change map and a perception question
+all leave the same kind of record.
 
 The plan is shown and paused on; enter runs it, step ids keep only those, `--skip step-2` strikes one out
 without a prompt, `--thread <id>` continues a conversation so "what did you find earlier" recalls it. Every

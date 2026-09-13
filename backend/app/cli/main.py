@@ -229,6 +229,8 @@ def dataset_fetch(
     split: str = typer.Option(
         "", "--split", help="One split of a Hub-mirrored benchmark (train, val, test). Default: every split."
     ),
+    clip: bool = typer.Option(False, "--clip", help="Imagery only: fetch just the window covering --bbox, on the asset's own grid."),
+    name: str = typer.Option("", "--name", help="With --clip: the directory to write the subset to (default: the scene id)."),
 ) -> None:
     """Acquire a dataset: STAC for imagery, a direct download or a Hub mirror where one exists, instructions otherwise."""
     acquired = asyncio.run(
@@ -240,8 +242,10 @@ def dataset_fetch(
                 end=_parse_date(to_date, "--to"),
                 maximum_cloud_percentage=None if max_cloud < 0 else max_cloud,
                 limit=limit,
-                asset_names=tuple(name.strip() for name in assets.split(",") if name.strip()) or None,
+                asset_names=tuple(asset.strip() for asset in assets.split(",") if asset.strip()) or None,
                 console=console,
+                clip=clip,
+                name=name or None,
                 split=DatasetSplit(split) if split else None,
             )
         )
@@ -382,15 +386,20 @@ def figures(
 
 @app.command()
 def analyse(
-    scene: Path = typer.Option(..., "--scene", help="A scene directory holding the bands the index needs."),
-    query: str = typer.Option(..., "--query", help='The question, e.g. "unhealthy vegetation" or "water".'),
+    scene: Path = typer.Option(..., "--scene", help="A scene directory, a GeoTIFF or a picture. For a pair, the later date."),
+    query: str = typer.Option(..., "--query", help='The question, e.g. "unhealthy vegetation", "count the ships", "what changed".'),
+    before: Path | None = typer.Option(None, "--before", help="The earlier date of a pair, on the same grid as --scene."),
     level: ProcessingLevel = typer.Option(
         ProcessingLevel.UNKNOWN,
         "--level",
         help="State the processing level when the path does not carry it. Every index needs L2A.",
     ),
+    gsd: float | None = typer.Option(None, "--gsd", help="Metres per pixel of a picture with no georeference; areas are then nominal."),
+    sar: bool = typer.Option(False, "--sar", help="The --scene input is radar."),
+    before_sar: bool = typer.Option(False, "--before-sar", help="The --before input is radar."),
+    registered: bool = typer.Option(False, "--registered", help="Declare the pair co-registered by its source; S9 still measures and records."),
 ) -> None:
-    """Answer an index question over one scene: the map, the region, and its area in hectares. Phase 1.4."""
+    """Route a question and run its graph over the input: index, count, land cover, perception, or change. Phase 1.10."""
     status = asyncio.run(
         _run_dataset(
             analyse_command.execute_analyse(
@@ -398,6 +407,11 @@ def analyse(
                 query=query,
                 console=console,
                 declared_level=None if level is ProcessingLevel.UNKNOWN else level,
+                reference=before,
+                declared_resolution_metres=gsd,
+                is_sar=sar,
+                reference_is_sar=before_sar,
+                declared_registered=registered,
             )
         )
     )
@@ -507,7 +521,8 @@ def route(
 @app.command()
 def agent(
     request: str = typer.Argument(..., help="What you want, in one breath. Several questions become several steps."),
-    scene: Path | None = typer.Option(None, "--scene", help="A scene directory, for index questions."),
+    scene: Path | None = typer.Option(None, "--scene", help="A scene directory (or the later date of a pair)."),
+    before: Path | None = typer.Option(None, "--before", help="The earlier date of a scene pair, on the same grid as --scene."),
     image: list[Path] = typer.Option([], "--image", help="One or two pictures, for counts and perception questions."),
     sar: list[bool] = typer.Option([], "--sar", help="Per image, in order: true if it is radar."),
     level: ProcessingLevel = typer.Option(ProcessingLevel.UNKNOWN, "--level", help="The scene's processing level when its path does not say."),
@@ -515,6 +530,7 @@ def agent(
     skip: list[str] = typer.Option([], "--skip", help="Step ids to strike out of the plan, e.g. --skip step-2."),
     thread: str | None = typer.Option(None, "--thread", help="Continue a conversation: the agent id a previous run printed."),
     gsd: float | None = typer.Option(None, "--gsd", help="Metres per pixel of the image, for the resolution gate."),
+    registered: bool = typer.Option(False, "--registered", help="Declare a pair co-registered by its source; S9 still measures and records."),
 ) -> None:
     """Ask AERIS: the router plans, you approve, the specialists run, the language model phrases. Phase 1.9."""
     flags = list(sar) + [False] * (len(image) - len(sar))
@@ -523,6 +539,7 @@ def agent(
             agent_command.execute_agent(
                 request=request, console=console, scene=scene, images=list(image), sar=flags[: len(image)],
                 level=None if level is ProcessingLevel.UNKNOWN else level, yes=yes, skip=list(skip), thread=thread, ground_sample_distance=gsd,
+                before=before, registered=registered,
             )
         )
     )

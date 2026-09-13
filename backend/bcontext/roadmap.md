@@ -786,9 +786,9 @@ were fixed by table, then it was scored again. A third batch would score somewhe
 were changed to what the plan should be rather than what was first written: "how many ships and how many
 tanks" is one detector run, not two steps.
 
-**Owed:** the DETECT / SEGMENT / CHANGE graphs the table names `None` for (1.10); an LLM arbiter for the
-uncertain kNN margin and for clause splitting the tables miss (1.9); a query set written by someone other
-than the author; a conditional step ("if yes, ...") executed conditionally rather than always (1.9's agent).
+**Owed:** ~~the DETECT / SEGMENT / CHANGE graphs the table names `None` for~~ (built in 1.10); ~~an LLM
+arbiter~~ (1.9); a query set written by someone other than the author; a conditional step ("if yes, ...")
+executed conditionally rather than always (1.9's agent).
 
 **On objects the detector does not know - the recommendation, for after the product is whole.** No
 fine-tuning now: a demo that routes well over fifteen classes and a segmentation model beats one with a
@@ -889,10 +889,10 @@ template path (`LLM_PROVIDER=none`) reads the same way; a recall on the thread c
 `record.json` and none in the answer. Suite 594 passed.
 
 **Owed:** the `ui-command` event on the assistant stream (Phase 2); a conditional step ("if yes, ...")
-executed conditionally (the agent runs it and the answer says whether it applied); the 1.10 graphs the
-plan still names as unbuilt.
+executed conditionally (the agent runs it and the answer says whether it applied); ~~the 1.10 graphs the
+plan still names as unbuilt~~ (built: every step is a graph run from 1.10).
 
-## 1.10 — Pipeline graphs
+## 1.10 — Pipeline graphs — **done (2026-09-13): two graphs, every specialist a branch; the third moves to 1.11 with its content**
 
 **Deliverable** — `single_image_graph`, `temporal_graph`, `cross_modal_graph`, each a `StateGraph` composing
 the nodes built in 1.2–1.9, each routing with `add_conditional_edges` over a plain lookup table (the
@@ -901,6 +901,102 @@ LangGraph stream.
 
 **Gate** — all three graphs run end to end from the CLI, resume correctly after a kill, and their journals
 validate against the contracts.
+
+**Result.** Two graphs built, run from the CLI and the agent, resumed from their checkpoints, journals and
+evidence graphs validating against the vendored contracts; 664 tests green (349 unit, the rest integration
+on real weights and real imagery), ruff clean.
+
+- `single-image` (`graphs/single_image.py`): S1 -> (S7) -> a branch by intent from a table -> S15 -> S14
+  -> S16 -> S18 -> S19. INDEX_QUERY is the 1.4 graph as one branch (S12); DETECT and GROUND run
+  `dota-detector` at S13 and bind its boxes to ground at S15; SEGMENT runs `segformer-landcover` at S13
+  and measures the classes asked for at S15; SCENE_VQA (and GROUND of a phrase no detector knows) has the
+  VLM as its S14 specialist. One S1, one S14 reading, one S16, one S18, one S19 for every branch.
+- `temporal` (`graphs/temporal.py`): S1 -> (S7 on both dates) -> S9 -> S13 `changeformer` -> S15 -> S14 ->
+  S16 -> S18 -> S19. CHANGE_DETECT reads the comparison figure; CHANGE_VQA asks the model over both
+  pictures and keeps the measured change beside its answer.
+- `cross-modal` is **not built here**: without the radar measurement it would fuse (1.11's log-ratio and
+  dark-target branch) the fan-in has nothing to do, and a graph whose join is a placeholder is the thing
+  this project does not ship. The routing table names 1.11 for it; the reducers in `state.py` were
+  written for its shape in 1.0 and still wait for it.
+
+**Inputs are one vocabulary** (`services/imagery/frames.py`): a scene directory, a georeferenced raster,
+or a picture with no grid. A picture is not refused - a count over a benchmark crop is a real answer - and
+never pretended: figures and pixel claims, no layer on the globe, hectares only at a pixel size the
+operator declared (`--gsd`, labelled *nominal* on every metric), pixels alone otherwise. S1 records what
+each input is and refuses what the question cannot be answered from: an index over a picture, a detector
+over radar, a pair on two grids, a class that spans fewer than eight pixels at this resolution - the
+router's gate again, because a run can start without a router.
+
+**The agent's runs are graph runs.** `count_objects_step` and `answer_visual_question_step` - the 1.9
+tools that called a model with no journal, no figure, no record and no checkpoint - are gone; every
+plan step is `run_graph_step` through `services/pipeline/runner.py`, the function `aeris analyse` uses,
+with the decision turned into a request by `agents/requests.py`. `aeris agent` and `aeris analyse` take
+`--before` for a pair and `--registered` to vouch for one.
+
+    aeris analyse --scene .../P1470__1024__3296___1648.jpg --query "count the basketball courts"
+      S1 picture 1024x1024, no georeference -> S13 4 boxes (mean 0.85): 3 basketball courts, 1 soccer field
+      -> S15 3 basketball courts; 2 claims; no georeference, so no layer -> S14 reads the overlay -> S16
+      "The detector found 3 basketball courts in P1470..., with a mean score of 0.86. Also found ..."
+
+    aeris analyse --scene mumbai_gate --level L2A --query "segment the buildings and give me their area"
+      S7 no SCL -> S13 1066x1120, 97.6% observed; background 77.2%, water 12.0%, building 6.0% -> S15
+      Building covers 693.4 ha (6.0% of 11,651.6 ha observed, 12 regions; 11 drawn as polygons)
+
+    aeris analyse --scene levir/B/0271.png --before levir/A/0271.png --gsd 0.5 --registered --query "what changed"
+      S9 residual 20.41 px, 12% of tiles agree: declared-by-operator -> S13 30.5% changed, p 0.96 -> S15
+      0.5001 ha (nominal, at 0.5 m per pixel), 25 regions -> F1 0.805 against the dataset's label
+
+    aeris analyse --scene mumbai_gate_2026 --before mumbai_gate_2023 --level L2A --query "what has changed"
+      S7 SCL on both dates -> S9 residual 0.10 px, shift 0.14 px, 86% of 64 tiles agree: tiles-agree ->
+      S13 1.1% changed -> S15 135.7 ha in 54 regions; the comparison figure is tide and turbidity in
+      Mahim Bay, which is what a building-change model finds at 10 m (below)
+
+**Measured rather than assumed**
+
+- **LangGraph hands a node only the keys its first parameter's annotation declares.** S19, still annotated
+  `IndexQueryState`, recorded no detections and no figures from a run whose checkpoint held both. Every
+  node is annotated with the graph's full state now, and `node.py` says why.
+- **The 1.3 registration residual conflated change with misregistration.** The RMS of per-tile phase
+  correlation shifts was 32 px on a LEVIR-CD pair its authors registered to about 2 px, because tiles
+  whose ground changed report content, not geometry. Measured on sixty pairs, with four options: the
+  median tile disagreement (a minority of changed tiles cannot move it; a half-scene warp still does)
+  admits 14/60; the whole-frame correlation with a quarter of the tiles behind it admits 32/60; ORB
+  features match 0-1 keypoints across seasons and admit none; and none of them admits one of forty pairs
+  offset on purpose by 25-30 px. The gate is now the first two in turn, with the systematic shift gated
+  too (a consistent 2 px offset at 10 m is 20 m, which a change model reads as every edge moving), and
+  the tolerance is **5 m on the ground** converted to pixels - the 1.3 value at Sentinel-2's pixel,
+  which held a 0.5 m pair to a quarter-metre wobble under 15 m buildings. The 28 pairs neither route
+  admits are refused with every number and the way out: `--registered`, the operator's word, recorded as
+  such (§8 rule 5, the same rule as `--level` and `--gsd`). On the Sentinel-2 pair the tiles agree at
+  0.10 px.
+- **The specialists are out of their domain at 10 m, and the pipeline says what they said, not what is
+  true.** SegFormer-LoveDA (0.3 m) calls 77% of Mumbai "background" and 6% "building"; ChangeFormer
+  (0.5 m, buildings) marks tide and sediment in Mahim Bay as change; the DOTA detector, asked for bridges
+  over the 10 m subset, also drew planes and storage tanks it could not have seen at three pixels a
+  side. The last is fixed structurally - the resolution gate is applied to the *output* as well as the
+  question, and boxes below it stay in the artefact and out of the claims - and the first two are
+  stated: a land-cover and a change model trained at Sentinel-2's resolution are what the scene path
+  needs (BigEarthNet land cover; OSCD or the 1.11 radar log-ratio for change). On their own resolution
+  both are right: the LEVIR pair scores F1 0.805 against its label in the graph, as the 1.6 harness did.
+- **A negative reading over a figure with nothing on it is a hallucination waiting to happen.** Asked
+  to describe "tennis courts" on a figure where the detector drew none, the VLM placed them top-middle.
+  S14 now reads the classes that were drawn, and reads nothing when nothing was.
+- **`PHOTOMETRIC=YCBCR` in a JPEG's profile broke a one-band COG.** The writer copied the reference's
+  whole creation profile; it copies its georeferencing and nothing else now.
+- **Hectares to one decimal is a statement about a 10 m pixel.** 0.5 m pixels are 0.000025 ha each and a
+  building's change read as "0.0 ha"; the decimals follow the pixel (1 at 10 m, 4 at 0.5 m, the
+  contract's ceiling).
+- **The phrasing prompt did not state the guard's rule.** gpt-5-mini left the supporting "also found"
+  finding out and the guard rejected the answer; told that every placeholder is used once and a figure
+  written in a finding is copied or left out, never rounded, it complies (two runs, stable).
+- **A windowed STAC fetch** (`fetch_scene_window`) moves 10 MB for a 10 km subset of five bands where the
+  whole-band fetch moved 489 MB for two; the March 2026 and January 2023 subsets over the Mumbai box
+  land on one grid (their S9 residual is 0.10 px) and both carry the SCL the 1.4 subset lacked.
+
+**Owed:** the cross-modal graph with its radar branch (1.11); a categorical colour ramp in the frontend
+vocabulary so a class map can be a figure (today the segmenter's figures are the confidence surface and
+one amber mask per class); models trained at 10 m for land cover and change on scenes; the frontend's
+`cancelled` trace state; the S7 vocabulary entry for Sen2Cor.
 
 ## 1.11 — Cross-modal fusion
 

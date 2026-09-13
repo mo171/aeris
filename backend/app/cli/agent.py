@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 
 async def execute_agent(
     *, request: str, console: Console, scene: Path | None, images: list[Path], sar: list[bool], level: ProcessingLevel | None,
-    yes: bool, skip: list[str], thread: str | None, ground_sample_distance: float | None,
+    yes: bool, skip: list[str], thread: str | None, ground_sample_distance: float | None, before: Path | None = None,
+    registered: bool = False,
 ) -> AgentOutcome:
     async def approver(plan: dict[str, Any], source: str) -> list[str] | None:
         render_plan(plan, source, console)
@@ -45,8 +46,8 @@ async def execute_agent(
         return kept
 
     outcome = await converse(
-        request, approver=approver, agent_id=thread, scene_directory=scene, image_paths=images, sar=sar, declared_level=level,
-        ground_sample_distance=ground_sample_distance,
+        request, approver=approver, agent_id=thread, scene_directory=scene, reference_directory=before, declared_registered=registered,
+        image_paths=images, sar=sar, declared_level=level, ground_sample_distance=ground_sample_distance,
     )
     render_outcome(outcome, console)
     folder = write_run_folder(outcome)

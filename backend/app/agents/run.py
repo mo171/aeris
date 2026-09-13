@@ -56,6 +56,7 @@ class AgentOutcome:
 
 async def converse(
     request: str, *, approver: Approver, agent_id: str | None = None, scene_directory: Path | None = None,
+    reference_directory: Path | None = None, declared_registered: bool = False,
     image_paths: list[Path] | None = None, sar: list[bool] | None = None, declared_level: ProcessingLevel | None = None,
     ground_sample_distance: float | None = None,
 ) -> AgentOutcome:
@@ -69,6 +70,7 @@ async def converse(
             {
                 "agent_id": agent_id, "request_id": request_id, "request": request,
                 "scene_directory": str(scene_directory) if scene_directory else None,
+                "reference_directory": str(reference_directory) if reference_directory else None, "declared_registered": declared_registered,
                 "image_paths": [str(p) for p in image_paths or []], "sar": list(sar or [False] * len(image_paths or [])),
                 "declared_level": declared_level.value if declared_level else None, "ground_sample_distance": ground_sample_distance,
             },

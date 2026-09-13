@@ -1,7 +1,7 @@
 """S16 - says what the claims say, in words that contain only the numbers the claims carry.
 
-what  : `generate_answer`, the S16 node of the index-query graph.
-where : After S15 in `graphs/index_query.py`. Claims in, tokens out.
+what  : `generate_answer`, the S16 node of every graph.
+where : After S14 in the single-image and temporal graphs. Claims in, tokens out.
 how   : The claims are phrased by the constrained generator (`services/answer/constrained.py`, 1.7): the
         VLM writes the prose with placeholders where the numbers go, the text is rejected if it carries any
         numeral of its own, and the placeholders are filled from the claims afterwards. With
@@ -14,21 +14,29 @@ how   : The claims are phrased by the constrained generator (`services/answer/co
         A run with no claims - a map-only question - describes the map from the distribution S15
         recorded, which is a description rather than an assertion and carries no claim for that reason.
 
+        The caveats are the run's, not a template's (1.10): the cloud sentence is spoken only when S7 ran
+        (an optical scene directory), the formula's refusals only when an index was computed, and a
+        perception answer's reading is the claim itself rather than a sentence appended after it.
+
         Streamed as word-sized tokens (`api-contract.md` §3.1). `confidence` is not decided here: S18
         aggregates it, and the completion event reads it from the checkpoint.
 """
 
 from app.config import settings
+from app.constants.intents import Intent
 from app.constants.spectral import SpectralIndex
 from app.constants.stages import PipelineStage
 from app.services.answer.constrained import admissible_reading, phrase_claims
 from app.services.pipeline.node import describe_trace_step, pipeline_node
-from app.services.pipeline.state import IndexQueryState
+from app.services.pipeline.state import AnalysisState
 from app.services.pipeline.stream import emit_answer_token
+
+# The intents whose S14 is the specialist: the reading is the claim, not a sentence after the claims.
+PERCEPTION_INTENTS = frozenset({Intent.SCENE_VQA, Intent.CHANGE_VQA})
 
 
 @pipeline_node(PipelineStage.S16, detail="Composing the answer from the claims")
-async def generate_answer(state: IndexQueryState) -> dict[str, object]:
+async def generate_answer(state: AnalysisState) -> dict[str, object]:
     """S16. Sentences from the claims, nothing from anywhere else."""
     claims = state.get("claims", [])
     manager = None
@@ -43,8 +51,10 @@ async def generate_answer(state: IndexQueryState) -> dict[str, object]:
         manager = await get_manager()
     phrased = await phrase_claims(state["query"], claims, manager=manager, model=model)
     reading = state.get("reading_text")
-    reading_spoken = bool(reading) and admissible_reading(reading, claims)
-    text = _compose(state, phrased.text, reading if reading_spoken else None)
+    perception = Intent(state["intent"]) in PERCEPTION_INTENTS
+    # A perception answer's reading *is* its claim; speaking it again after the claim would say it twice.
+    reading_spoken = bool(reading) and (perception or admissible_reading(reading, claims))
+    text = _compose(state, phrased.text, reading if reading_spoken and not perception else None)
     tokens = text.split(" ")
     for token in tokens:
         emit_answer_token(state["run_id"], token)
@@ -58,27 +68,36 @@ async def generate_answer(state: IndexQueryState) -> dict[str, object]:
     return {"answer_tokens": tokens, "answer_source": phrased.source, "reading_spoken": reading_spoken}
 
 
-def _compose(state: IndexQueryState, phrased_claims: str, reading: str | None) -> str:
+def _compose(state: AnalysisState, phrased_claims: str, reading: str | None) -> str:
     sentences: list[str] = []
 
     if phrased_claims:
         sentences.append(phrased_claims)
-    else:
+    elif state.get("index"):
         index = SpectralIndex(state["index"]).value.upper()
         fractions = state.get("band_fractions", {})
         sentences.append(f"{index} was computed over {state['scene_id']}.")
         if fractions:
             leading = max(fractions, key=fractions.__getitem__)
             sentences.append(f"Of the observed ground, {fractions[leading]:.1%} reads as {leading.lower()}.")
-
-    obscured = state.get("obscured_fraction")
-    if state.get("index_mask_applied") and obscured is not None:
-        sentences.append(f"Cloud and shadow covering {obscured:.1%} of the scene were masked before the arithmetic.")
     else:
-        sentences.append("No cloud mask was available for this scene, so values over cloud are included.")
+        sentences.append(f"The run over {state['scene_id']} produced no finding to report.")
+
+    # S7 ran when the key is present at all (a path, or None for a scene with no classification layer).
+    if "cloud_mask_path" in state:
+        obscured = state.get("obscured_fraction")
+        masked = state.get("index_mask_applied") if state.get("index") else state.get("cloud_mask_path") is not None
+        before = "the arithmetic" if state.get("index") else "the analysis"
+        if masked and obscured is not None and _claims_carry(state, "Obscured by cloud and shadow"):
+            sentences.append(f"Cloud and shadow covering {obscured:.1%} of the scene were masked before {before}.")
+        elif masked:
+            # The share is not on any claim of this branch, so it is not spoken (invariant 15).
+            sentences.append(f"Cloud and shadow were masked before {before}.")
+        else:
+            sentences.append("No cloud mask was available for this scene, so values over cloud are included.")
 
     unphysical = state.get("index_unphysical_fraction") or 0.0
-    if unphysical > 0.0:
+    if state.get("index") and unphysical > 0.0:
         sentences.append(f"{unphysical:.1%} of observed pixels were refused by the formula as unphysical.")
 
     # The S14 reading, last and labelled: the model's words about the picture, not a measurement.
@@ -86,3 +105,8 @@ def _compose(state: IndexQueryState, phrased_claims: str, reading: str | None) -
         sentences.append(f"The vision-language model's reading of the figure (not a measurement): {reading.rstrip('.')}.")
 
     return " ".join(sentences)
+
+
+def _claims_carry(state: AnalysisState, metric_label: str) -> bool:
+    """Whether some claim of the run carries a metric with this label - the test for speaking its number."""
+    return any(metric.get("label") == metric_label for claim in state.get("claims", []) for metric in claim.get("metrics", []))

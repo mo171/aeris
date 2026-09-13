@@ -25,20 +25,18 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from app.agents.planner import apply_approval, build_plan
+from app.agents.requests import InputPaths
 from app.agents.router import SceneFacts, route_plan, routing_arbiter, routing_resources
 from app.agents.state import AgentState, StepRecord, StepResult, describe_step
 from app.agents.tools.analysis_tools import (
-    answer_visual_question_step,
-    count_objects_step,
     recall_evidence_step,
-    run_index_query_step,
+    run_graph_step,
 )
 from app.agents.tools.interface_tools import INTERFACE_TOOLS, default_ui_commands, validate_ui_commands
 from app.config import settings
 from app.constants.intents import Intent
-from app.constants.model_ids import ModelId
 from app.constants.raster import ProcessingLevel
-from app.constants.routing import Modality
+from app.constants.routing import PAIR_INTENTS, Modality
 from app.constants.statuses import TraceStepState
 from app.lib.llm.chat_model import build_chat_model, chat_model_record
 from app.schemas.agent import AgentTraceStep
@@ -67,7 +65,9 @@ async def understand(state: AgentState) -> dict[str, Any]:
         from app.services.spectral.indices import finest_resolution
 
         resolution = await finest_resolution(Path(state["scene_directory"]))
-    facts = SceneFacts(resolution, max(len(images), 1), modalities)
+    # Two dates of one scene are two acquisitions, whatever the picture count says.
+    acquisitions = 2 if state.get("reference_directory") else max(len(images), 1)
+    facts = SceneFacts(resolution, acquisitions, modalities)
     plan = await route_plan(state["request"], encoder=encoder, bank=bank, facts=facts, arbiter=arbiter)
     steps = [describe_step(index, decision) for index, decision in enumerate(plan.steps, start=1)]
     detail = f"{len(plan.clauses)} clause{'s' if len(plan.clauses) != 1 else ''} -> " + " -> ".join(step["intent"] for step in steps)
@@ -130,26 +130,48 @@ async def execute(state: AgentState) -> dict[str, Any]:
 
 
 async def _dispatch(step: StepRecord, state: AgentState, earlier: list[StepResult]) -> StepResult:
-    """Intent -> tool, from the routing table the step already carries. No model chooses here."""
+    """Intent -> graph, from the routing table the step already carries. No model chooses here.
+
+    The inputs a step runs over are chosen by what it needs, from what the operator gave: an index needs
+    the scene directory; a pair needs two pictures (the earlier one first); anything else takes the
+    picture when one was given and the scene otherwise. A step whose inputs are missing is skipped with
+    the reason, and the answer says so.
+    """
     intent = Intent(step["intent"])
-    images = [Path(p) for p in state.get("image_paths") or []]
-    sar = list(state.get("sar") or [False] * len(images))
     if intent == Intent.EVIDENCE_RECALL:
         return await recall_evidence_step(step, earlier=earlier)
-    if intent == Intent.INDEX_QUERY:
-        if not state.get("scene_directory"):
+    images = [Path(p) for p in state.get("image_paths") or []]
+    sar = list(state.get("sar") or [False] * len(images))
+    sar += [False] * (len(images) - len(sar))
+    scene = Path(state["scene_directory"]) if state.get("scene_directory") else None
+    reference = Path(state["reference_directory"]) if state.get("reference_directory") else None
+    registered = bool(state.get("declared_registered"))
+    level = ProcessingLevel(state["declared_level"]) if state.get("declared_level") else None
+    gsd = state.get("ground_sample_distance")
+    if intent in PAIR_INTENTS:
+        if scene is not None and reference is not None:
+            inputs = InputPaths(scene=scene, reference=reference, declared_level=level, declared_resolution_metres=gsd, declared_registered=registered)
+        elif len(images) >= 2:
+            inputs = InputPaths(
+                scene=images[1], reference=images[0], declared_level=level, declared_resolution_metres=gsd, is_sar=sar[1], reference_is_sar=sar[0],
+                declared_registered=registered,
+            )
+        else:
+            return StepResult(
+                state=TraceStepState.SKIPPED.value, claims=[], latency_ms=0,
+                detail=f"{intent.value} compares two dates: give two pictures (--image, earlier first) or a scene and --before",
+            )
+    elif intent == Intent.INDEX_QUERY:
+        if scene is None:
             return StepResult(state=TraceStepState.SKIPPED.value, detail="an index question needs a scene directory (--scene)", claims=[], latency_ms=0)
-        level = ProcessingLevel(state["declared_level"]) if state.get("declared_level") else None
-        return await run_index_query_step(step, scene_directory=Path(state["scene_directory"]), declared_level=level)
-    if step.get("tool") == ModelId.DOTA_DETECTOR.value:
-        if not images:
-            return StepResult(state=TraceStepState.SKIPPED.value, detail="a count needs an image (--image); the scene's resolution is too coarse", claims=[], latency_ms=0)
-        return await count_objects_step(step, image_path=images[0])
-    if step.get("tool") == ModelId.REMOTE_SENSING_VLM.value:
-        if not images:
-            return StepResult(state=TraceStepState.SKIPPED.value, detail="a perception question needs a picture (--image)", claims=[], latency_ms=0)
-        return await answer_visual_question_step(step, image_paths=images[:2], sar=sar[: len(images[:2])])
-    return StepResult(state=TraceStepState.SKIPPED.value, detail=f"{intent.value} has no graph yet ({step.get('graph') or 'planned'})", claims=[], latency_ms=0)
+        inputs = InputPaths(scene=scene, declared_level=level, declared_resolution_metres=gsd)
+    elif images:
+        inputs = InputPaths(scene=images[0], declared_level=level, declared_resolution_metres=gsd, is_sar=sar[0])
+    elif scene is not None:
+        inputs = InputPaths(scene=scene, declared_level=level, declared_resolution_metres=gsd)
+    else:
+        return StepResult(state=TraceStepState.SKIPPED.value, detail=f"{intent.value} needs a picture (--image) or a scene (--scene)", claims=[], latency_ms=0)
+    return await run_graph_step(step, inputs=inputs)
 
 
 async def synthesise(state: AgentState) -> dict[str, Any]:

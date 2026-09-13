@@ -42,7 +42,9 @@ SYNTHESIS_TEMPLATE: Final[str] = (
     "The operator asked: \"{question}\"\n"
     "The specialists produced these findings, in the order the steps ran:\n{facts}\n{notes}\n"
     "Write the answer in plain English, two to five sentences, addressing every part of the request in "
-    "order. Copy each placeholder such as {{m1}} exactly where its value belongs. Do not invent any "
-    "number, count, area or percentage that is not a placeholder. Where a step was refused, say what "
-    "could not be done and why, in the operator's terms. Do not add findings."
+    "order. Copy each placeholder such as {{m1}} exactly where its value belongs, and use every placeholder "
+    "exactly once - a finding left out is a number the operator never hears. Do not invent any number, "
+    "count, area or percentage that is not a placeholder; a figure written out in a finding (a resolution, "
+    "a threshold) is copied exactly as written or left out, never rounded. Where a step was refused, say "
+    "what could not be done and why, in the operator's terms. Do not add findings."
 )

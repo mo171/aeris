@@ -20,11 +20,11 @@ from app.constants.evidence import CONFIDENCE_AGGREGATION_RULE
 from app.constants.stages import PipelineStage
 from app.services.evidence.math.confidence_aggregation import aggregate_confidence
 from app.services.pipeline.node import describe_trace_step, pipeline_node
-from app.services.pipeline.state import IndexQueryState
+from app.services.pipeline.state import AnalysisState
 
 
 @pipeline_node(PipelineStage.S18, detail="Aggregating the confidence the stages stated")
-async def estimate_confidence(state: IndexQueryState) -> dict[str, object]:
+async def estimate_confidence(state: AnalysisState) -> dict[str, object]:
     """S18. The weakest stated stage confidence, or `None` when nothing was stated."""
     records = state.get("stage_models", [])
     stated = [record.get("confidence") for record in records]

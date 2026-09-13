@@ -63,6 +63,9 @@ class AgentState(TypedDict, total=False):
     request: str
     # Inputs the operator gave with the request. Paths as strings.
     scene_directory: str | None
+    # The earlier date of a scene pair (1.10), and the operator's word that the pair is co-registered.
+    reference_directory: str | None
+    declared_registered: bool
     image_paths: list[str]
     sar: list[bool]
     declared_level: str | None

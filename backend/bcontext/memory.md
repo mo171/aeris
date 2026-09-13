@@ -1,3 +1,36 @@
+## Session — 2026-09-13 (1.10) · **The graphs.** Every specialist a branch of one state; inputs one vocabulary; the gate measured against sixty pairs and rewritten.
+
+Two graphs (`single-image`, `temporal`) replace the 1.4 index-query graph and the agent's model-calling
+tools; the cross-modal graph moves to 1.11 with the radar branch it would fuse, because a fan-in with
+nothing to join is a placeholder. `roadmap.md` 1.10 has the runs and the numbers.
+
+### Measured rather than assumed
+
+- **LangGraph filters a node's input by its parameter annotation.** A node typed with a narrower
+  TypedDict than the graph's sees holes: S19 recorded no detection artefacts from a checkpoint that held
+  them. Annotate every node with the graph's full state (`node.py` header).
+- **Change breaks phase correlation, and RMS cannot tell it from misregistration.** The 1.3 residual was
+  32 px on a LEVIR-CD pair registered to ~2 px. Median tile disagreement, whole-frame correlation with a
+  quorum, and ORB+RANSAC were each measured on sixty pairs and forty deliberately offset ones; the first
+  two in turn is the gate now, the tolerance is 5 m on the ground in the grid's pixels, and the
+  systematic shift is gated too. What no route can measure is refused with the numbers and admitted only
+  on the operator's declaration (`--registered`), recorded as a declaration.
+- **The resolution gate must apply to the output.** The detector asked for bridges at 10 m also drew
+  planes; the gate on the question does not stop a model from drawing what it cannot see. Boxes below
+  the gate stay in the artefact and out of the claims.
+- **Models out of their training resolution answer confidently and wrongly.** LoveDA's segmenter at
+  10 m: 77% of Mumbai is "background". ChangeFormer at 10 m: the tide is change. The pipeline reports
+  the model's confidence and the roadmap names the fix (10 m-trained models); in their own domain both
+  are right (LEVIR pair F1 0.805 in the graph).
+- **A label for a class that was not drawn makes the VLM describe boxes that are not there.** Read what is
+  drawn; read nothing when nothing is.
+- **Hectare decimals are a property of the pixel** (1 at 10 m, 4 at 0.5 m), and a COG's profile must not
+  be a JPEG's (`PHOTOMETRIC=YCBCR` on one band fails to write).
+- **The guard's rules belong in the prompt.** The model dropped a supporting finding and rounded 0.56 to
+  0.5 until told: every placeholder once, figures copied or left out.
+
+---
+
 ## Session — 2026-09-13 (1.9 review) · **The instance fix was not the class fix.** Enrich the previous step; provenance is not an answer; dedupe by id; the template speaks to the operator.
 
 The product owner reviewed a pre-fix record and named the class of each defect where I had fixed the

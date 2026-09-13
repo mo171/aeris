@@ -13,7 +13,9 @@ from app.constants.routing import INTENT_GRAPHS, OBJECT_LENGTH_METRES, OBJECT_SY
 def test_every_intent_is_in_every_table_and_every_synonym_is_a_detector_class() -> None:
     assert set(INTENT_GRAPHS) == set(Intent) == set(INTENT_TOOLS)
     assert set(UNBUILT_GRAPH_PHASE) == {intent for intent, graph in INTENT_GRAPHS.items() if graph is None}
-    assert INTENT_GRAPHS[Intent.INDEX_QUERY] is GraphName.INDEX_QUERY
+    assert INTENT_GRAPHS[Intent.INDEX_QUERY] is GraphName.SINGLE_IMAGE
+    assert INTENT_GRAPHS[Intent.CHANGE_DETECT] is INTENT_GRAPHS[Intent.CHANGE_VQA] is GraphName.TEMPORAL
+    assert INTENT_GRAPHS[Intent.CROSS_MODAL] is None and "1.11" in UNBUILT_GRAPH_PHASE[Intent.CROSS_MODAL]
     assert set(OBJECT_SYNONYMS.values()) == set(DOTA_CLASS_NAMES) == set(OBJECT_LENGTH_METRES)
 
 
@@ -56,7 +58,7 @@ async def test_two_image_intents_need_two_images_and_cross_modal_needs_both_sens
 
 async def test_an_index_question_the_engine_cannot_answer_is_refused_with_the_phrases_it_knows() -> None:
     known = await route("Where are the water bodies?", encoder=None, bank=None)
-    assert known.intent == Intent.INDEX_QUERY and known.graph is GraphName.INDEX_QUERY and known.refusal is None
+    assert known.intent == Intent.INDEX_QUERY and known.graph is GraphName.SINGLE_IMAGE and known.refusal is None
     unknown = await route("Show me the NDVI of the moon rocks and the snow cover map", encoder=None, bank=None)
     assert unknown.intent == Intent.INDEX_QUERY and unknown.refusal is None  # names ndvi: the engine draws it
     bare = await route("Map the bare soil", encoder=None, bank=None)
@@ -70,4 +72,5 @@ async def test_grounding_a_detector_class_uses_the_detector_and_a_phrase_uses_th
     assert tanks.intent == Intent.GROUND and tanks.tool == ModelId.DOTA_DETECTOR
     stadium = await route("Where is the stadium?", encoder=None, bank=None)
     assert stadium.intent == Intent.GROUND and stadium.tool == ModelId.REMOTE_SENSING_VLM
-    assert stadium.graph is None and "1.10" in (stadium.graph_note or "")
+    # Both go through the single-image graph; its GROUND edge sends the phrase to the VLM (1.10).
+    assert stadium.graph is GraphName.SINGLE_IMAGE and tanks.graph is GraphName.SINGLE_IMAGE
