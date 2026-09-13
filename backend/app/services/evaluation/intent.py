@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from app.constants.intents import Intent
 from app.models.encoder import SentenceEncoder
 from app.services.query.bank import EmbeddedBank, LabelledPlan, LabelledQuery, load_holdout
-from app.services.query.classifier import classify_intent
+from app.services.query.classifier import Arbiter, classify_intent
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class IntentReport:
 
 async def evaluate_intents(
     *, encoder: SentenceEncoder | None, bank: EmbeddedBank | None, configuration: str = CASCADE,
-    rows: list[LabelledQuery] | None = None,
+    rows: list[LabelledQuery] | None = None, arbiter: Arbiter | None = None,
 ) -> IntentReport:
     rows = rows if rows is not None else await load_holdout()
     hits: Counter[Intent] = Counter()
@@ -63,7 +63,7 @@ async def evaluate_intents(
             row.query,
             encoder=None if configuration == RULES_ONLY else encoder,
             bank=None if configuration == RULES_ONLY else bank,
-            use_rules=configuration != KNN_ONLY,
+            use_rules=configuration != KNN_ONLY, arbiter=arbiter,
         )
         totals[row.intent] += 1
         methods[decision.method] += 1
@@ -97,7 +97,7 @@ class PlanReport:
     errors: tuple[PlanError, ...]
 
 
-async def evaluate_plans(*, encoder: SentenceEncoder | None, bank: EmbeddedBank | None, rows: list[LabelledPlan]) -> PlanReport:
+async def evaluate_plans(*, encoder: SentenceEncoder | None, bank: EmbeddedBank | None, rows: list[LabelledPlan], arbiter: Arbiter | None = None) -> PlanReport:
     """Compound requests: the ordered intents the plan must contain."""
     from app.agents.router import route_plan
 
@@ -106,7 +106,7 @@ async def evaluate_plans(*, encoder: SentenceEncoder | None, bank: EmbeddedBank 
     expected_total = 0
     errors: list[PlanError] = []
     for row in rows:
-        plan = await route_plan(row.query, encoder=encoder, bank=bank)
+        plan = await route_plan(row.query, encoder=encoder, bank=bank, arbiter=arbiter)
         predicted = plan.intents
         if predicted == row.intents:
             exact += 1

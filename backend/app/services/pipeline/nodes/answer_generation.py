@@ -32,11 +32,16 @@ async def generate_answer(state: IndexQueryState) -> dict[str, object]:
     """S16. Sentences from the claims, nothing from anywhere else."""
     claims = state.get("claims", [])
     manager = None
-    if settings.answer_generator == "vlm" and claims:
+    model = None
+    if settings.answer_generator == "llm" and claims:
+        from app.lib.llm.chat_model import build_chat_model
+
+        model = build_chat_model()
+    if (settings.answer_generator == "vlm" or (settings.answer_generator == "llm" and model is None)) and claims:
         from app.models.manager import get_manager
 
         manager = await get_manager()
-    phrased = await phrase_claims(state["query"], claims, manager=manager)
+    phrased = await phrase_claims(state["query"], claims, manager=manager, model=model)
     reading = state.get("reading_text")
     reading_spoken = bool(reading) and admissible_reading(reading, claims)
     text = _compose(state, phrased.text, reading if reading_spoken else None)

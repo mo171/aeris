@@ -44,7 +44,7 @@ from app.constants.routing import (
 from app.lib.exceptions import InvalidRequestError, UpstreamUnavailableError
 from app.models.encoder import SentenceEncoder, load_encoder
 from app.services.query.bank import EmbeddedBank, embed_bank
-from app.services.query.classifier import IntentDecision, classify_intent
+from app.services.query.classifier import Arbiter, IntentDecision, classify_intent
 from app.services.query.decomposer import Clause, split_clauses
 from app.services.query.entities import QueryEntities, extract_entities, required_ground_sample_distance
 from app.services.spectral.indices import resolve_index_target
@@ -103,6 +103,13 @@ async def routing_resources() -> tuple[SentenceEncoder | None, EmbeddedBank | No
     return encoder, await embed_bank(encoder)
 
 
+def routing_arbiter() -> Arbiter | None:
+    """The language model's vote on uncertain margins, when one is configured; `None` otherwise."""
+    from app.agents.arbiter import build_arbiter
+
+    return build_arbiter()
+
+
 @dataclass(frozen=True, slots=True)
 class RoutingPlan:
     """The request as ordered steps, one decision each, beside the clauses they came from."""
@@ -121,7 +128,8 @@ class RoutingPlan:
 
 
 async def route_plan(
-    query: str, *, encoder: SentenceEncoder | None, bank: EmbeddedBank | None, facts: SceneFacts | None = None
+    query: str, *, encoder: SentenceEncoder | None, bank: EmbeddedBank | None, facts: SceneFacts | None = None,
+    arbiter: Arbiter | None = None,
 ) -> RoutingPlan:
     clauses = split_clauses(query)
     steps: list[RoutingDecision] = []
@@ -132,24 +140,46 @@ async def route_plan(
     for clause in clauses:
         inherit = steps[-1].entities if steps and clause.pronominal else None
         inherit_intent = steps[-1].intent if inherit is not None else None
-        decision = await route(clause.text, encoder=encoder, bank=bank, facts=facts, inherit=inherit, inherit_intent=inherit_intent)
+        decision = await route(clause.text, encoder=encoder, bank=bank, facts=facts, inherit=inherit, inherit_intent=inherit_intent, arbiter=arbiter)
         if both_sensors_context and decision.entities.modality == Modality.UNSPECIFIED and _weakly_decided(decision):
             # "compare the SAR and the optical ... and tell me if the flood extent matches": the pair of
             # sensors is what "matches" is about.
-            decision = await route(clause.text, encoder=encoder, bank=bank, facts=facts, inherit=inherit, inherit_intent=inherit_intent, as_both=True)
+            decision = await route(clause.text, encoder=encoder, bank=bank, facts=facts, inherit=inherit, inherit_intent=inherit_intent, as_both=True, arbiter=arbiter)
         elif pair_context and decision.entities.temporal == TemporalScope.SINGLE and (_weakly_decided(decision) or _bare_locating(decision)):
-            decision = await route(clause.text, encoder=encoder, bank=bank, facts=facts, inherit=inherit, inherit_intent=inherit_intent, as_pair=True)
+            decision = await route(clause.text, encoder=encoder, bank=bank, facts=facts, inherit=inherit, inherit_intent=inherit_intent, as_pair=True, arbiter=arbiter)
         pair_context |= decision.entities.temporal == TemporalScope.PAIR
         both_sensors_context |= decision.entities.modality == Modality.BOTH
-        if steps and clause.pronominal and _weakly_decided(decision):
+        if steps and not clause.past_reference and steps[-1].intent != Intent.EVIDENCE_RECALL and _dependent_follow_up(decision):
+            # "give me their area", "and the area in hectares as well", "show me the evidence behind that
+            # number", in the same breath as the measurement: a property or the evidence of the step just
+            # planned, not a recall of an earlier request and not a step of its own. The step is enriched
+            # with what was wanted; nothing is recalled and nothing repeats. (Review, 2026-09-13: this was
+            # an EVIDENCE_RECALL step that echoed the same claims.)
+            steps[-1] = _merge(steps[-1], decision, adopt=True)
+        elif steps and clause.pronominal and _weakly_decided(decision) and (clause.object_pronoun or steps[-1].intent not in _OBJECT_INTENTS):
             # "tell me if they agree" after a cross-modal clause: the pronoun binds it to the ask before,
             # and nothing in the clause itself chose otherwise. The earlier step absorbs what it wants.
+            # "does it look like a school" after a count is about the picture, not the courts: kept apart.
             steps[-1] = _merge(steps[-1], decision, adopt=True)
         elif steps and _same_ask(steps[-1], decision):
             steps[-1] = _merge(steps[-1], decision)
         else:
             steps.append(decision)
     return RoutingPlan(query, tuple(clauses), tuple(steps))
+
+
+def _dependent_follow_up(decision: RoutingDecision) -> bool:
+    """A clause that names nothing of its own and asks for a property (area, map, location, count) or the
+    evidence: it is about the step before it. A clause with its own subject is its own step."""
+    entities = decision.entities
+    if entities.objects or entities.unknown_objects or entities.spectral_phrase or entities.index_named:
+        return False
+    if decision.intent == Intent.EVIDENCE_RECALL:
+        return True
+    asks_property = entities.wants_area or entities.wants_map or entities.wants_location or entities.wants_count
+    # A question about what the picture shows ("is the area near the coast built up?") is its own step
+    # even when it mentions an area; only an undecided clause is read as a property of the step before.
+    return asks_property and decision.decision.method != "rule"
 
 
 def _bare_locating(decision: RoutingDecision) -> bool:
@@ -161,6 +191,9 @@ def _weakly_decided(decision: RoutingDecision) -> bool:
     """A kNN or default decision, or the perception opener: the cues that yield to a pronoun's referent."""
     return decision.decision.method != "rule" or decision.decision.rule == "asks what the picture shows"
 
+
+# Steps about things in the picture: a singular "it" after one of these means the picture, not the things.
+_OBJECT_INTENTS = frozenset({Intent.DETECT, Intent.GROUND})
 
 # Consecutive steps of these intents are one run of the tool whatever they name: two change questions are
 # one comparison, two segmentation asks one pass, two counts one detector run over the union of classes,
@@ -202,6 +235,7 @@ def _merge(first: RoutingDecision, second: RoutingDecision, *, adopt: bool = Fal
 async def route(
     query: str, *, encoder: SentenceEncoder | None, bank: EmbeddedBank | None, facts: SceneFacts | None = None,
     inherit: QueryEntities | None = None, inherit_intent: Intent | None = None, as_pair: bool = False, as_both: bool = False,
+    arbiter: Arbiter | None = None,
 ) -> RoutingDecision:
     facts = facts or SceneFacts()
     entities = extract_entities(query)
@@ -218,7 +252,7 @@ async def route(
         entities = replace(entities, temporal=TemporalScope.PAIR)
     if as_both:
         entities = replace(entities, modality=Modality.BOTH)
-    decision = await classify_intent(query, encoder=encoder, bank=bank, entities=entities)
+    decision = await classify_intent(query, encoder=encoder, bank=bank, entities=entities, arbiter=arbiter)
     intent = decision.intent
     tool = INTENT_TOOLS[intent]
     if intent == Intent.GROUND and entities.objects:

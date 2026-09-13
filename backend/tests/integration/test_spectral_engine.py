@@ -26,7 +26,6 @@ from jsonschema import Draft202012Validator
 from pyproj import CRS, Geod, Transformer
 from rasterio.transform import from_origin
 
-from app.cli.renderers.journal_writer import journal_path, open_journal
 from app.constants.contracts import CONTRACT_SCHEMAS_FILE
 from app.constants.events import EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND
 from app.constants.intents import Intent
@@ -48,6 +47,7 @@ from app.services.preprocessing.cloud_masking import (
     mask_from_scene_classification,
 )
 from app.services.sessions.fanout import EventFanout
+from app.services.sessions.journal_writer import journal_path, open_journal
 from app.services.sessions.session import open_session
 from app.services.spectral.indices import (
     compute_index,

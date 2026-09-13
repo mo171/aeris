@@ -27,7 +27,6 @@ import logging
 
 from rich.console import Console
 
-from app.cli.renderers.journal_writer import JournalWriter, journal_path, open_journal, read_journal
 from app.cli.renderers.trace_renderer import TraceRenderer
 from app.constants.intents import Intent
 from app.constants.pipeline import GraphName
@@ -37,6 +36,7 @@ from app.services.pipeline.checkpointer import open_checkpointer, read_thread_st
 from app.services.pipeline.graphs import GRAPH_BUILDERS
 from app.services.pipeline.memory_store import open_memory_store
 from app.services.sessions.fanout import EventFanout
+from app.services.sessions.journal_writer import JournalWriter, journal_path, open_journal, read_journal
 from app.services.sessions.session import open_session
 
 logger = logging.getLogger(__name__)

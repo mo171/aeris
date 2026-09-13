@@ -308,22 +308,22 @@ backend/
 │   │       ├── generator.py             # sectioned, streamed section by section
 │   │       └── exporters.py             # JSON + GeoJSON (PDF in Phase 2 if it earns the time)
 │   │
-│   ├── agents/                          # Plans, routes, dispatches. Computes nothing.
-│   │   ├── graph.py                     # the agent StateGraph, with interrupt() for plan approval
-│   │   ├── state.py
-│   │   ├── planner.py
+│   ├── agents/                          # Plans, routes, dispatches. Computes nothing.  DONE (1.9)
+│   │   ├── graph.py                     # understand -> plan -> approve (interrupt()) -> execute -> synthesise
+│   │   ├── run.py                       # `converse()`: compile with the checkpointer, pause, resume with the operator's choice
+│   │   ├── state.py                     # AgentState: data only; results accumulate per thread (the evidence store)
+│   │   ├── planner.py                   # steps by the table, prose by the model, checked (count, numerals)
+│   │   ├── arbiter.py                   # the model's one vote: uncertain margins, within the family, never over a rule
 │   │   ├── router.py                    # DONE (1.8). `route_plan`: a request -> ordered steps (pronouns bound,
 │   │   │                                #   same asks merged); `route`: deterministic intent -> table -> tool + graph (PDF p.24),
 │   │   │                                #   then validation: two images for a pair, both sensors for cross-
 │   │   │                                #   modal, an index the engine has, a class the detector knows and a
 │   │   │                                #   pixel that can hold it. Refuses with the numbers.
-│   │   ├── tools/
-│   │   │   ├── analysis_tools.py        # backend functions bound with LangChain bind_tools
-│   │   │   └── interface_tools.py       # mirrors the frontend command registry -> ui-command events
-│   │   └── prompts/
-│   │       ├── planner.py
-│   │       ├── analyst.py
-│   │       └── synthesis.py
+│   │   └── tools/
+│   │       ├── analysis_tools.py        # index query (the real graph via pipeline/runner.py), count, VQA, recall;
+│   │       │                            #   @tool schemas, deterministic dispatch by the routing table
+│   │       └── interface_tools.py       # spotlight_claim / focus_evidence / toggle_layer, bound with bind_tools;
+│   │                                    #   every id checked against the run. Prompts: services/prompts/agent.py
 │   │
 │   ├── models/                          # ML model residency, not SQLAlchemy models.  DONE (1.6)
 │   │   ├── registry.py                  # `LOADERS`: which of the twelve ids this process can build, bound
@@ -373,6 +373,9 @@ backend/
 │   │       └── generate_report.py
 │   │
 │   ├── lib/                             # Infrastructure and cross-cutting. Imports nothing from services/.
+│   │   ├── llm/                         # DONE (1.9)
+│   │   │   ├── chat_model.py            # init_chat_model from LLM_PROVIDER/LLM_MODEL; `none` is a path; doctor probe
+│   │   │   └── tracing.py               # LangSmith on from config - the one place os.environ is written
 │   │   ├── llm/                         # THE ONE CONTAINMENT RULE: LangChain/LangGraph construction only here.
 │   │   │   ├── chat_model.py            # init_chat_model from config. ~40 lines. Not a wrapper.
 │   │   │   └── embeddings.py

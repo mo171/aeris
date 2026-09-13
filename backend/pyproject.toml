@@ -83,6 +83,8 @@ dependencies = [
     "peft>=0.20",
     "bitsandbytes>=0.50",
     "accelerate>=1.15",
+    "langchain>=1.0",
+    "langchain-openai>=1.0",
 ]
 
 [tool.uv.sources]

@@ -34,7 +34,12 @@ from app.constants.routing import (
 )
 from app.constants.spectral import INDEX_NAMES, QUERY_TARGETS
 
-_AREA_CUE = re.compile(r"\b(area|hectares?|ha|square (km|kilomet(re|er)s?|met(re|er)s?)|sq\.? ?km|extent|how much|fraction|proportion|percentage|share|coverage|cover)\b")
+# "area" is a measurement ask only as "the/its/their/total area" or "area of/in/covered"; "an industrial
+# area" is a place. Measured: the bare word turned "tell me if this is an industrial area" into an area ask.
+_AREA_CUE = re.compile(
+    r"\b(?:(?:the|its|their|total|what|whats|what's|which)\s+(?:\w+[- ]){0,2}area|area\s+(?:of|in|covered|is|does|do|under)|areas?\s+in\s+hectares|"
+    r"hectares?|ha|square (?:km|kilomet(?:re|er)s?|met(?:re|er)s?)|sq\.? ?km|extent|how much|fraction|proportion|percentage|share|coverage|cover)\b"
+)
 _LOCATION_CUE = re.compile(r"\b(where|locate|location|point (out|to)|pinpoint|highlight|mark|box|coordinates|which part)\b")
 _MAP_CUE = re.compile(r"\b(map|mask|show|draw|display|overlay|outline|segment|delineate|visuali[sz]e)\b")
 _LOCATIVE = re.compile(r"\b(in|near|on|at|by|along|around|next to|inside|within|across|over|beside|close to)\b")

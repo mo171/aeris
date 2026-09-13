@@ -31,6 +31,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
+from app.cli import agent as agent_command
 from app.cli import analyse as analyse_command
 from app.cli import ask as ask_command
 from app.cli import dataset as dataset_command
@@ -500,6 +501,32 @@ def route(
         console.print("[red]Pass a question, or --evaluate.[/red]")
         raise typer.Exit(code=2)
     if not passed:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def agent(
+    request: str = typer.Argument(..., help="What you want, in one breath. Several questions become several steps."),
+    scene: Path | None = typer.Option(None, "--scene", help="A scene directory, for index questions."),
+    image: list[Path] = typer.Option([], "--image", help="One or two pictures, for counts and perception questions."),
+    sar: list[bool] = typer.Option([], "--sar", help="Per image, in order: true if it is radar."),
+    level: ProcessingLevel = typer.Option(ProcessingLevel.UNKNOWN, "--level", help="The scene's processing level when its path does not say."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Run every planned step without asking."),
+    skip: list[str] = typer.Option([], "--skip", help="Step ids to strike out of the plan, e.g. --skip step-2."),
+    thread: str | None = typer.Option(None, "--thread", help="Continue a conversation: the agent id a previous run printed."),
+    gsd: float | None = typer.Option(None, "--gsd", help="Metres per pixel of the image, for the resolution gate."),
+) -> None:
+    """Ask AERIS: the router plans, you approve, the specialists run, the language model phrases. Phase 1.9."""
+    flags = list(sar) + [False] * (len(image) - len(sar))
+    outcome = asyncio.run(
+        _run_models(
+            agent_command.execute_agent(
+                request=request, console=console, scene=scene, images=list(image), sar=flags[: len(image)],
+                level=None if level is ProcessingLevel.UNKNOWN else level, yes=yes, skip=list(skip), thread=thread, ground_sample_distance=gsd,
+            )
+        )
+    )
+    if not outcome.answer:
         raise typer.Exit(code=1)
 
 

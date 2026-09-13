@@ -129,6 +129,18 @@ class QueryTarget(NamedTuple):
 # above, never numbers invented here.
 QUERY_TARGETS: Final[dict[str, QueryTarget]] = {
     "unhealthy vegetation": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    # The same ask with the adjective after the noun ("where the vegetation is stressed"): longest phrase
+    # wins, so these beat the bare "vegetation" they contain. Measured: without them a spoken request
+    # for stressed vegetation was answered with all vegetation.
+    "vegetation is stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation is unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation looks stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation looks unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "vegetation stress": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops are stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops look stressed": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops looking unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
+    "crops look unhealthy": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
     "stressed vegetation": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
     "sparse vegetation": QueryTarget(SpectralIndex.NDVI, 0.2, 0.4, "Sparse vegetation"),
     "healthy vegetation": QueryTarget(SpectralIndex.NDVI, 0.4, 1.0, "Dense healthy vegetation"),

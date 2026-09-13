@@ -33,7 +33,6 @@ from pathlib import Path
 import pytest
 from langgraph.graph import END, START, StateGraph
 
-from app.cli.renderers.journal_writer import journal_path, open_journal, read_journal
 from app.constants.intents import Intent
 from app.constants.stages import PipelineStage
 from app.constants.statuses import RunStatus, TraceStepState
@@ -58,6 +57,7 @@ from app.services.pipeline.memory_store import open_memory_store, operator_names
 from app.services.pipeline.node import pipeline_node
 from app.services.pipeline.state import PipelineState
 from app.services.sessions.fanout import EventFanout
+from app.services.sessions.journal_writer import journal_path, open_journal, read_journal
 from app.services.sessions.session import Session, open_session
 
 # How long a test is willing to wait for something that should take milliseconds. Generous, because the

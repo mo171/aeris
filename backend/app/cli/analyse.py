@@ -7,8 +7,8 @@ where : Called from `cli/main.py`. From 1.8 the router decides first: the intent
 how   : The 1.4 gate, exactly: *"`aeris analyse --scene <id> --query "unhealthy vegetation"` produces an
         NDVI map, a stressed-region mask and an area in hectares"*. This is an adapter and nothing more -
         the question is resolved by `services/spectral/indices.py`, the work is the graph in
-        `services/pipeline/graphs/index_query.py`, and the run goes through the same session, fan-out
-        and renderers `aeris run` uses, plus the figure writer that fetches each figure back to disk.
+        `services/pipeline/graphs/index_query.py`, run by `services/pipeline/runner.py` - the same
+        function the agent's tools call, so an operator's run and an agent's run are the same run.
 
         The measurement is read back from the checkpoint at the end rather than from anything this file
         accumulated, for the reason `run_handle.py` reads the confidence that way: the checkpoint is what a
@@ -22,20 +22,12 @@ from rich.console import Console
 from rich.markup import escape
 
 from app.agents.router import RoutingDecision, SceneFacts, route_plan, routing_resources
-from app.cli.renderers.figure_writer import open_figure_writer
-from app.cli.renderers.journal_writer import journal_path, open_journal
-from app.cli.renderers.trace_renderer import TraceRenderer
 from app.cli.route import render_plan
 from app.constants.pipeline import GraphName
 from app.constants.raster import ProcessingLevel
 from app.constants.statuses import RunStatus
-from app.services.imagery.metadata import inspect_raster
-from app.services.pipeline.checkpointer import open_checkpointer, read_thread_state
-from app.services.pipeline.graphs import GRAPH_BUILDERS
-from app.services.pipeline.memory_store import open_memory_store
-from app.services.sessions.fanout import EventFanout
-from app.services.sessions.session import open_session
-from app.services.spectral.indices import locate_bands, resolve_index_target
+from app.services.pipeline.runner import run_index_query
+from app.services.spectral.indices import finest_resolution, resolve_index_target
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +45,7 @@ async def execute_analyse(
     step whose graph is not built is named and skipped, and the status is COMPLETE only if every step ran.
     """
     encoder, bank = await routing_resources()
-    plan = await route_plan(query, encoder=encoder, bank=bank, facts=SceneFacts(await _finest_resolution(scene_directory)))
+    plan = await route_plan(query, encoder=encoder, bank=bank, facts=SceneFacts(await finest_resolution(scene_directory)))
     render_plan(plan, console, encoder is not None)
     status = RunStatus.COMPLETE
     for index, decision in enumerate(plan.steps, start=1):
@@ -76,62 +68,18 @@ async def _run_index_query(decision: RoutingDecision, scene_directory: Path, dec
     target = await resolve_index_target(decision.entities.spectral_phrase or query)
     console.print(
         f"\n  {escape(query)!s}  ->  {target.index.value.upper()}"
-        + (
-            f" in [{target.lower:.2f}, {target.upper:.2f}] ({escape(target.label)})"
-            if target.has_range
-            else " (map only)"
-        )
+        + (f" in [{target.lower:.2f}, {target.upper:.2f}] ({escape(target.label)})" if target.has_range else " (map only)")
     )
-
-    async with open_checkpointer() as checkpointer, open_memory_store() as store:
-        graph = GRAPH_BUILDERS[GraphName.INDEX_QUERY]().compile(checkpointer=checkpointer, store=store)
-
-        async with open_session() as session:
-            fanout = EventFanout()
-            handle = await session.start(
-                graph=graph,
-                query=query,
-                intent=decision.intent,
-                fanout=fanout,
-                extra_state={
-                    "scene_directory": str(scene_directory),
-                    "scene_id": scene_directory.name,
-                    "declared_level": declared_level.value if declared_level else None,
-                    "index": target.index.value,
-                    "target_lower": target.lower,
-                    "target_upper": target.upper,
-                    "target_label": target.label,
-                    "target_phrase": target.phrase,
-                },
-            )
-
-            async with open_journal(handle.run_id) as journal, open_figure_writer(handle.run_id) as figures:
-                with TraceRenderer(console) as renderer:
-                    # Journal first: provenance before decoration (`services/sessions/fanout.py`).
-                    fanout.register("journal", journal)
-                    fanout.register("trace", renderer)
-                    fanout.register("figures", figures)
-                    status = await handle.wait()
-
-            console.print(f"\n  journal  {escape(str(journal_path(handle.run_id)))}")
-            for path in figures.written:
-                console.print(f"  figure   {escape(str(path))}")
-
-            if status is RunStatus.COMPLETE:
-                snapshot = await read_thread_state(graph, handle.run_id)
-                _print_measurement(snapshot.values, console)
-                _print_evidence(snapshot.values, console)
-            return status
-
-
-async def _finest_resolution(scene_directory: Path) -> float | None:
-    """Metres per pixel of the finest band present, for the router's resolution gate; `None` if unreadable."""
-    try:
-        bands = await locate_bands(scene_directory)
-        resolutions = [(await inspect_raster(path)).resolution[0] for path in bands.values()]
-    except Exception:  # noqa: BLE001 - the graph will state what is wrong with the scene; routing only needs a hint
-        return None
-    return min(resolutions) if resolutions else None
+    outcome = await run_index_query(
+        scene_directory=scene_directory, query=query, target=target, intent=decision.intent, declared_level=declared_level, console=console
+    )
+    console.print(f"\n  journal  {escape(str(outcome.journal))}")
+    for path in outcome.figures:
+        console.print(f"  figure   {escape(str(path))}")
+    if outcome.status is RunStatus.COMPLETE:
+        _print_measurement(outcome.values, console)
+        _print_evidence(outcome.values, console)
+    return outcome.status
 
 
 def _print_evidence(values: dict[str, object], console: Console) -> None:

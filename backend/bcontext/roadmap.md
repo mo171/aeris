@@ -801,7 +801,7 @@ buildings are still wanted, fine-tune YOLO11-OBB on the *union* of DOTA v1.0 and
 as the VLM - the union, not buildings alone, so the fifteen classes are not forgotten; (3) the VLM's second
 run on scrubbed captions for captions and VQA, never for counting.
 
-## 1.9 — The agent, tool calling and the provider swap
+## 1.9 — The agent, tool calling and the provider swap — **done (2026-09-13): plan paused, steps run, every number a claim's; gate proven with a second model**
 
 **Research:** PDF pp.24–25. LangGraph `interrupt()` and LangChain `bind_tools` / `with_structured_output`.
 Frontend `lib/command-bus/` and `lib/constants/commands.ts`.
@@ -818,6 +818,79 @@ Frontend `lib/command-bus/` and `lib/constants/commands.ts`.
 **Gate** — the full test suite passes against a second provider with only a `.env` change and no code edit.
 This was previously "write a second adapter", which `init_chat_model` reduces to a configuration change; the
 gate is kept because the *claim* still needs proving, only the work shrank.
+
+**What was built.** `lib/llm/chat_model.py` (`init_chat_model` from `LLM_PROVIDER`/`LLM_MODEL`; the key
+read under the provider's own name; `LLM_PROVIDER=none` is a first-class path with a template behind every
+model call; a doctor row that round-trips). The model has **four jobs, none of them routing**:
+
+1. **Arbiter** (`agents/arbiter.py`): asked only on an uncertain kNN margin, only within the family the
+   cues allowed, never over a rule. Measured: 3 questions in 330 reach it; the gate is unchanged with it
+   on (0.991 / 1.000 / 1.000). Asked bare, without the policy, gpt-5-mini put "how many ships are there"
+   under SCENE_VQA - the reason it is behind the router, not in front of it.
+2. **Planner prose** (`agents/planner.py`): the steps are the router's; the model writes the summary and
+   one description per step, checked - same count, no numeral that the template did not already state.
+   Rejected prose is the template. `agents/graph.py::approve` pauses on the plan with `interrupt()`;
+   the operator's resume carries the step ids kept (`--skip step-2`, or the terminal prompt).
+3. **Synthesis**: every step's findings are claims in wire form (a detector count is a claim with a
+   metric; a VLM answer a claim with none, labelled a reading; a refusal a negative claim) and the model
+   phrases them through the 1.7 guard unchanged - placeholders in, every placeholder spoken, no numeral
+   that is not a fact's. S16 also phrases with it now (`ANSWER_GENERATOR=llm`: one call, no GPU, the
+   VLM as fallback).
+4. **Interface commands**: bound with `bind_tools` over `spotlight_claim`, `focus_evidence`,
+   `toggle_layer` (`constants/ui_commands.py` mirrors `commands.ts`; a test parses the file); every id
+   the model names is checked against the run's claims, evidence and layers, and a made-up one is dropped.
+
+Dispatch is the table's: `agents/graph.py::execute` sends each enabled step to `agents/tools/`
+(`run_index_query` runs the real graph through `services/pipeline/runner.py` - journal, figures,
+provenance, checkpoint; `count_objects`; `answer_visual_question`; `recall_evidence` reads earlier
+requests on the thread, no model). `aeris agent "<request>" --scene|--image [--yes|--skip] [--thread]`;
+every request writes `runs/<request_id>/agent/{record.json, answer.txt, README.md}` beside the graph runs it made.
+
+**Measured (2026-09-13).** DOTA8 crop, "how many basketball courts are there, and does it look like a
+school?": plan by the model (2 steps, no numerals), detector **3** (the label file's count), VLM "yes",
+answer by the model with every numeral a claim's; a step struck out at the pause is skipped and said so.
+Mumbai scene, "map the water bodies and give me their area, then show me where the vegetation is stressed,
+and finally count the cars on the roads": 4 clauses -> 3 steps; two graph runs (water 2,667.3 ha, sparse
+vegetation 2,471.0 ha), the count refused at *planning* with the resolution numbers, and the answer's
+**19 numerals all traced to claims or the refusal** - checked mechanically over the record. Evidence
+recalled across requests on a thread in 0 ms. **Gate:** the doctor probe, plan prose, arbiter and phrasing
+run against `gpt-4.1-mini` with two settings changed and no code edit (`test_the_gate_a_second_model...`);
+a second *provider* is the same two settings and its key, untested for want of one.
+
+**Defects found by running, fixed:** "give me *their* area" was not a pronoun clause; the agent did not
+compute the scene's resolution so a car count was skipped at execution instead of refused at planning;
+evidence recall echoed the current request's claims (duplicate placeholders made the guard reject the
+phrasing); "where the vegetation is stressed" resolved to all vegetation (word order) - inverted phrases
+added; LangGraph 1.2 trips over `Command(resume=None)`.
+
+**The product owner's review (2026-09-13), adopted in full.** Reviewing a record from before the fixes
+above, four structural rules were proposed; each was right and more general than the instance fix it
+replaced, and each is now code and a test:
+
+1. *A follow-up that asks for a property computable from the previous step enriches that step's wants;
+   it does not become an EVIDENCE_RECALL step.* `route_plan` merges a clause that names no subject of
+   its own and asks for an area, map, location, count or the evidence into the step before it - unless
+   it points at an earlier request ("earlier", "previous", "you found"), which stays a recall. Caught
+   "give me the area in hectares as well", which the pronoun rule had not.
+2. *Recall produces claims, not metadata.* "Recalled from run X: 2 claims on 4 evidence items" moved
+   from the claims into `StepResult.provenance` (request, run, step, counts) - the record, not the answer.
+3. *Synthesis input is structurally unique.* `synthesis_facts` keeps each claim id once; the answer
+   cannot repeat a claim because the facts do not. A recall is said to be one through a note to the
+   phrasing, never a fact (a fact is honoured verbatim; the model reproduced the framing sentence mid-answer
+   until it was moved).
+4. *The template fallback speaks to the operator.* "The request to count the cars on the roads was not
+   done: <reason>", not "Step 3 (DETECT) was not done". The reason - the resolution numbers - is kept:
+   it is the operator's next action.
+
+Found on the way: the bare word "area" made "is this an industrial area" an area ask; the cue now needs
+"the/its/total ... area" or "area of/in". Re-run of the reviewed request: one INDEX step with
+`wants_area`, the count refused at planning, answer by the model in two sentences plus the refusal; the
+template path (`LLM_PROVIDER=none`) reads the same way; a recall on the thread carries provenance in
+`record.json` and none in the answer. Suite 594 passed.
+
+**Owed:** the `ui-command` event on the assistant stream (Phase 2); a conditional step ("if yes, ...")
+executed conditionally (the agent runs it and the answer says whether it applied); the 1.10 graphs the
+plan still names as unbuilt.
 
 ## 1.10 — Pipeline graphs
 

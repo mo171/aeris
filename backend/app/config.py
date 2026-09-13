@@ -22,7 +22,7 @@ how   : Instantiating `Settings()` at the bottom of this file means a missing or
 from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, field_validator
+from pydantic import AliasChoices, AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, field_validator
 from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
@@ -162,13 +162,39 @@ class Settings(BaseSettings):
     # `vlm`: S16 asks the model to phrase the claims (numbers injected, never generated; the template is
     # the fallback when the model is unavailable or its phrasing is rejected). `template`: the claims'
     # own sentences, no model - what a machine without weights, and the pipeline tests, get.
-    answer_generator: Literal["vlm", "template"] = "vlm"
+    # `llm` (1.9): the agent's language model phrases under the same guard, in a second instead of ten,
+    # and falls back to the VLM when no provider is configured.
+    answer_generator: Literal["llm", "vlm", "template"] = "llm"
     # S14 reads the evidence figure with the VLM and the answer carries the reading, labelled. Off skips
     # the node with the reason in the trace - a machine without weights still completes a run.
     vlm_reading: bool = True
     # Readings are cached in Redis by the hash of (pictures, prompt, model version). Same picture, same
     # question, same model -> same words without loading the model; 0 disables.
     vlm_reading_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, ge=0)
+
+    # --- The language model behind the agent (Phase 1.9) ---
+
+    # `init_chat_model(llm_model, model_provider=llm_provider)` - the whole provider abstraction (ADR-002).
+    # A second provider is a change to these two lines and the key it reads from the environment
+    # (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`...), which LangChain reads itself. `none` runs every agent
+    # path without a model: the deterministic router, template plans and template answers.
+    llm_provider: Literal["openai", "anthropic", "google_genai", "ollama", "none"] = "none"
+    llm_model: str = "gpt-5-mini"
+    # The provider's key, read from `.env` under the name that provider's own tooling uses so one file
+    # serves both. `.env` is not exported to the process environment, so the key is passed explicitly.
+    llm_api_key: SecretStr | None = Field(default=None, validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"))
+    # OpenAI reasoning models take an effort level instead of a temperature; passed only to that provider.
+    llm_reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = "minimal"
+    llm_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    # Who phrases the final answer and the claims: `llm` (fast, the numeral guard applies unchanged),
+    # `vlm` (the 1.7 path), or the template. `answer_generator` above keeps S16's own setting; the agent's
+    # synthesis follows this one.
+    synthesis_generator: Literal["llm", "vlm", "template"] = "llm"
+    # LangSmith tracing of every LangChain and LangGraph call. Read by LangChain from the environment;
+    # `lib/llm/tracing.py` exports these there, the one place the process writes to `os.environ`.
+    langsmith_tracing: bool = False
+    langsmith_api_key: SecretStr | None = None
+    langsmith_project: str = "aeris"
 
     @field_validator("log_level", mode="before")
     @classmethod

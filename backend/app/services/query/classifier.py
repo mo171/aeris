@@ -16,6 +16,8 @@ how   : A cascade, in order of precedence, each step a table in `constants/routi
            labelled questions vote, restricted to the family when a cue found one. With no encoder (no
            weights, no network) the rules alone answer and say so; a question no rule touches is then
            SCENE_VQA, the intent that asks nothing of a specialist.
+        4. **On an uncertain margin, the language model arbitrates** (1.9, `agents/arbiter.py`) - within
+           the same family, never over a rule. Measured: one question in 235 reaches it.
 
         Why not a model for all of it: the rules are where a mistake must be impossible (a count must
         never reach the VLM), the kNN is where wording varies. Why not rules for all of it: measured in
@@ -25,6 +27,7 @@ how   : A cascade, in order of precedence, each step a table in `constants/routi
 import asyncio
 import logging
 from dataclasses import dataclass
+from typing import Protocol
 
 from app.constants.intents import Intent
 from app.constants.routing import (
@@ -53,6 +56,16 @@ logger = logging.getLogger(__name__)
 RULE_METHOD = "rule"
 KNN_METHOD = "knn"
 DEFAULT_METHOD = "default"
+# The language model chose, within the family, because the neighbours' margin was under the threshold.
+LLM_METHOD = "llm"
+
+
+class Arbiter(Protocol):
+    """A second opinion on an uncertain kNN vote, restricted to the candidates. `agents/arbiter.py`."""
+
+    async def __call__(
+        self, query: str, candidates: frozenset[Intent], neighbours: tuple[tuple[str, Intent, float], ...]
+    ) -> tuple[Intent, str] | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +121,7 @@ def rule_family(text: str, entities: QueryEntities) -> tuple[frozenset[Intent] |
 
 async def classify_intent(
     query: str, *, encoder: SentenceEncoder | None, bank: EmbeddedBank | None, entities: QueryEntities | None = None,
-    use_rules: bool = True,
+    use_rules: bool = True, arbiter: Arbiter | None = None,
 ) -> IntentDecision:
     """The cascade. `encoder` and `bank` may be `None` - rules alone, stated in `method`. `use_rules=False`
     is the kNN alone, for the harness's ablation; it is not a production setting."""
@@ -125,4 +138,12 @@ async def classify_intent(
     candidates = frozenset(intent.value for intent in family) if family else None
     vote = nearest_vote(vector, bank.vectors, bank.labels, INTENT_NEIGHBOURS, candidates)
     neighbours = tuple((bank.rows[index].query, bank.rows[index].intent, round(similarity, 3)) for index, similarity in vote.neighbours)
-    return IntentDecision(Intent(vote.label), KNN_METHOD, rule, round(vote.confidence, 3), round(vote.margin, 3), neighbours)
+    decision = IntentDecision(Intent(vote.label), KNN_METHOD, rule, round(vote.confidence, 3), round(vote.margin, 3), neighbours)
+    if arbiter is not None and decision.uncertain:
+        # The model's one vote: within the family, on an uncertain margin only. Its reason replaces the
+        # cue's name so the trace says who decided and why.
+        verdict = await arbiter(query, family or frozenset(Intent), neighbours)
+        if verdict is not None:
+            chosen, reason = verdict
+            return IntentDecision(chosen, LLM_METHOD, reason, decision.confidence, decision.margin, neighbours)
+    return decision

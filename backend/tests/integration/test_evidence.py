@@ -32,7 +32,6 @@ from rasterio.features import rasterize
 from shapely.geometry import Polygon
 from shapely.ops import transform as transform_geometry
 
-from app.cli.renderers.journal_writer import journal_path
 from app.constants.contracts import CONTRACT_SCHEMAS_FILE
 from app.constants.events import EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND
 from app.constants.evidence import (
@@ -52,6 +51,7 @@ from app.services.evidence.trace import evidence_graph_path, provenance_path
 from app.services.pipeline.checkpointer import open_checkpointer, read_thread_state
 from app.services.pipeline.graphs.index_query import build_index_query_graph
 from app.services.pipeline.memory_store import open_memory_store
+from app.services.sessions.journal_writer import journal_path
 from tests.integration.test_spectral_engine import (
     COLUMNS,
     NORTH,

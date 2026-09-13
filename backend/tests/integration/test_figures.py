@@ -1,6 +1,6 @@
 """The Phase 1.2.1 gate: three figures, each with a legend, a non-null trace step and a spec that redraws it byte-identically.
 
-what  : Tests over `services/rendering/figures.py` and `cli/renderers/figure_writer.py`.
+what  : Tests over `services/rendering/figures.py` and `services/sessions/figure_writer.py`.
 where : `tests/integration/`. Needs `docker compose up -d minio` - a figure that is not in storage is not
         one the frontend can load, so the upload is part of what is being tested.
 how   : Small synthetic arrays rather than a real scene. What is under test is the *render contract*, and
@@ -22,7 +22,6 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from app.cli.renderers.figure_writer import FigureWriter
 from app.constants.color_ramps import ColorRampId
 from app.constants.figure_kinds import FigureKind, LegendKind
 from app.constants.storage import Bucket
@@ -37,6 +36,7 @@ from app.services.rendering.figures import (
     render_mask_overlay,
     render_rgb_composite,
 )
+from app.services.sessions.figure_writer import FigureWriter
 
 
 def gradient(size: int = 32) -> np.ndarray:

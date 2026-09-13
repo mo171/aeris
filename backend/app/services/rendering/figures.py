@@ -2,7 +2,7 @@
 
 what  : `render_index_map()`, `render_rgb_composite()`, `render_mask_overlay()` and `render_from_spec()`.
 where : Called by pipeline nodes from Phase 1.4 onwards, each emitting its figure the moment its stage
-        produces an array. `cli/renderers/figure_writer.py` consumes the events in Phase 1.
+        produces an array. `services/sessions/figure_writer.py` consumes the events in Phase 1.
 how   : This module *chooses* - which ramp, which stretch, what the legend says - and `math/` executes.
         That split is `architecture-context.md` §12, and here it carries a second meaning: the choices
         this file makes are the ones §8 rule 13 requires be recorded, so they all end up in `renderSpec`.
@@ -69,7 +69,7 @@ class RenderedFigure:
 def figure_object_key(run_id: str, figure_id: str, suffix: str) -> str:
     """Where a figure lives in storage. Keyed by run then figure, so a run's figures list with one prefix.
 
-    Public, and the single source of truth for the key. `cli/renderers/figure_writer.py` fetches figures
+    Public, and the single source of truth for the key. `services/sessions/figure_writer.py` fetches figures
     back out and must derive the same key; the alternative - parsing it out of the event's `imageUrl` -
     couples a storage layout to a Phase 2 route and breaks the first time the route changes.
     """
@@ -516,7 +516,7 @@ async def write_figure_locally(figure: RenderedFigure, directory: Path) -> Path:
     """Also write a figure to disk, so Phase 1 can look at it without a browser or a bucket.
 
     The same reasoning as `journal_writer.py`: the whole capability is exercisable in the terminal before
-    a route exists. `cli/renderers/figure_writer.py` is what calls this.
+    a route exists. `services/sessions/figure_writer.py` is what calls this.
     """
     destination = directory / f"{figure.event.figure_id}.{figure.image_format.value}"
     # Both offloaded - `code-standards.md` §7 keeps blocking calls off the loop, and `mkdir` against a

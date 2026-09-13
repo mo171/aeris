@@ -124,6 +124,17 @@ class SceneBands:
         return _grid_of(self.reference)
 
 
+async def finest_resolution(scene_directory: Path) -> float | None:
+    """Metres per pixel of the finest band present - the router's resolution gate; `None` if unreadable.
+    A scene the graph cannot read is the graph's to refuse with its own message; routing needs a hint."""
+    try:
+        bands = await locate_bands(scene_directory)
+        resolutions = [(await inspect_raster(path)).resolution[0] for path in bands.values()]
+    except Exception:  # noqa: BLE001 - see above
+        return None
+    return min(resolutions) if resolutions else None
+
+
 async def locate_bands(scene_directory: Path) -> dict[BandRole, Path]:
     """Every recognisable band in a scene directory, by role.
 

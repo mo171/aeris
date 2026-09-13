@@ -1,3 +1,47 @@
+## Session — 2026-09-13 (1.9 review) · **The instance fix was not the class fix.** Enrich the previous step; provenance is not an answer; dedupe by id; the template speaks to the operator.
+
+The product owner reviewed a pre-fix record and named the class of each defect where I had fixed the
+instance: "their area" -> pronoun rule (instance) vs *any* property follow-up enriches the previous step
+(class); recall reading earlier requests only (instance) vs claims unique by id at synthesis (class);
+the recall's metadata sentence (in the claims) vs provenance on the step result (class). All four are
+in `roadmap.md` 1.9.
+
+### Measured rather than assumed
+
+- **A framing sentence passed as a fact is reproduced verbatim** - the guard requires facts to be
+  honoured, so the model wrote "Earlier in this conversation the analysis found the following." in
+  the middle of the answer. Wording context is a `notes` argument to `phrase_claims`, never a fact.
+- **The bare word "area" is a place-word half the time** ("industrial area"); as a measurement cue it
+  needs "the/its/total ... area" or "area of/in". Found by the compound gate dropping to 0.971.
+- **A perception question that mentions an area is its own step** ("is the area near the coast built
+  up?"); only an undecided clause is read as a property of the step before.
+
+---
+
+## Session — 2026-09-13 (1.9, the agent) · **The model routes nothing.** It arbitrates 3 questions in 330, phrases a plan it did not write, phrases claims it did not measure, and names ids that are checked.
+
+`init_chat_model` behind two settings; understand -> plan -> approve (`interrupt()`) -> execute -> synthesise;
+tools dispatched by the routing table; `aeris agent`. Numbers in `roadmap.md` 1.9.
+
+### Measured rather than assumed
+
+- **Bare, gpt-5-mini classified "how many ships are there" as SCENE_VQA.** The policy has to be in the
+  prompt, and even then the rule fires first; the arbiter sees only uncertain margins.
+- **With the arbiter on, the gates do not move** (0.991 / 1.000 / 1.000): three calls across 330
+  questions. The tests that were green stay green because the model is added behind the router, not in it.
+- **A 19-numeral answer, every numeral a claim's or the refusal's**, checked over `record.json` - the
+  guard `phrase_claims` was built for the VLM and did not change for the LLM.
+- **Running found five defects the unit tests did not** (their/its pronouns, no GSD in the agent, recall
+  echoing the current request, "vegetation is stressed" word order, `Command(resume=None)`). Each was a
+  line; each is a test now.
+- **`.env` is not the process environment**: the OpenAI client could not see `OPENAI_API_KEY` until the
+  key was passed explicitly; LangSmith's variables are exported by `lib/llm/tracing.py`, the one place
+  the process writes to `os.environ`.
+- **Heredocs through the Bash tool un-escape `\\`**: three regex edits lost their `\b`. Regex edits go
+  through the Write tool, full stop.
+
+---
+
 ## Session — 2026-09-12 (1.8, compound requests) · 0 of 11 -> 35 of 35, with the untouched scores stated. **A voice request is a plan, not a question.**
 
 Filler off, clauses split, each routed, pronouns bound to the clause before, same asks merged. `aeris ask`

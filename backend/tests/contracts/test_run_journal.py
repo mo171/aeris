@@ -24,13 +24,13 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from app.cli.renderers.journal_writer import journal_path, open_journal
 from app.constants.contracts import CONTRACT_SCHEMAS_FILE
 from app.constants.intents import Intent
 from app.services.pipeline.checkpointer import open_checkpointer
 from app.services.pipeline.graphs.probe import build_probe_graph
 from app.services.pipeline.memory_store import open_memory_store
 from app.services.sessions.fanout import EventFanout
+from app.services.sessions.journal_writer import journal_path, open_journal
 from app.services.sessions.session import open_session
 
 CONTRACTS: dict[str, dict[str, Any]] = json.loads(CONTRACT_SCHEMAS_FILE.read_text(encoding="utf-8"))

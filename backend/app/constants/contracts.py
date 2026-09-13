@@ -174,6 +174,11 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     ),
     "routing.SpatialRegion": "Internal to query understanding (1.8): the compass sector a question points at. See routing.Modality.",
     "routing.TemporalScope": "Internal to query understanding (1.8): single image, a pair, or earlier evidence. See routing.Modality.",
+    "ui_commands.UiCommand": (
+        "Mirrors `COMMAND_IDS` in `frontend/lib/constants/commands.ts`, a const object rather than a Zod "
+        "schema, so the exporter never sees it. `tests/unit/test_agent.py` parses that file and fails if the "
+        "two lists drift. The `ui-command` wire event joins the assistant stream in Phase 2."
+    ),
     "spectral.SpectralIndex": (
         "Shared in substance, not in Zod: the frontend declares `SPECTRAL_INDEX_IDS` in "
         "`lib/constants/overlays/spectral-indices.ts` as a constants array rather than a schema, so the "

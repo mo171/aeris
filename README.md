@@ -153,7 +153,27 @@ uv run aeris route "hey aeris, show me the water bodies, then map the unhealthy 
  `aeris ask` and `aeris analyse` run the same router before anything loads; `aeris ask
 --force-vlm` bypasses it so the two answers can be compared.
 
-### 11. The vision-language model (`aeris ask`)
+### 11. The agent (`aeris agent`)
+Phase 1.9 puts a language model behind the router, never in front of it: it arbitrates an uncertain routing
+margin, writes the plan's prose (the steps are the router's), phrases the answer under the same numeral
+guard as the VLM, and names which claim to spotlight (checked). Set `LLM_PROVIDER=openai` and
+`OPENAI_API_KEY` in `backend/.env` (`aeris doctor` shows the model row); `LLM_PROVIDER=none` runs the same
+agent with templates.
+
+```bash
+uv run aeris agent "how many basketball courts are there, and does it look like a school?" --image backend/data/datasets/dota8/dota8/images/val/P1470__1024__3296___1648.jpg
+```
+
+```bash
+uv run aeris agent "map the water bodies and give me their area, then count the cars on the roads" --scene backend/data/datasets/sentinel2-l2a/mumbai_gate --level L2A --yes
+```
+
+The plan is shown and paused on; enter runs it, step ids keep only those, `--skip step-2` strikes one out
+without a prompt, `--thread <id>` continues a conversation so "what did you find earlier" recalls it. Every
+request writes `backend/runs/<request_id>/agent/` - `record.json`, `answer.txt` and a `README.md` saying
+what to check - beside the graph runs it made.
+
+### 12. The vision-language model (`aeris ask`)
 Phase 1.7 serves Qwen3-VL (2B by default, `VLM_SIZE=4b` on an 8 GB card) 4-bit through the fleet, and puts
 the constrained answer generator into S16: the model phrases the claims, and any number it writes that no
 specialist computed rejects the phrasing. The first call downloads the 4 GB base into `backend/data/models/`.

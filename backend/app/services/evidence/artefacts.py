@@ -15,7 +15,7 @@ how   : `architecture-context.md` §8 rule 12: every intermediate a stage marks 
         after the working directory is gone.
 
         One run is one place on disk: `runs/<run_id>/artefacts/` beside `runs/<run_id>/figures/` and the
-        journal, for the reason `cli/renderers/figure_writer.py` gives.
+        journal, for the reason `services/sessions/figure_writer.py` gives.
 """
 
 import asyncio

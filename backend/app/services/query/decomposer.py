@@ -51,7 +51,7 @@ _CLAUSE_OPENER = (
 )
 _INDEX_NAME = "|".join(re.escape(name) for name in INDEX_NAMES)
 _SPLIT = re.compile(
-    rf"(?:[.?!;]\s+)|(?:\s*,?\s+(?:and\s+)?(?:then|after\s+that|afterwards|next|finally|lastly|first\s+of\s+all)\s+)|(?:\s*,?\s+and\s+also\s+)|(?:\s*,?\s+as\s+well\s+as\s+)|"
+    rf"(?:[.?!;]\s+)|(?:\s*,?\s+(?:and\s+)?(?:then|after\s+that|afterwards|next(?!\s+to\b)|finally|lastly|first\s+of\s+all)\s+)|(?:\s*,?\s+and\s+also\s+)|(?:\s*,?\s+as\s+well\s+as\s+)|"
     rf"(?:\s+and\s+(?=(?:the\s+)?(?:{_INDEX_NAME})\b))|"
     rf"(?:\s*,?\s+and\s+(?={_CLAUSE_OPENER}))|(?:\s*,\s+(?={_CLAUSE_OPENER}))|(?:\s+also\s+(?={_CLAUSE_OPENER}))|"
     r"(?:\s*,\s+(?:and\s+)?(?=(?:a|an|the)\s))"
@@ -59,7 +59,16 @@ _SPLIT = re.compile(
 _MIN_CLAUSE_WORDS = 2
 # A verb of asking left alone by a split ("tell me" before "first of all"): nothing to route.
 _BARE_ASK = re.compile(r"^(?:tell me|show me|give me|let me know|say)$")
-_PRONOUN = re.compile(r"\b(them|those|they|of them|each of|its|it|one|ones|there are|are there)\b")
+_PRONOUN = re.compile(r"\b(them|those|they|their|theirs|of them|each of|its|it|one|ones|there are|are there)\b")
+_OBJECT_PRONOUN = re.compile(r"\b(them|those|they|their|theirs|of them|each of|one|ones|there are|are there)\b")
+# Words that point at an earlier request rather than at the clause before: "what did you find earlier",
+# "the number you gave". Without one of these, a clause that asks about evidence or a property is about
+# the step it follows in this same request, and enriches it instead of recalling.
+_PAST_REFERENCE = re.compile(
+    r"\b(earlier|previous(ly)?|last time|before|the last (answer|run|analysis|query|step|result)|your (last|previous|earlier) \w+|"
+    r"you (found|said|reported|detected|measured|gave|counted|flagged|used|told|showed|mentioned)|the number you|"
+    r"(that|the) (earlier|previous) (number|answer|result|figure))\b"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +76,12 @@ class Clause:
     text: str
     # `True` when the clause refers back by pronoun ("count them", "how many of them are there").
     pronominal: bool
+    # `True` when that pronoun is a plural or object one ("them", "those", "one") rather than "it": "count
+    # them" is about the things just found; "does it look like a school" is about the picture.
+    object_pronoun: bool = False
+    # `True` when the clause points at an earlier request ("what did you find earlier"). Without it, an
+    # evidence question or a property ask is about the step before it in this request.
+    past_reference: bool = False
 
 
 def strip_filler(query: str) -> str:
@@ -88,5 +103,5 @@ def split_clauses(query: str) -> list[Clause]:
         if len(piece.split()) < _MIN_CLAUSE_WORDS or _FILLER_CLAUSE.match(piece) or _BARE_ASK.match(piece):
             continue
         pronominal = _PRONOUN.search(piece) is not None
-        clauses.append(Clause(piece, pronominal))
+        clauses.append(Clause(piece, pronominal, _OBJECT_PRONOUN.search(piece) is not None, _PAST_REFERENCE.search(piece) is not None))
     return clauses or [Clause(text or normalise_query(query), False)]
