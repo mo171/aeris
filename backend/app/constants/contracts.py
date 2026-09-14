@@ -197,7 +197,7 @@ FRONTEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     "agreementStateSchema": "Phase 1.11 - the cross-modal agreement ledger.",
     "fusionRefusalIdSchema": "Phase 1.11 - the stated reasons fusion refuses.",
     "sensorIdSchema": "Phase 1.11 - names a sensor within a cross-modal comparison.",
-    "reportExportFormatSchema": "Phase 1.12 - JSON and GeoJSON; PDF is deferred to Phase 2.",
+    "reportExportFormatSchema": "Phase 1.12 - deterministic PDF, JSON, and GeoJSON exports; HTTP delivery is Phase 2.",
     "assistantRoleSchema": "Phase 1.13 - the spoken loop's turn-taking.",
     "missionAnalysisKindSchema": "Deferred with continuous monitoring (`roadmap.md`, explicitly deferred).",
 }

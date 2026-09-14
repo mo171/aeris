@@ -41,7 +41,8 @@ PLANNER_TEMPLATE: Final[str] = (
 SYNTHESIS_TEMPLATE: Final[str] = (
     "The operator asked: \"{question}\"\n"
     "The specialists produced these findings, in the order the steps ran:\n{facts}\n{notes}\n"
-    "Write the answer in plain English, two to five sentences, addressing every part of the request in "
+    "Write the answer in plain English, two to five sentences of prose that will be read aloud - no heading, "
+    "no list, no markdown, do not repeat the request - addressing every part of the request in "
     "order. Copy each placeholder such as {{m1}} exactly where its value belongs, and use every placeholder "
     "exactly once - a finding left out is a number the operator never hears. Do not invent any number, "
     "count, area or percentage that is not a placeholder; a figure written out in a finding (a resolution, "

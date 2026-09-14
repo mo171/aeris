@@ -153,6 +153,7 @@ async def test_small_regions_are_measured_but_not_drawn() -> None:
     assert regions_item.area_hectares == pytest.approx(statistics.detected.hectares)
     assert statistics.detected.pixel_count == 101
     assert "1 of 2 drawn" in evidence.vector_layer.title
+    assert evidence.feature_ids_by_region_label == {1: evidence.vector_layer.features[0].id}
 
 
 # ── The graph, end to end ────────────────────────────────────────────────────────────────────────

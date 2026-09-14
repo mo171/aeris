@@ -68,11 +68,10 @@ INTENT_GRAPHS: Final[dict[Intent, GraphName | None]] = {
     Intent.SEGMENT: GraphName.SINGLE_IMAGE,
     Intent.CHANGE_DETECT: GraphName.TEMPORAL,
     Intent.CHANGE_VQA: GraphName.TEMPORAL,
-    Intent.CROSS_MODAL: None,
+    Intent.CROSS_MODAL: GraphName.CROSS_MODAL,
     Intent.EVIDENCE_RECALL: None,
 }
 UNBUILT_GRAPH_PHASE: Final[dict[Intent, str]] = {
-    Intent.CROSS_MODAL: "1.11 cross-modal graph (two per-sensor runs joined by late fusion)",
     Intent.EVIDENCE_RECALL: "no graph: the agent answers it from the conversation's earlier results (1.9)",
 }
 

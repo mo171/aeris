@@ -173,6 +173,9 @@ class RegionEvidence:
     claims: list[Claim]
     regions_total: int
     regions_drawn: int
+    # Original connected-component label -> vector feature id. Consumers which partition a branch mask
+    # later can retain precise references instead of repeating the class-wide evidence list.
+    feature_ids_by_region_label: dict[int, str]
 
     @property
     def layers(self) -> list[EvidenceLayer]:
@@ -221,6 +224,7 @@ async def build_region_evidence(
     features: list[EvidenceFeature] = []
     raster_layer: EvidenceLayer | None = None
     vector_layer: EvidenceLayer | None = None
+    drafts: list[_FeatureDraft] = []
     regions_total = statistics.regions.region_count
     mean_label = value_label or f"Mean {index_label}"
     decimals = hectares_precision_for(resolution_metres)
@@ -425,6 +429,9 @@ async def build_region_evidence(
             )
         )
 
+    feature_ids_by_region_label = {
+        draft.label: feature.id for draft, feature in zip(drafts, features, strict=True)
+    }
     return RegionEvidence(
         raster_layer=raster_layer,
         vector_layer=vector_layer,
@@ -432,6 +439,7 @@ async def build_region_evidence(
         claims=claims,
         regions_total=regions_total,
         regions_drawn=len(features),
+        feature_ids_by_region_label=feature_ids_by_region_label,
     )
 
 

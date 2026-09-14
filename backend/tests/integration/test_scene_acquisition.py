@@ -21,14 +21,19 @@ how   : The searches here run against the real catalogue, not a recorded fixture
 
 import socket
 from datetime import date
+from pathlib import Path
 
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 
 from app.constants.datasets import DatasetId
 from app.lib.exceptions import InvalidRequestError
 from app.services.datasets.acquisition import (
     DEFAULT_SENTINEL2_ASSETS,
     STAC_COLLECTIONS,
+    _window_asset,
     acquisition_plan,
     search_scenes,
 )
@@ -158,6 +163,27 @@ async def test_only_the_two_sentinel_collections_are_searchable() -> None:
     unstorable.
     """
     assert set(STAC_COLLECTIONS) == {DatasetId.SENTINEL2_L2A, DatasetId.SENTINEL1_GRD}
+    assert STAC_COLLECTIONS[DatasetId.SENTINEL1_GRD] == "sentinel-1-rtc"
+
+
+async def test_windowing_uses_stac_crs_when_a_sentinel_asset_header_omits_it(tmp_path: Path) -> None:
+    """Sentinel-1 GRD COGs expose `proj:code` on the item while rasterio reports `crs=None`."""
+    source = tmp_path / "vv.tif"
+    destination = tmp_path / "window.tif"
+    with rasterio.open(
+        source, "w", driver="GTiff", height=10, width=10, count=1, dtype="float32",
+        crs=None,
+    ) as dataset:
+        dataset.write(np.arange(100, dtype=np.float32).reshape(10, 10), 1)
+
+    _window_asset(
+        str(source), (72.82, 19.02, 72.88, 19.08), destination,
+        source_crs="EPSG:4326", source_transform=from_origin(72.8, 19.1, 0.01, 0.01),
+    )
+
+    with rasterio.open(destination) as clipped:
+        assert clipped.crs == rasterio.crs.CRS.from_epsg(4326)
+        assert clipped.width == 6 and clipped.height == 6
 
 
 async def test_a_manual_dataset_gets_instructions_rather_than_a_stack_trace() -> None:

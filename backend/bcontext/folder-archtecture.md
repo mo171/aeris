@@ -255,7 +255,8 @@ backend/
 │   │   │                                #   and serving import the same functions
 │   │   │
 │   │   ├── prompts/                     # Every prompt put in front of a language model, as strings. DONE (1.7)
-│   │   │   └── vlm.py                   # system prompt, SAR note, VQA / caption / constrained-answer templates
+│   │   │   ├── vlm.py                   # system prompt, SAR note, VQA / caption / constrained-answer templates
+│   │   │   └── report.py                # report-editor policy; accepts facts and returns typed prose only
 │   │   │
 │   │   ├── query/                       # DONE (1.8). Query understanding: what is being asked, of what.
 │   │   │   ├── classifier.py            # cues narrow to a family, kNN over the bank votes within it
@@ -307,8 +308,12 @@ backend/
 │   │   │       └── rasterize.py         # sync, pure. Scaled array + ramp + alpha -> RGBA. Nodata stays transparent.
 │   │   │
 │   │   └── reports/
-│   │       ├── generator.py             # sectioned, streamed section by section
-│   │       └── exporters.py             # JSON + GeoJSON (PDF in Phase 2 if it earns the time)
+│   │       ├── generator.py             # evidence dossier -> guarded canonical reader narrative
+│   │       ├── markdown.py              # complete chat projection of that narrative
+│   │       ├── voice.py                 # short speakable projection; no synthesis yet
+│   │       ├── geojson.py               # geometry export without prose or recomputation
+│   │       ├── exporters.py             # writes one local bundle after successful Phase 1 runs
+│   │       └── pdf/                     # print-only concern: theme, components, page composition
 │   │
 │   ├── agents/                          # Plans, routes, dispatches. Computes nothing.  DONE (1.9)
 │   │   ├── graph.py                     # understand -> plan -> approve (interrupt()) -> execute -> synthesise

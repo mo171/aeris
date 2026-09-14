@@ -38,6 +38,10 @@ class GraphName(StrEnum):
     # S18 -> S19. CHANGE_DETECT reads the comparison figure; CHANGE_VQA asks the question over the pair.
     TEMPORAL = "temporal"
 
+    # One optical and one SAR acquisition over the same ground. Independent sensor branches fan out
+    # after S9 and are joined only by the auditable late-fusion ledger.
+    CROSS_MODAL = "cross-modal"
+
 
 # The first element of every long-term memory namespace: `("aeris", "memory", <scope>, ...)`.
 MEMORY_NAMESPACE_ROOT: Final[tuple[str, ...]] = ("aeris", "memory")

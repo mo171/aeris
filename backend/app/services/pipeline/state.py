@@ -286,3 +286,17 @@ class AnalysisState(IndexQueryState, total=False):
     artefact_records: Annotated[list[dict[str, Any]], add]
     # Figures in the order they were drawn, for S19; every renderer's id lands here.
     figure_ids: Annotated[list[str], add]
+
+    # --- 1.11 cross-modal. Each branch owns a distinct namespace until S15 late fusion. -------------------
+    optical_directory: str
+    radar_directory: str
+    optical_scene_id: str
+    radar_scene_id: str
+    optical_sensor_run: dict[str, Any]
+    radar_sensor_run: dict[str, Any]
+    optical_masks: dict[str, Any]
+    radar_masks: dict[str, Any]
+    optical_informative: bool
+    radar_informative: bool
+    cross_modal_result: dict[str, Any]
+    cross_modal_result_path: str

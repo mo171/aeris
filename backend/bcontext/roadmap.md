@@ -33,6 +33,13 @@ statement that can be demonstrated, not a feeling that the code looks finished.
   subsystem's `math/` (`code-standards.md` §8).
 - **No orchestration, checkpointing, streaming or retry code is written at all.** LangGraph owns the graph,
   its state, its resume and its stream; Inngest owns retry and replay; LangChain owns LLM access (ADR-002).
+- **AI-first prose and decision boundary.** Before adding any new hard-coded response, deterministic route,
+  whitelist, fallback or `if/elif` branch, explain its architecture and ask the product owner for approval
+  unless the rule is already documented in `product-truth.md` or this roadmap. Deterministic code is for
+  scientific invariants and honesty constraints only: measurement, required inputs, model domain, resolution,
+  registration, provenance, safety and typed refusal. If AI-authored prose fails validation, regenerate it
+  from the validated dossier; while AI is enabled, never publish hard-coded prose as a fallback. Prefer
+  capability registries, schemas and evidence-driven composition over growing branch trees or synonym lists.
 
 **Phase 0 establishes the setup pattern.** Every dependency added anywhere in the project repeats it:
 
@@ -998,27 +1005,143 @@ vocabulary so a class map can be a figure (today the segmenter's figures are the
 one amber mask per class); models trained at 10 m for land cover and change on scenes; the frontend's
 `cancelled` trace state; the S7 vocabulary entry for Sen2Cor.
 
-## 1.11 — Cross-modal fusion
+## 1.11 — Cross-modal fusion · **Done 2026-09-14**
 
 **Research:** PDF p.19 (fusion strategies, and when to fuse at all).
 
-**Deliverable** — two *independent* per-sensor runs joined by **late fusion**, the agreement ledger
-(`agreementRowSchema`), the modality advisory, and the refusal states.
+**Delivered** — two *independent* per-sensor runs joined by **late fusion**, the agreement ledger
+(`agreementRowSchema`), the modality advisory, a categorical fusion figure, and the refusal states.
 
 Late rather than early fusion, because keeping each sensor's evidence separable is what makes the joint
-answer auditable. **Fusion refuses** when co-registration is worse than sub-pixel, or when one sensor's
-silence carries no information.
+answer auditable. **Fusion refuses** when the supplied affine grids differ by a pixel or more, or when
+one sensor's silence carries no information. The affine-grid check is recorded honestly: it verifies the
+input rasters' common grid, not image-content co-registration.
 
-**Gate** — an optical/radar pair over the same ground produces a ledger with at least one row in each of
-agreement and disagreement, each with a stated physical cause.
+**Gate met** — retained real run
+[`run_01M2FS0F7KZW07CG8BA9S0HG7D`](../runs/run_01M2FS0F7KZW07CG8BA9S0HG7D/artefacts/S15_cross-modal-result.json)
+used Sentinel-2B L2A (2026-03-12) and Sentinel-1A RTC (2026-03-15) over Mumbai. The pair was three days
+apart with a 0.00 px affine-grid residual. Its material (>= 5 ha) ledger has 72 corroborated rows, 21
+optical-only rows, 6 radar-only rows, and 1 conflict. The conflict is 5.2178 ha of optical water versus
+radar built-up; the system gives no fused headline, emits a confidence-null primary refusal, and asks for
+a third observation. All 173 row feature references resolve in the evidence graph; the contract, five
+figures, provenance, and terminal journal event were validated from disk.
 
-## 1.12 — Report generation
+**Deferred Phase 1.10 debt** — still deliberately outside this phase: enforce training-domain safeguards
+for 10 m land-cover and learned change requests; refresh the vendored `figure-ready` event contract; and
+validate complete figure-bearing production journals, not only the probe graph.
 
-**Deliverable** — the sectioned report (`reportSectionKindSchema`: summary, inputs, findings, evidence,
-models, confidence, limitations, conclusion), streamed section by section, exportable as JSON and GeoJSON.
-PDF rendering may follow in Phase 2.
+## 1.11.2 — Deterministic temporal multimodal fusion
 
-**Gate** — a generated report's every figure traces to a claim, and its every claim traces to a trace step.
+This is an additive capability. It does not replace the Phase 1.10 temporal graph or the Phase 1.11
+single-time cross-modal graph. It composes them into a four-input investigation while preserving the
+existing two-input paths and their contracts.
+
+**Deliverable** — deterministic, evidence-driven fusion over:
+
+```
+S2-T1 -> S2-T2 -> optical temporal change
+S1-T1 -> S1-T2 -> SAR temporal change
+                         \         /
+                          \       /
+                    temporal cross-modal ledger
+```
+
+- optical change and SAR change as independent, auditable runs;
+- a temporal cross-modal ledger linking change evidence by sensor, time and location;
+- agreement, disagreement, non-informative-silence and abstention states;
+- physical explanations that remain explanations, not invented measurements;
+- four-input provenance and claim references, with every input, registration decision, artefact and
+  derived result retained in the evidence graph;
+- the smallest valid input configuration: a two-date optical question need not load SAR, while a request
+  for radar confirmation requires all four inputs.
+
+The first implementation is **not** a learned four-image model. A learned joint model is deferred until
+validated four-input data and a measurable baseline comparison exist. The deterministic ledger is the
+reference system against which any later model must be evaluated.
+
+**Validity rules** — each optical and SAR pair must pass its own temporal registration and domain checks;
+the four inputs must share the declared spatial relationship; missing or non-informative evidence must
+produce a typed abstention; disagreement must remain visible rather than being majority-voted away.
+
+**Gate** — a real four-input run produces independent optical and SAR change artefacts, a temporal
+agreement ledger, physical-explanation or abstention records, a valid evidence graph, and claims whose
+provenance resolves back to all contributing inputs. Existing single-temporal and single-time
+cross-modal tests remain green unchanged.
+
+## 1.12 — Report generation · **Done 2026-09-14**
+
+This is the user-facing reporting product, not merely an internal JSON/GeoJSON export.
+
+**The three answer surfaces** — one investigation produces three related but deliberately different outputs:
+
+1. **Chat answer** — the complete written answer streams into the frontend assistant as safe, rendered
+   Markdown. Headings, lists, emphasis, tables, citations to claims and links to evidence/figures are
+   presentation; every quantitative statement still comes from the validated claim objects. The frontend
+   must replace the current plain-text answer renderer with a Markdown renderer that sanitises output,
+   preserves streaming and never permits arbitrary HTML or executable content.
+2. **Voice answer** — the voice agent speaks a shorter, natural version of the same validated result.
+   It is generated from claims, not by reading arbitrary chat Markdown, and carries the same claim ids.
+   The voice may omit detail for brevity but may not change a measurement, confidence, limitation or
+   refusal present in the complete answer.
+3. **Professional report** — the complete, re-readable investigation record for a remote-sensing or
+   geospatial researcher, with methods, inputs, conclusions, facts supporting each conclusion, model
+   versions, processing parameters, evidence, figures, uncertainty, limitations, refusals and provenance.
+
+**Deliverable** — a generic report pipeline over the evidence, claim and provenance system:
+
+- the streamed report sections (`summary`, `inputs`, `findings`, `evidence`, `models`, `confidence`,
+  `limitations`, `conclusion`) shown in the frontend report surface;
+- a **detailed researcher report PDF** with a stable layout: title and investigation scope, executive
+  summary, question and data inventory, acquisition dates and spatial reference, preprocessing and quality
+  checks, methods and equations where relevant, findings and measurements, claim-by-claim evidence,
+  embedded real figures from the run, model/version and parameter tables, confidence and uncertainty,
+  limitations/refusals, reproducibility/provenance, and a conclusion;
+- a **summary report** with the essential conclusion, key measurements, confidence/limitations and a small
+  curated set of primary figures for quick review or briefing;
+- all relevant generated figures embedded from the actual run: index maps, masks, detection overlays,
+  temporal comparisons, SAR backscatter, fusion figures, legends and diagnostic plots. The PDF must use
+  the same figure bytes and render specifications that the operator saw, never screenshots or invented
+  replacements;
+- JSON as the machine-readable report manifest and GeoJSON as the spatial export. These are companion
+  formats, not substitutes for the researcher-grade PDF. Sections reference claim ids, evidence layer ids,
+  figure ids, trace steps, refusals and input records rather than copying measurements into a second source
+  of truth;
+- one report schema that accepts single-image, temporal, cross-modal and four-input investigations;
+- deterministic report assembly. The LLM may write explanatory prose and Markdown around validated facts,
+  but it cannot create or alter measurements, geometry, provenance, confidence, figure metadata or refusal
+  states. Missing evidence becomes an explicit limitation or refusal in chat, voice and PDF.
+
+**Persistence and delivery**
+
+- Raw PDF, summary PDF, JSON manifest and GeoJSON are stored in the private MinIO `reports` bucket under a
+  stable `investigation/report/version` object-key layout. Report bytes do not live in Postgres and are not
+  sent through the chat stream.
+- Figure bytes continue to live in the private MinIO `figures` bucket. Every figure used by a report must
+  have a persisted manifest containing its figure id, object key, hash, media type, dimensions, legend,
+  render specification, trace step id and claim ids. Do not duplicate image bytes in Postgres.
+- Postgres stores the report identity and lifecycle metadata: report id, investigation id, trace id,
+  version, status, title, generated time, object keys for each export, content hashes, summary metadata and
+  the ordered report-section/figure/claim references. It also stores the figure manifest needed to resolve
+  report references after a stream or local journal is gone.
+- Downloads go through authenticated report endpoints or short-lived signed URLs. The frontend must be
+  able to stream the report drawer, open the detailed or summary PDF, and download JSON/GeoJSON without
+  loading a large document into React memory.
+- Report generation is resumable and idempotent: a repeated request for the same completed investigation
+  and report version reuses verified artifacts, while a changed evidence graph creates a new version.
+
+**Reopened quality gate** — the first implementation produced valid files but failed the product bar: its
+reader narrative was too close to pipeline telemetry, evidence pages did not explain what each image proved,
+the PDF mixed editorial and layout concerns, and its LLM prompt lived outside `services/prompts/`. The phase
+is not complete until the replacement passes both a strongly supported real investigation and an
+out-of-domain or evidence-limited investigation, with every page rendered and visually inspected.
+
+**Gate** — after a real investigation, the frontend receives a complete Markdown chat answer, the voice
+surface receives a shorter claim-grounded answer, and the report drawer assembles section by section. The
+detailed PDF opens as a professional research document containing the actual run figures; the summary PDF
+contains only the selected primary figures; JSON and GeoJSON validate against their contracts; every figure
+and number resolves to a claim/evidence/trace record; every input and model parameter is reproducible; all
+refusals and limitations survive into every surface; MinIO objects can be restored from Postgres metadata;
+and regenerating the same report version produces byte-identical or canonically equivalent artifacts.
 
 ## 1.13 — The voice loop
 
@@ -1035,20 +1158,89 @@ PDF rendering may follow in Phase 2.
   answered from model knowledge, labelled provisional with empty `claimIds`, then superseded by the grounded
   utterance when the run completes.
 
-**Gate** — *a full spoken investigation in the terminal.* The operator asks a question aloud; AERIS states
-its plan aloud, runs a real analysis over real imagery, and speaks a real answer with a real number in it.
-The operator speaks over it mid-answer, asks something unrelated, gets a provisional answer marked as such —
-**and the original run finishes and reports back anyway.** `ui-command` events are printed where the frontend
-will later dispatch them.
+**Product quality** — the voice should feel like a calm, precise, responsive cinematic assistant: concise
+when the operator is busy, expressive when narrating evidence, and never theatrical at the expense of
+clarity. Use an original voice identity with a similar professional warmth and controlled British cadence
+if that fits the product; do not clone or reproduce a film actor's identifiable voice.
 
-## 1.14 — Evaluation
+**Gate** — *a full conversational investigation in the terminal.* The operator asks a question aloud;
+AERIS confirms or presents its plan aloud, runs a real analysis over real imagery, and speaks a grounded
+answer with a real number in it. The operator can interrupt synthesis, ask an unrelated follow-up while
+the original run continues, receive a clearly labelled provisional response, resume or abandon a run
+explicitly, and hear the completed grounded result afterward. Transcription, wake detection, barge-in,
+speech cancellation, narration, `ui-command` events and claim references are tested under silence, noise,
+rapid turn-taking, model delay and failed synthesis. No voice response may invent a measurement or erase a
+refusal.
+
+## 1.14 — Mature AERIS orchestration hardening
+
+This is the final Phase 1 orchestration milestone. It is a new layer **above** the scientific graphs built
+in 1.10, 1.11 and 1.11.2, not a replacement for them and not another scientific pipeline. The existing
+1.8/1.9 routing and agent behavior become the substrate to consolidate, generalise and harden here.
+
+**Core idea** — AERIS answers not only "which pipeline should I run?" but:
+
+> What is the user asking about, what evidence would establish it, which installed capability can produce
+> that evidence, whether it is valid for these inputs, and how should the work be composed and explained?
+
+**Deliverable** — a capability- and evidence-oriented orchestration layer with:
+
+- a typed `TaskSpec` for concept, requested operation, modality, temporal and spatial scope, desired output,
+  precision and constraints;
+- compound-request decomposition into a dependency-aware task graph, with parallel work where valid and
+  explicit prerequisites where required;
+- one capability registry declaring each model or scientific graph's operations, ontology, input
+  requirements, domain, output evidence and limitations;
+- a deterministic validity and feasibility engine separating theoretical capability from validity on the
+  supplied data: sensor, bands, GSD, CRS, georeferencing, registration, temporal pairing, data quality,
+  model domain and requested precision;
+- deterministic planning that selects the minimum valid evidence configuration instead of forcing every
+  request into four inputs;
+- partial-plan execution, so valid tasks complete while unsupported or invalid tasks return useful typed
+  refusals;
+- domain and geospatial reasoning after model execution for operations such as area, overlap, largest,
+  change magnitude, spatial relations and temporal trends;
+- claim construction from evidence and derived measurements, including uncertainty, validity, units,
+  temporal/spatial extent and provenance;
+- first-class statuses such as `VALID`, `UNSUPPORTED`, `AMBIGUOUS`, `INSUFFICIENT_DATA`,
+  `NON_INFORMATIVE`, `REGISTRATION_FAILURE`, `RESOLUTION_FAILURE` and `MODEL_DOMAIN_MISMATCH`;
+- one auditable execution journal spanning the request, task graph, capability decisions, validity checks,
+  graph runs, checkpoints, artefacts, evidence, claims, refusals and synthesis;
+- a synthesis boundary where the LLM receives verified claims and may explain them, but cannot select
+  arbitrary tools, invent quantitative results or override deterministic scientific constraints.
+
+**Hard-coding boundary** — scientific invariants remain explicit and deterministic: required bands,
+resolution limits, registration requirements, measurement prerequisites and model-domain constraints.
+Natural-language vocabulary must not become a growing global whitelist such as `OBJECT_SYNONYMS` or
+`UNDETECTABLE_OBJECTS`; model-specific knowledge belongs with the capability that owns it.
+
+**Non-goals** — no free-form autonomous agent, arbitrary LLM tool selection, giant central router, removal
+of provenance or refusal logic, quantitative VLM answers by default, or rewrite of working scientific
+graphs without a demonstrated need.
+
+**Success criteria** — a concept outside the detector vocabulary can still receive a valid qualitative
+answer when a capable VLM supports it; quantitative requests are refused without validated evidence; adding
+a specialist is a registry and graph integration task rather than a central-router rewrite; compound
+requests can mix capabilities; partial execution is useful; every decision is auditable; existing 1.9,
+1.10, 1.11 and 1.11.2 behavior remains correct; and every result remains grounded in evidence and claims.
+
+**Gate** — a representative mixed investigation decomposes into dependent tasks, resolves capabilities,
+records validity decisions, executes the minimum valid set, preserves partial success and typed refusals,
+produces a complete evidence graph and claim set, resumes after interruption, and yields the same grounded
+answer and journal on replay. The suite includes capability addition without central-router edits and
+mutation tests proving that removing a validity check causes the gate to fail.
+
+## 1.15 — Evaluation
 
 **Research:** PDF p.39 (the evaluation framework).
 
-**Deliverable** — a harness scoring: change detection on LEVIR-CD, VQA and captioning on a VRSBench subset,
-grounding, routing accuracy, and system-level latency and VRAM under both profiles.
+**Deliverable** — a harness scoring the complete Phase 1 system: change detection on LEVIR-CD, temporal
+multimodal agreement and abstention, VQA and captioning on a VRSBench subset, grounding, report integrity,
+voice turn-taking and interruption behavior, mature orchestration capability resolution, routing accuracy,
+and system-level latency and VRAM under both profiles.
 
-**Gate** — a single command produces the scorecard, and it is committed so regressions are visible.
+**Gate** — a single command produces a committed scorecard covering scientific correctness, evidence and
+provenance integrity, refusal quality, orchestration behavior and voice interaction regressions.
 
 ---
 
@@ -1097,4 +1289,5 @@ backend/
   cannot supply (PDF p.42). The `missions` table exists; the scheduler does not.
 - **Hyperspectral** — no dataset, no demo value at this tier.
 - **Fine-tuning beyond change detection** — pretrained models first. Fine-tune only where a gate fails.
-- **PDF rendering of reports** — JSON and GeoJSON in Phase 1; PDF in Phase 2 if it earns the time.
+- **HTTP report delivery and Postgres report metadata** — Phase 1 writes a complete local report bundle;
+  authenticated download endpoints and lifecycle metadata remain Phase 2.

@@ -53,7 +53,9 @@ logger = logging.getLogger(__name__)
 # collections differently, and the record stays provider-neutral.
 STAC_COLLECTIONS: dict[DatasetId, str] = {
     DatasetId.SENTINEL2_L2A: "sentinel-2-l2a",
-    DatasetId.SENTINEL1_GRD: "sentinel-1-grd",
+    # The catalogue record promises radiometrically terrain-corrected linear power. The similarly named
+    # `sentinel-1-grd` collection publishes unsigned amplitudes and cannot support physical dB thresholds.
+    DatasetId.SENTINEL1_GRD: "sentinel-1-rtc",
 }
 
 # The Sentinel-2 assets worth fetching by default: the four 10 m bands plus the scene classification layer.
@@ -76,6 +78,10 @@ class SceneMatch:
     acquired_on: str
     cloud_cover_percentage: float | None
     assets: dict[str, str]
+    # Some Sentinel-1 assets omit CRS from the GeoTIFF header while the STAC item correctly carries
+    # `proj:code`. Keep that boundary metadata rather than making the downloader rediscover it.
+    source_crs: str | None = None
+    source_transform: tuple[float, float, float, float, float, float] | None = None
 
     @property
     def summary(self) -> str:
@@ -185,6 +191,11 @@ def _search_stac_synchronously(
                 acquired_on=str(item.datetime.date()) if item.datetime else "unknown",
                 cloud_cover_percentage=item.properties.get("eo:cloud_cover"),
                 assets={name: asset.href for name, asset in item.assets.items()},
+                source_crs=item.properties.get("proj:code") or item.properties.get("proj:epsg"),
+                source_transform=(
+                    tuple(item.properties["proj:transform"][:6])
+                    if item.properties.get("proj:transform") else None
+                ),
             )
         )
     return matches
@@ -256,7 +267,10 @@ async def fetch_scene_window(
     destination = dataset_directory(dataset_id) / (name or scene.scene_id)
     await asyncio.to_thread(destination.mkdir, parents=True, exist_ok=True)
     for asset in asset_names:
-        await asyncio.to_thread(_window_asset, scene.assets[asset], bounding_box, destination / f"{asset}.tif")
+        await asyncio.to_thread(
+            _window_asset, scene.assets[asset], bounding_box, destination / f"{asset}.tif",
+            source_crs=scene.source_crs, source_transform=scene.source_transform,
+        )
     logger.info(
         "scene window fetched",
         extra={"dataset_id": dataset_id.value, "scene_id": scene.scene_id, "assets": len(asset_names), "bbox": list(bounding_box)},
@@ -264,23 +278,43 @@ async def fetch_scene_window(
     return destination
 
 
-def _window_asset(href: str, bounding_box: tuple[float, float, float, float], destination: Path) -> None:
+def _window_asset(
+    href: str,
+    bounding_box: tuple[float, float, float, float],
+    destination: Path,
+    *,
+    source_crs: str | int | None = None,
+    source_transform: Any | None = None,
+) -> None:
     """Read the window of one remote COG that covers the geographic box and write it locally. Sync."""
     import rasterio
+    from affine import Affine
     from rasterio.warp import transform_bounds
     from rasterio.windows import Window, from_bounds
+    from rasterio.windows import transform as window_transform
 
     with rasterio.open(href) as source:
-        west, south, east, north = transform_bounds("EPSG:4326", source.crs, *bounding_box)
-        window = from_bounds(west, south, east, north, transform=source.transform).round_offsets().round_lengths()
+        effective_crs = source.crs or source_crs
+        if effective_crs is None:
+            raise InvalidRequestError(
+                "The imagery asset and its STAC item provide no coordinate reference system; it cannot be clipped by geographic bounds.",
+                details={"href": href.split("?", maxsplit=1)[0]},
+            )
+        effective_transform = (
+            source.transform
+            if source.crs is not None or source_transform is None
+            else Affine(*tuple(source_transform)[:6])
+        )
+        west, south, east, north = transform_bounds("EPSG:4326", effective_crs, *bounding_box)
+        window = from_bounds(west, south, east, north, transform=effective_transform).round_offsets().round_lengths()
         window = window.intersection(Window(0, 0, source.width, source.height))
         if window.width <= 0 or window.height <= 0:
             raise InvalidRequestError(f"{href} does not cover the requested box.", details={"bbox": list(bounding_box)})
         data = source.read(window=window)
         profile = source.profile.copy()
         profile.update(
-            driver="GTiff", height=int(window.height), width=int(window.width), transform=source.window_transform(window),
-            compress="deflate", tiled=True, blockxsize=256, blockysize=256,
+            driver="GTiff", height=int(window.height), width=int(window.width), transform=window_transform(window, effective_transform),
+            crs=effective_crs, compress="deflate", tiled=True, blockxsize=256, blockysize=256,
         )
         profile.pop("blocksize", None)
     with rasterio.open(destination, "w", **profile) as sink:

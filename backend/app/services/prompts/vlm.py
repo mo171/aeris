@@ -36,7 +36,9 @@ CAPTION_TEMPLATE: Final[str] = (
 # go, and the model is asked to phrase them - placeholders copied verbatim, no new figures.
 CONSTRAINED_ANSWER_TEMPLATE: Final[str] = (
     "The analysis produced these findings:\n{facts}\n\n"
-    "Write a short plain-English answer to the question \"{question}\" using only these findings. Copy each "
+    "Write a short plain-English answer to the question \"{question}\" using only these findings: two to four "
+    "sentences of prose that will be read aloud - no heading, no list, no markdown, and do not repeat the "
+    "question. Copy each "
     "placeholder such as {{m1}} exactly where its value belongs, and use every placeholder exactly once - a "
     "finding left out is a number the operator never hears, so mention the supporting findings too, briefly. "
     "Do not invent any number, area, percentage or count that is not a placeholder; a figure written out in a "

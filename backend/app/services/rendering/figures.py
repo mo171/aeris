@@ -62,6 +62,18 @@ logger = logging.getLogger(__name__)
 # Pixels. Thin enough not to hide a small vehicle, thick enough to read on a 1024-pixel crop.
 DETECTION_OUTLINE_WIDTH = 2
 
+# Cross-modal agreement is categorical evidence. These fixed, named swatches are intentionally not a
+# continuous colour ramp: interpolating between agreement states would invent a state that never occurred.
+_FUSION_COLOURS: dict[int, tuple[str, str]] = {
+    1: ("#2471a3", "Water corroborated"),
+    2: ("#a04000", "Built-up corroborated"),
+    3: ("#5dade2", "Optical-only water"),
+    4: ("#d98880", "Optical-only built-up"),
+    5: ("#17a589", "Radar-only water"),
+    6: ("#7d3c98", "Radar-only built-up"),
+    7: ("#c0392b", "Conflict"),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class RenderedFigure:
@@ -437,6 +449,93 @@ def _compose_mask_overlay(mask: np.ndarray, base_rgba: np.ndarray, ramp: ColorRa
     composed = blend_over(base_rgba, coloured)
         
     return composed
+
+
+async def render_cross_modal_overlay(
+    optical_water: np.ndarray,
+    optical_built_up: np.ndarray,
+    radar_water: np.ndarray,
+    radar_built_up: np.ndarray,
+    base_rgba: np.ndarray,
+    *,
+    run_id: str,
+    trace_step_id: str,
+    title: str,
+    scene_ids: list[str] | None = None,
+    crs: str | None = None,
+    observed: np.ndarray | None = None,
+    caption: str | None = None,
+    claim_ids: list[str] | None = None,
+    is_primary: bool = False,
+) -> RenderedFigure:
+    """Render the late-fusion partition as one categorical, inspectable figure."""
+    categories = await asyncio.to_thread(
+        _cross_modal_categories, optical_water, optical_built_up, radar_water, radar_built_up
+    )
+    base = base_rgba.copy()
+    if observed is not None:
+        if observed.shape != categories.shape:
+            raise ValueError("Cross-modal visibility must share the fusion grid.")
+        base[..., 3] = np.where(observed, OPAQUE_ALPHA, 0).astype(np.uint8)
+    composed = await asyncio.to_thread(_compose_cross_modal_overlay, categories, base)
+    entries = [
+        LegendEntry(color=colour, label=label)
+        for code, (colour, label) in _FUSION_COLOURS.items() if bool(np.any(categories == code))
+    ]
+    legend = FigureLegend(
+        kind=LegendKind.CATEGORICAL, label="Optical/SAR agreement", color_ramp=ColorRampId.ARTEFACT_NEUTRAL,
+        domain=None, entries=entries,
+    )
+    specification = RenderSpec(
+        scene_ids=scene_ids or [], bands=[],
+        stretch={"min": 0.0, "max": float(max(_FUSION_COLOURS)), "method": StretchMethod.FIXED.value},
+        color_ramp=ColorRampId.ARTEFACT_NEUTRAL, resampling="nearest", crs=crs, mask_applied=True,
+    )
+    final_rgba = await asyncio.to_thread(
+        draw_discrete_legend, composed, entries=[(entry.color, entry.label) for entry in entries], label=legend.label
+    )
+    return await _publish(
+        final_rgba, base_rgba=composed, run_id=run_id, kind=FigureKind.MASK_OVERLAY, title=title,
+        caption=caption, trace_step_id=trace_step_id, claim_ids=claim_ids or [], legend=legend,
+        specification=specification, is_primary=is_primary, lossy=False,
+    )
+
+
+def _cross_modal_categories(
+    optical_water: np.ndarray,
+    optical_built_up: np.ndarray,
+    radar_water: np.ndarray,
+    radar_built_up: np.ndarray,
+) -> np.ndarray:
+    masks = (optical_water, optical_built_up, radar_water, radar_built_up)
+    shapes = {mask.shape for mask in masks}
+    if len(shapes) != 1:
+        raise ValueError(f"Cross-modal masks need one grid, got {sorted(shapes)}.")
+    water_conflict = optical_water & radar_built_up
+    built_up_conflict = optical_built_up & radar_water
+    conflicts = water_conflict | built_up_conflict
+    categories = np.zeros(optical_water.shape, dtype=np.uint8)
+    categories[(optical_water & radar_water) & ~conflicts] = 1
+    categories[(optical_built_up & radar_built_up) & ~conflicts] = 2
+    categories[(optical_water & ~radar_water) & ~conflicts] = 3
+    categories[(optical_built_up & ~radar_built_up) & ~conflicts] = 4
+    categories[(radar_water & ~optical_water) & ~conflicts] = 5
+    categories[(radar_built_up & ~optical_built_up) & ~conflicts] = 6
+    categories[conflicts] = 7
+    return categories
+
+
+def _compose_cross_modal_overlay(categories: np.ndarray, base_rgba: np.ndarray) -> np.ndarray:
+    if categories.shape != base_rgba.shape[:2]:
+        raise ValueError("Cross-modal categories and base image must share one grid.")
+    overlay = np.zeros_like(base_rgba)
+    for code, (colour, _) in _FUSION_COLOURS.items():
+        present = categories == code
+        if not bool(present.any()):
+            continue
+        overlay[present, :3] = tuple(bytes.fromhex(colour[1:]))
+        overlay[present, 3] = MASK_OVERLAY_ALPHA
+    return blend_over(base_rgba, overlay)
 
 
 async def _publish(

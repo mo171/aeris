@@ -83,6 +83,24 @@ async def test_env_example_documents_every_configurable_field() -> None:
     assert not undocumented, f"missing from .env.example: {undocumented}"
 
 
+async def test_provider_specific_api_key_names_are_not_fallbacks(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Only the application-owned LLM_API_KEY name may configure the language model."""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "provider-specific-key-must-be-ignored")
+
+    configured = Settings(_env_file=None)
+
+    assert configured.llm_api_key is None
+
+
+def test_settings_reject_unknown_environment_names() -> None:
+    """An undeclared alias must fail configuration rather than becoming a silent second truth."""
+    assert Settings.model_config["extra"] == "forbid"
+
+
 async def test_database_url_must_use_the_async_driver(
     monkeypatch: pytest.MonkeyPatch,
     mandatory_environment: None,

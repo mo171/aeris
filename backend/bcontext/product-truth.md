@@ -163,6 +163,45 @@ part of the evidence chain, not a screenshot.
 the `rendering/` subsystem; `roadmap.md` 1.2.1 builds it; **ADR-004** records why this is rendered on the
 backend rather than composed in the browser, and what was rejected.
 
+### 1.5.1 Cross-sensor disagreement is a first-class answer
+
+Optical and SAR are complementary measurements, not two votes that can be averaged. AERIS therefore
+analyses them independently and joins only the resulting evidence in a late-fusion ledger. A material
+agreement may support a fused headline; a material disagreement produces a confidence-null primary claim
+that says no fused conclusion is available and requests a third observation. The system must never replace
+that refusal with a fluent list of independent branch readings.
+
+The common-grid check is deliberately named **affine-grid alignment**. It establishes that the supplied
+rasters share a CRS, shape, and transform below the sub-pixel tolerance; it does not assert optical/SAR
+image-content registration. The categorical fusion figure is a visual audit aid, not an additional source
+of measurements.
+
+### 1.5.2 Reports are projections of one evidence ledger
+
+Phase 1.12 makes each completed investigation available as three coordinated surfaces: complete rendered
+Markdown for chat, shorter voice-ready prose, and a researcher-grade PDF with the actual retained figures.
+One typed reader narrative feeds all three. The language model may organise and explain a validated dossier,
+but a numeric and identifier guard rejects the entire editorial pass if it adds a measurement or leaks a
+transport name. If the guard rejects the draft, AERIS regenerates the AI draft from the same validated
+dossier; it never replaces enabled-AI prose with deterministic hard-coded prose. A provider failure is
+retried and then surfaced as an explicit report-generation error. Deterministic text is permitted only as
+an internal dossier, test fixture, or intentionally AI-disabled development path.
+
+This is the product-wide hard-coding boundary. Before introducing a new hard-coded response, deterministic
+route, whitelist, fallback, or `if/elif` branch, the implementation must explain the decision to the product
+owner and request approval unless the rule is already documented here or in the roadmap. Hard-coded logic is
+reserved for scientific invariants and honesty constraints: measurement formulae, required inputs, model
+domains, resolution and registration gates, provenance, safety, and typed refusals. It must not encode every
+possible natural-language noun or replace model reasoning. Prefer capability registries, schemas and
+evidence-driven composition to central router branches and growing synonym lists.
+
+The reason is architectural: AERIS must be flexible and natural in language while remaining exact where
+science demands it. A deterministic scientific refusal says what the data cannot establish; a hard-coded
+paragraph pretending to be the AI answer hides a generation failure and is not acceptable. JSON and GeoJSON
+accompany the PDF for machine and spatial consumers. A refusal, missing confidence, or domain limitation
+survives unchanged across every surface. Local Phase 1 bundles live under each run; HTTP download and
+persistent report metadata remain Phase 2 transport concerns.
+
 ### 1.6 AERIS is a session-scoped harness with two memories
 
 **Stated by the product owner on 2026-08-31.** Also a gap: nothing in these documents described memory of any
