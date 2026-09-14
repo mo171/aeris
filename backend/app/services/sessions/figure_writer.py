@@ -44,6 +44,7 @@ class FigureWriter:
         self.run_id = run_id
         self.directory = figures_directory(run_id)
         self.written: list[Path] = []
+        self.events: list[FigureReadyEvent] = []
 
     async def __call__(self, event: AnalysisStreamEvent) -> None:
         """The fan-out consumer. Ignores every event that is not a figure."""
@@ -69,6 +70,7 @@ class FigureWriter:
         destination = self.directory / f"{event.figure_id}.{suffix}"
         destination.write_bytes(payload)
         self.written.append(destination)
+        self.events.append(event)
 
         logger.info(
             "figure written",

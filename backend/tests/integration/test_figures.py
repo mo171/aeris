@@ -157,6 +157,7 @@ async def test_the_figure_writer_puts_a_run_s_figures_on_disk(tmp_path, monkeypa
     await writer(figure.event)
 
     assert len(writer.written) == 1
+    assert writer.events == [figure.event]
     assert writer.written[0].read_bytes() == figure.image_bytes
     assert writer.written[0].parent.name == "figures"
 

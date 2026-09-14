@@ -68,6 +68,7 @@ dependencies = [
     { name = "python-ulid" },
     { name = "rasterio" },
     { name = "redis", extra = ["hiredis"] },
+    { name = "reportlab" },
     { name = "rich" },
     { name = "rio-cogeo" },
     { name = "s2cloudless" },
@@ -92,6 +93,7 @@ dev = [
     { name = "jupyterlab" },
     { name = "kaggle" },
     { name = "lmdb" },
+    { name = "pypdf" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "rioxarray" },
@@ -129,6 +131,7 @@ requires-dist = [
     { name = "python-ulid", specifier = ">=4.0" },
     { name = "rasterio", specifier = ">=1.5" },
     { name = "redis", extras = ["hiredis"], specifier = ">=8.1.0" },
+    { name = "reportlab", specifier = ">=4.4" },
     { name = "rich", specifier = ">=14.0" },
     { name = "rio-cogeo", specifier = ">=7.0.2" },
     { name = "s2cloudless", specifier = ">=1.7.3" },
@@ -153,6 +156,7 @@ dev = [
     { name = "jupyterlab", specifier = ">=4.6" },
     { name = "kaggle", specifier = ">=2.2.4" },
     { name = "lmdb", specifier = ">=2.3.0" },
+    { name = "pypdf", specifier = ">=6.0" },
     { name = "pytest", specifier = ">=9.0" },
     { name = "pytest-asyncio", specifier = ">=1.0" },
     { name = "rioxarray", specifier = ">=0.23" },
@@ -3048,6 +3052,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pypdf"
+version = "6.18.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/c2/e537e78a8282b51ed47031566be118debbc34c04782a9afd8739672eb07d/pypdf-6.18.1.tar.gz", hash = "sha256:2441fc839053745638d9b9ddb38ed66beed8d611f47a3036c9838fc4e3074dea", size = 7027577, upload-time = "2026-09-11T10:10:07.616Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/13/645df3995075112cb3cce15e8797c205f0f88fb50acc11012b84b071bc22/pypdf-6.18.1-py3-none-any.whl", hash = "sha256:ee93a2665670ecf57ee81d197a4ca548f3dc15f9cefc56e59b8140866aaa3de5", size = 394327, upload-time = "2026-09-11T10:10:06.103Z" },
+]
+
+[[package]]
 name = "pyproj"
 version = "3.7.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3663,6 +3676,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c5/63/b19305c4b8d3d7867699f7d83c43550273d91a2f31793452d87edb1d259f/regex-2026.9.10-cp314-cp314t-win32.whl", hash = "sha256:fbc4e2f3cb7ce8436154e6483079e7d35eeb321a952fa936e180300630d8b873", size = 274607, upload-time = "2026-09-09T20:59:00.942Z" },
     { url = "https://files.pythonhosted.org/packages/32/b8/1695072a512a49060294024e23b945eeb87675b02c06e53a92a1b42b0bfd/regex-2026.9.10-cp314-cp314t-win_amd64.whl", hash = "sha256:c37fa93bf18bf4f90b01c0fa9f11ea567ee4b7dd8bf96e63663e5edc37aa38cf", size = 283944, upload-time = "2026-09-09T20:59:02.876Z" },
     { url = "https://files.pythonhosted.org/packages/a9/9f/65bac17f39991a67e22f8b3c849fdc02a56147c97029b5351494341959b4/regex-2026.9.10-cp314-cp314t-win_arm64.whl", hash = "sha256:ffc2da104e43db716ce30cef9f28049a1faa6aca385dd8771b033268d0730b07", size = 283780, upload-time = "2026-09-09T20:59:05.009Z" },
+]
+
+[[package]]
+name = "reportlab"
+version = "5.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4a/51/dbe28534ae12c852f61be91f039f343305fd1f34f1c66b8de75afae7a525/reportlab-5.0.1.tar.gz", hash = "sha256:ebd13154be1c8515e665de70bd2d303ae9ddc3ef47e44afd5116441ca0283a26", size = 3945711, upload-time = "2026-08-20T13:48:16.461Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/cb/dacbc268cb68d0428ea2cbd85266195a9ab3e677449589ddae59bd7542ac/reportlab-5.0.1-py3-none-any.whl", hash = "sha256:1c36e6bb0e71780c72331eba60da7f602e8d4389a8723825af71342e49d791e8", size = 1957258, upload-time = "2026-08-20T13:48:14.026Z" },
 ]
 
 [[package]]

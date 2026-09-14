@@ -2382,3 +2382,22 @@ Two things were added that did not exist before and are now load-bearing:
 
 Phase 0.1. Do not start Phase 1 work before `aeris doctor` is green — the whole point of the Phase 0 pattern
 is that nothing is built on an unverified dependency.
+## Session — 2026-09-14 (1.12) · **One evidence object, three answer surfaces.**
+
+Phase 1.12 is complete on real run `run_01M2FYK1E8VFGZK6ZDW1F7DBMT`. The backend assembles a deterministic
+eight-section report from checkpointed claims, evidence, layers, models and provenance. It writes a branded
+researcher PDF with retained figures, Markdown chat, concise claim-grounded voice narration, JSON, and
+GeoJSON under `runs/<run_id>/reports/`. The cross-modal conflict remains an explicit refusal in every
+surface; voice does not repeat secondary measurements. PDF rendering was Poppler-checked (five A4 pages),
+and focused unit tests plus lint pass. Frontend code is unchanged; HTTP delivery and database metadata are
+deferred to Phase 2.
+
+### Quality-gate correction — 2026-09-14
+
+The preceding completion record is superseded. Valid PDF bytes and retained figures were not sufficient:
+the report read like pipeline telemetry, failed to explain what individual figures established, used sparse
+pages, and placed its editorial prompt and an oversized renderer outside the documented report structure.
+Phase 1.12 was reopened. The replacement owns one typed reader narrative under `services/reports/`, keeps
+the LLM policy under `services/prompts/`, rejects unsafe editorial prose as one unit, and reserves the final
+two pages for model rationale and limitations/final assessment. Completion now requires both a supported
+and an evidence-limited real run plus page-by-page visual inspection.

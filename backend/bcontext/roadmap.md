@@ -1061,7 +1061,7 @@ agreement ledger, physical-explanation or abstention records, a valid evidence g
 provenance resolves back to all contributing inputs. Existing single-temporal and single-time
 cross-modal tests remain green unchanged.
 
-## 1.12 — Report generation
+## 1.12 — Report generation · **In progress — quality gate reopened 2026-09-14**
 
 This is the user-facing reporting product, not merely an internal JSON/GeoJSON export.
 
@@ -1121,6 +1121,12 @@ This is the user-facing reporting product, not merely an internal JSON/GeoJSON e
   loading a large document into React memory.
 - Report generation is resumable and idempotent: a repeated request for the same completed investigation
   and report version reuses verified artifacts, while a changed evidence graph creates a new version.
+
+**Reopened quality gate** — the first implementation produced valid files but failed the product bar: its
+reader narrative was too close to pipeline telemetry, evidence pages did not explain what each image proved,
+the PDF mixed editorial and layout concerns, and its LLM prompt lived outside `services/prompts/`. The phase
+is not complete until the replacement passes both a strongly supported real investigation and an
+out-of-domain or evidence-limited investigation, with every page rendered and visually inspected.
 
 **Gate** — after a real investigation, the frontend receives a complete Markdown chat answer, the voice
 surface receives a shorter claim-grounded answer, and the report drawer assembles section by section. The
@@ -1276,4 +1282,5 @@ backend/
   cannot supply (PDF p.42). The `missions` table exists; the scheduler does not.
 - **Hyperspectral** — no dataset, no demo value at this tier.
 - **Fine-tuning beyond change detection** — pretrained models first. Fine-tune only where a gate fails.
-- **PDF rendering of reports** — JSON and GeoJSON in Phase 1; PDF in Phase 2 if it earns the time.
+- **HTTP report delivery and Postgres report metadata** — Phase 1 writes a complete local report bundle;
+  authenticated download endpoints and lifecycle metadata remain Phase 2.

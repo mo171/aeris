@@ -102,6 +102,14 @@ class RunOutcome:
     def answer(self) -> str:
         return " ".join(self.values.get("answer_tokens") or [])
 
+    @property
+    def markdown_answer(self) -> str:
+        return str(self.values.get("chat_markdown") or self.answer)
+
+    @property
+    def voice_narration(self) -> str:
+        return str(self.values.get("voice_narration") or self.answer)
+
 
 async def run_analysis(request: AnalysisRequest, *, console: Console | None = None) -> RunOutcome:
     """Run the request's graph end to end and return what the checkpoint holds when it stops."""
@@ -125,7 +133,26 @@ async def run_analysis(request: AnalysisRequest, *, console: Console | None = No
                 else:
                     fanout.register("figures", figures)
                     status = await handle.wait()
-            values = (await read_thread_state(graph, handle.run_id)).values if status is RunStatus.COMPLETE else {}
+            values = dict((await read_thread_state(graph, handle.run_id)).values) if status is RunStatus.COMPLETE else {}
+            if status is RunStatus.COMPLETE:
+                # One canonical report is projected into chat, speech preparation, and export files. The
+                # projections are generated after the figure writer closes so PDFs can embed the exact bytes
+                # a Phase 2 client would download.
+                from app.schemas.events import serialise_event
+                from app.services.reports.exporters import write_report_bundle
+
+                figure_events = [serialise_event(event) for event in figures.events]
+                bundle = await write_report_bundle(
+                    run_id=handle.run_id, values=values, figure_paths=tuple(figures.written), figure_events=figure_events,
+                )
+                values.update({
+                    "chat_markdown": bundle.markdown_path.read_text(encoding="utf-8"),
+                    "voice_narration": bundle.voice_path.read_text(encoding="utf-8"),
+                    "report_pdf_path": str(bundle.pdf_path), "report_json_path": str(bundle.json_path),
+                    "report_summary_pdf_path": str(bundle.summary_pdf_path),
+                    "report_geojson_path": str(bundle.geojson_path), "report_markdown_path": str(bundle.markdown_path),
+                    "report_voice_path": str(bundle.voice_path),
+                })
             return RunOutcome(
                 handle.run_id, status, dict(values), journal_path(handle.run_id), tuple(figures.written), error=handle.error,
             )

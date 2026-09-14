@@ -176,6 +176,16 @@ rasters share a CRS, shape, and transform below the sub-pixel tolerance; it does
 image-content registration. The categorical fusion figure is a visual audit aid, not an additional source
 of measurements.
 
+### 1.5.2 Reports are projections of one evidence ledger
+
+Phase 1.12 makes each completed investigation available as three coordinated surfaces: complete rendered
+Markdown for chat, shorter voice-ready prose, and a researcher-grade PDF with the actual retained figures.
+One typed reader narrative feeds all three. The language model may organise and explain a validated dossier,
+but a numeric and identifier guard rejects the entire editorial pass if it adds a measurement or leaks a
+transport name. JSON and GeoJSON accompany the PDF for machine and spatial consumers. A refusal, missing
+confidence, or domain limitation survives unchanged across every surface. Local Phase 1 bundles live under
+each run; HTTP download and persistent report metadata remain Phase 2 transport concerns.
+
 ### 1.6 AERIS is a session-scoped harness with two memories
 
 **Stated by the product owner on 2026-08-31.** Also a gap: nothing in these documents described memory of any

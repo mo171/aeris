@@ -85,6 +85,8 @@ dependencies = [
     "accelerate>=1.15",
     "langchain>=1.0",
     "langchain-openai>=1.0",
+    # Phase 1.12 - deterministic researcher and summary PDF exports.
+    "reportlab>=4.4",
 ]
 
 [tool.uv.sources]
@@ -117,6 +119,7 @@ dev = [
     "rioxarray>=0.23",
     "lmdb>=2.3.0",
     "kaggle>=2.2.4",
+    "pypdf>=6.0",
 ]
 
 # The `aeris` command. Phase 1 is a CLI application, so this is the product's entry point, not a convenience
