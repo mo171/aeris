@@ -7,11 +7,13 @@ how   : Uses small wire-shaped facts and deliberately unsafe editorial drafts; n
 
 from datetime import UTC, datetime
 from io import BytesIO
+from typing import Any
 
+import pytest
 from pypdf import PdfReader
 
-from app.schemas.report import EditorialReportDraft, EvidenceNarrative
-from app.services.reports.generator import apply_editorial_draft, build_report
+from app.schemas.report import EditorialReportDraft, EvidenceNarrative, KeyFact, QuestionAnswer
+from app.services.reports.generator import ReportEditorialUnavailable, apply_editorial_draft, build_report
 from app.services.reports.markdown import render_chat_markdown
 from app.services.reports.pdf.renderer import render_pdf
 from app.services.reports.voice import render_voice_narration
@@ -87,6 +89,219 @@ async def test_unsafe_editorial_draft_is_rejected_as_a_whole() -> None:
         voice_narration="Everything is certain.",
     )
     assert await apply_editorial_draft(report, unsafe) == report
+
+
+async def test_audit_style_editorial_draft_is_accepted_with_soft_guarding() -> None:
+    report = await build_report(run_id="run_test", values=_values(refused=True), figure_events=_figures(), use_language_model=False)
+    audit_style = EditorialReportDraft(
+        title="Built-Up And Water Mapping",
+        subtitle="Independent optical and radar evidence with spatial cross-comparison.",
+        objective="The supplied observations were analysed independently before the report compares their evidence.",
+        executive_summary="The supplied optical and radar observations were analysed independently. The report compares those sensor-specific results, and the final page records the boundary on a combined conclusion.",
+        questions_and_answers=[QuestionAnswer(question="Use optical and SAR together to identify built-up and water-covered regions?", answer="The report compares the sensor-specific outputs.")],
+        key_facts=[KeyFact(label="Mapped evidence", value="Surface water covers 4.8 hectares of the optical observation.", interpretation="This is a validated supporting measurement.")],
+        evidence_narratives=[
+            {
+                "figure_index": 0,
+                "title": "Optical Built-Up Map",
+                "what_it_shows": "The figure shows the optical branch's mapped built-up evidence.",
+                "what_it_supports": "It supports the mapped optical contribution to the fusion review.",
+                "why_it_is_credible": "It is linked to a retained validated claim.",
+            }
+        ],
+        model_narratives=report.model_narratives,
+        limitations="A fused classification cannot be asserted because 1 material cross-sensor conflict requires another observation.",
+        final_summary="A fused classification cannot be asserted because 1 material cross-sensor conflict requires another observation.",
+        voice_narration="We analysed the supplied observations and the report compares them.",
+    )
+
+    edited = await apply_editorial_draft(report, audit_style)
+    assert edited.executive_summary == audit_style.executive_summary
+    assert edited.voice_narration == audit_style.voice_narration
+
+
+async def test_evidence_limited_body_may_keep_ai_refusal_language_with_soft_guarding() -> None:
+    report = await build_report(run_id="run_test", values=_values(refused=True), figure_events=_figures(), use_language_model=False)
+    body_refusal = EditorialReportDraft(
+        title="Built-Up And Water Mapping",
+        subtitle="AERIS maps the requested evidence with conflict review.",
+        objective="AERIS maps built-up land and water from the supplied observations.",
+        executive_summary="AERIS mapped both requested classes but cannot produce a fused conclusion because the conflict requires a third observation.",
+        questions_and_answers=[QuestionAnswer(question="Use optical and SAR together to identify built-up and water-covered regions?", answer="AERIS cannot produce a fused conclusion.")],
+        key_facts=[KeyFact(label="Mapped evidence", value="Surface water covers 4.8 hectares of the optical observation.", interpretation="This is a validated supporting measurement.")],
+        evidence_narratives=[
+            {
+                "figure_index": 0,
+                "title": "Optical Built-Up Map",
+                "what_it_shows": "The figure shows the optical branch's mapped built-up evidence.",
+                "what_it_supports": "It supports the mapped optical contribution to the fusion review.",
+                "why_it_is_credible": "It is linked to a retained validated claim.",
+            }
+        ],
+        model_narratives=report.model_narratives,
+        limitations="A fused classification cannot be asserted because 1 material cross-sensor conflict requires another observation.",
+        final_summary="A fused classification cannot be asserted because 1 material cross-sensor conflict requires another observation.",
+        voice_narration="AERIS retained one unresolved conflict while reporting the mapped evidence.",
+    )
+
+    edited = await apply_editorial_draft(report, body_refusal)
+    assert edited.executive_summary == body_refusal.executive_summary
+    assert edited.questions_and_answers == body_refusal.questions_and_answers
+
+
+async def test_editorial_draft_can_use_unlisted_context_as_soft_editorial_prose() -> None:
+    report = await build_report(run_id="run_test", values=_values(), figure_events=_figures(), use_language_model=False)
+    invented_context = EditorialReportDraft(
+        title="Basketball Court Mapping",
+        subtitle="AERIS evidence narrative for the supplied observation.",
+        objective="AERIS maps the requested objects in the supplied observation.",
+        executive_summary="AERIS mapped the requested objects and retained a synthesis map showing cross-sensor agreement.",
+        questions_and_answers=[QuestionAnswer(question="Count the basketball courts?", answer="AERIS found the requested objects and retained a synthesis map.")],
+        key_facts=[KeyFact(label="Built-up extent", value="Built-up land covers 12.3 hectares of the observed area.", interpretation="This is the retained validated area measurement.")],
+        evidence_narratives=[
+            {
+                "figure_index": 0,
+                "title": "Object Detection Map",
+                "what_it_shows": "The figure shows the mapped detections.",
+                "what_it_supports": "It supports the reported count.",
+                "why_it_is_credible": "It is linked to a retained validated claim.",
+            }
+        ],
+        model_narratives=report.model_narratives,
+        limitations="The assessment is bounded by the supplied imagery and retained evidence.",
+        final_summary="AERIS reports the retained evidence.",
+        voice_narration="AERIS retained a synthesis map showing cross-sensor agreement.",
+    )
+
+    edited = await apply_editorial_draft(report, invented_context)
+    assert "cross-sensor agreement" in edited.voice_narration
+    assert "synthesis map" in edited.executive_summary
+
+
+async def test_evidence_limited_reports_still_use_ai_authored_body_prose() -> None:
+    report = await build_report(run_id="run_test", values=_values(refused=True), figure_events=_figures(), use_language_model=False)
+    draft = EditorialReportDraft(
+        title="Built-Up And Water Mapping",
+        subtitle="AERIS fused optical and radar evidence with explicit conflict review.",
+        objective="Use AERIS optical and radar analysis to map built-up land and surface water, then retain any unresolved sensor disagreement for review.",
+        executive_summary=(
+            "AERIS analysed the supplied optical and radar observations for built-up land and surface water, then joined the "
+            "spatial evidence into a reviewable fusion ledger. The report gives the validated sensor measurements first, "
+            "then separates corroborated and conflicting locations so the useful map evidence remains visible."
+        ),
+        questions_and_answers=[
+            QuestionAnswer(
+                question="Use optical and SAR together to identify built-up and water-covered regions?",
+                answer="AERIS mapped the requested land-cover evidence from both sensors and retained one unresolved cross-sensor conflict for final review.",
+            )
+        ],
+        key_facts=[
+            KeyFact(label="Mapped evidence", value="Surface water covers 4.8 hectares of the optical observation.", interpretation="This is a validated supporting measurement."),
+        ],
+        evidence_narratives=[
+            {
+                "figure_index": 0,
+                "title": "Optical Built-Up Map",
+                "what_it_shows": "The figure shows the optical branch's mapped built-up evidence.",
+                "what_it_supports": "It supports the mapped optical contribution to the fusion review.",
+                "why_it_is_credible": "It is linked to a retained validated claim.",
+            }
+        ],
+        model_narratives=report.model_narratives,
+        limitations="A fused classification cannot be asserted because 1 material cross-sensor conflict requires another observation.",
+        final_summary="A fused classification cannot be asserted because 1 material cross-sensor conflict requires another observation.",
+        voice_narration="AERIS mapped the available evidence, with one cross-sensor conflict retained as evidence-limited.",
+    )
+
+    edited = await apply_editorial_draft(report, draft)
+
+    assert edited.executive_summary == draft.executive_summary
+    assert edited.objective == draft.objective
+    assert edited.questions_and_answers == draft.questions_and_answers
+    assert edited.limitations == draft.limitations
+    assert edited.final_summary == draft.final_summary
+
+
+async def test_build_report_uses_the_editorial_model_when_available(monkeypatch) -> None:
+    class FakeEditorialModel:
+        def with_structured_output(self, _schema: type[EditorialReportDraft]) -> "FakeEditorialModel":
+            return self
+
+        async def ainvoke(self, _prompt: str) -> EditorialReportDraft:
+            return EditorialReportDraft(
+                title="AERIS Built-Up Mapping",
+                subtitle="AI-authored evidence narrative for the retained observations.",
+                objective="AERIS assesses the supplied observations and reports the validated land-cover evidence.",
+                executive_summary=(
+                    "AERIS identified built-up land across the observed area and retained the supporting evidence in the report. "
+                    "The answer is written from the validated measurement record rather than from file names or backend identifiers."
+                ),
+                questions_and_answers=[
+                    QuestionAnswer(question="Use optical and SAR together to identify built-up and water-covered regions?", answer="Built-up land covers 12.3 hectares of the observed area.")
+                ],
+                key_facts=[
+                    KeyFact(label="Built-up extent", value="Built-up land covers 12.3 hectares of the observed area.", interpretation="This is the retained validated area measurement.")
+                ],
+                evidence_narratives=[
+                    {
+                        "figure_index": 0,
+                        "title": "Optical Built-Up Map",
+                        "what_it_shows": "The figure shows the mapped built-up evidence.",
+                        "what_it_supports": "It supports the reported built-up area.",
+                        "why_it_is_credible": "It is linked to a retained validated claim.",
+                    }
+                ],
+                model_narratives=[
+                    {
+                        "name": "Spectral-index analysis",
+                        "version": "1.4.0",
+                        "what_was_analysed": "The supplied optical observation.",
+                        "why_it_was_used": "It provides deterministic land-cover evidence.",
+                        "contribution": "It produced the validated built-up measurement.",
+                    }
+                ],
+                limitations="The assessment is bounded by the supplied imagery and retained evidence.",
+                final_summary="AERIS reports 12.3 hectares of built-up land from the retained evidence.",
+                voice_narration="AERIS reports 12.3 hectares of built-up land from the retained evidence.",
+            )
+
+    def fake_build_chat_model() -> Any:
+        return FakeEditorialModel()
+
+    monkeypatch.setattr("app.lib.llm.chat_model.build_chat_model", fake_build_chat_model)
+
+    report = await build_report(run_id="run_test", values=_values(), figure_events=_figures(), use_language_model=True)
+
+    assert report.executive_summary.startswith("AERIS identified built-up land")
+    assert report.objective.startswith("AERIS assesses")
+    assert report.title == "AERIS Built-Up Mapping"
+
+
+async def test_product_report_generation_fails_instead_of_publishing_fallback(monkeypatch) -> None:
+    monkeypatch.setattr("app.lib.llm.chat_model.build_chat_model", lambda: None)
+
+    with pytest.raises(ReportEditorialUnavailable):
+        await build_report(run_id="run_test", values=_values(), figure_events=_figures(), use_language_model=True)
+
+
+async def test_provider_failure_retries_ai_once_before_failing_without_fallback(monkeypatch) -> None:
+    class FailingEditorialModel:
+        calls = 0
+
+        def with_structured_output(self, _schema: type[EditorialReportDraft]) -> "FailingEditorialModel":
+            return self
+
+        async def ainvoke(self, _prompt: str) -> EditorialReportDraft:
+            self.calls += 1
+            raise RuntimeError("temporary provider failure")
+
+    model = FailingEditorialModel()
+    monkeypatch.setattr("app.lib.llm.chat_model.build_chat_model", lambda: model)
+
+    with pytest.raises(ReportEditorialUnavailable):
+        await build_report(run_id="run_test", values=_values(), figure_events=_figures(), use_language_model=True)
+
+    assert model.calls == 2
 
 
 async def test_markdown_and_voice_are_generated_from_the_same_edited_report() -> None:

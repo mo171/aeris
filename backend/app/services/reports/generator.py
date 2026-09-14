@@ -1,9 +1,10 @@
 """Builds the canonical research narrative from validated investigation facts.
 
-what  : Creates the deterministic dossier, optionally asks the configured LLM to edit it, and validates
-        that the edited prose neither leaks transport identifiers nor introduces a numeric fact.
+what  : Creates the deterministic dossier, asks the configured LLM to author the reader prose, and validates
+    only the hard evidence boundaries before accepting the editorial draft.
 where : Called once after a completed pipeline run; all report surfaces consume the returned document.
-how   : The safe fallback is already reader-ready. Model output replaces it only as one validated whole.
+how  : Deterministic text remains the fallback for provider failure or a hard evidence violation. Style,
+    terminology and refusal placement are soft editorial guidance and are logged rather than discarded.
 """
 
 import json
@@ -29,7 +30,17 @@ from app.services.prompts.report import REPORT_EDITORIAL_PROMPT
 logger = logging.getLogger(__name__)
 _NUMBER = re.compile(r"(?<![A-Za-z_])[-+]?\d[\d,.]*(?:%|\b)")
 _INTERNAL = re.compile(r"(?:run|fig|clm|stp|lyr|ev)_[A-Za-z0-9_]+|S[12][A-Z0-9_]+", re.IGNORECASE)
+_AUDIT_VOICE = re.compile(
+    r"\b(?:the report compares|final page records|were analysed|was analysed|we analysed)\b",
+    re.IGNORECASE,
+)
+_BODY_REFUSAL = re.compile(r"\b(?:cannot produce a fused conclusion|requires a third observation)\b", re.IGNORECASE)
 _SCIENTIFIC_ASSERTIONS = frozenset({"cloud", "shadow", "nodata", "atmospheric", "calibrated", "terrain", "registered", "registration"})
+_CONTEXTUAL_ASSERTIONS = frozenset({"synthesis map", "cross-sensor"})
+
+
+class ReportEditorialUnavailable(RuntimeError):
+    """Raised when a customer-facing report cannot get an accepted editorial draft."""
 
 
 def _get(data: dict[str, Any], name: str, default: Any = None) -> Any:
@@ -203,10 +214,13 @@ def _sections(report: ReportDocument, values: dict[str, Any]) -> list[ReportSect
 
 
 def _editorial_source(report: ReportDocument) -> dict[str, Any]:
+    useful_conclusion = next((item.text for item in report.findings if not item.is_primary), report.final_summary)
     return {
-        "question": report.question, "principalConclusion": report.findings[0].text if report.findings else report.final_summary,
+        "question": report.question,
+        "principalConclusion": useful_conclusion if report.is_evidence_limited else report.findings[0].text if report.findings else report.final_summary,
+        "finalBoundary": report.final_summary if report.is_evidence_limited else "",
         "validatedFindings": [item.text for item in report.findings],
-        "currentObjective": report.objective, "currentSummary": report.executive_summary,
+        "currentObjective": report.objective, "currentSummary": "" if report.is_evidence_limited else report.executive_summary,
         "keyFacts": [item.model_dump() for item in report.key_facts],
         "figures": [{"figureIndex": index, "currentTitle": item.title, "caption": item.caption,
                      "validatedExplanation": report.evidence_narratives[index].model_dump(exclude={"figure_id"})}
@@ -221,17 +235,20 @@ async def apply_editorial_draft(report: ReportDocument, draft: EditorialReportDr
     if rejection_reason is not None:
         logger.warning("report editorial pass rejected by evidence guard: %s", rejection_reason)
         return report
+    soft_warnings = _editorial_soft_warnings(report, draft, prose)
+    if soft_warnings:
+        logger.warning("report editorial pass accepted with soft evidence warnings: %s", soft_warnings)
 
     evidence_by_index = {item.figure_index: item for item in draft.evidence_narratives}
     narratives = [EvidenceNarrative(figure_id=figure.id, **evidence_by_index[index].model_dump(exclude={"figure_index"})) for index, figure in enumerate(report.figures)]
-    questions_and_answers = report.questions_and_answers if report.is_evidence_limited else [
+    questions_and_answers = [
         QuestionAnswer(question=_sentence(item.question, question=True), answer=item.answer)
         for item in draft.questions_and_answers
     ]
-    executive_summary = report.executive_summary if report.is_evidence_limited else draft.executive_summary
+    executive_summary = draft.executive_summary
     title = report.title if report.is_evidence_limited and "joint" in draft.title.lower() else draft.title
-    subtitle = report.subtitle if report.is_evidence_limited else draft.subtitle
-    objective = report.objective if report.is_evidence_limited else draft.objective
+    subtitle = draft.subtitle
+    objective = draft.objective
     updated = report.model_copy(update={
         "title": title, "subtitle": subtitle, "objective": objective,
         "executive_summary": executive_summary, "questions_and_answers": questions_and_answers,
@@ -242,6 +259,12 @@ async def apply_editorial_draft(report: ReportDocument, draft: EditorialReportDr
 
 
 def _editorial_rejection_reason(report: ReportDocument, draft: EditorialReportDraft, prose: str) -> str | None:
+    """Return only violations that make an AI draft unsafe to publish.
+
+    Numeric invention, leaked internal references and incomplete figure coverage remain hard boundaries.
+    Editorial style and terminology are advisory so useful AI prose is not replaced wholesale by fallback
+    text.
+    """
     if _INTERNAL.search(prose):
         return "internal identifier in reader prose"
     source_text = json.dumps(_editorial_source(report), ensure_ascii=False)
@@ -249,12 +272,54 @@ def _editorial_rejection_reason(report: ReportDocument, draft: EditorialReportDr
     invented = [number for number in _NUMBER.findall(prose) if number not in permitted]
     if invented:
         return f"unvalidated numerals: {invented}"
-    unsupported = [term for term in _SCIENTIFIC_ASSERTIONS if term in prose.lower() and term not in source_text.lower()]
-    if unsupported:
-        return f"unsupported scientific assertions: {unsupported}"
     if {item.figure_index for item in draft.evidence_narratives} != set(range(len(report.figures))):
         return "figure editorial coverage does not match retained figures"
     return None
+
+
+def _editorial_soft_warnings(report: ReportDocument, draft: EditorialReportDraft, prose: str) -> list[str]:
+    """Collect editorial quality issues without turning them into a full-report fallback."""
+    warnings: list[str] = []
+    if _AUDIT_VOICE.search(prose):
+        warnings.append("audit-style prose instead of AERIS product voice")
+    if report.is_evidence_limited:
+        body_prose = " ".join(
+            [
+                draft.title,
+                draft.subtitle,
+                draft.objective,
+                draft.executive_summary,
+                *[item.question + " " + item.answer for item in draft.questions_and_answers],
+                *[item.label + " " + item.value + " " + item.interpretation for item in draft.key_facts],
+                *[item.title + " " + item.what_it_shows + " " + item.what_it_supports + " " + item.why_it_is_credible for item in draft.evidence_narratives],
+                *[item.name + " " + item.what_was_analysed + " " + item.why_it_was_used + " " + item.contribution for item in draft.model_narratives],
+            ]
+        )
+        if _BODY_REFUSAL.search(body_prose):
+            warnings.append("hard refusal language appears outside limitations and final assessment")
+    source_text = json.dumps(_editorial_source(report), ensure_ascii=False).lower()
+    unsupported = [term for term in _SCIENTIFIC_ASSERTIONS if term in prose.lower() and term not in source_text]
+    unsupported.extend(term for term in _CONTEXTUAL_ASSERTIONS if term in prose.lower() and term not in source_text)
+    if unsupported:
+        warnings.append(f"unverified editorial terminology: {unsupported}")
+    return warnings
+
+async def _invoke_editorial_model(model: Any, prompt: str) -> EditorialReportDraft:
+    """Ask the model twice before surfacing an editorial failure.
+
+    A provider timeout or transient refusal must never silently publish the deterministic dossier. The
+    dossier is context and a validation baseline; customer-facing prose must come from the configured AI.
+    """
+    structured_model = model.with_structured_output(EditorialReportDraft)
+    for attempt in range(2):
+        try:
+            return await structured_model.ainvoke(prompt)
+        except Exception as error:  # noqa: BLE001 - provider failures are retried at this boundary.
+            if attempt == 1:
+                logger.warning("editorial model unavailable after retry", extra={"reason": str(error)})
+                raise ReportEditorialUnavailable("report editorial pass unavailable after retry") from error
+            logger.warning("editorial model failed; retrying", extra={"reason": str(error)})
+    raise AssertionError("editorial retry loop did not return or raise")
 
 
 async def build_report(*, run_id: str, values: dict[str, Any], figure_events: list[dict[str, Any]], generated_at: datetime | None = None, use_language_model: bool = True) -> ReportDocument:
@@ -264,23 +329,33 @@ async def build_report(*, run_id: str, values: dict[str, Any], figure_events: li
     from app.lib.llm.chat_model import build_chat_model
     model = build_chat_model()
     if model is None:
-        return report
+        raise ReportEditorialUnavailable("report editorial model is not configured")
     prompt = REPORT_EDITORIAL_PROMPT.format(dossier=json.dumps(_editorial_source(report), ensure_ascii=False, indent=2))
     try:
-        draft = await model.with_structured_output(EditorialReportDraft).ainvoke(prompt)
-    except Exception as error:  # noqa: BLE001 - deterministic reader-ready prose is the safe fallback
+        draft = await _invoke_editorial_model(model, prompt)
+    except Exception as error:  # noqa: BLE001 - provider exceptions are converted to the report boundary.
         logger.warning("report editorial pass unavailable", extra={"reason": str(error)})
-        return report
+        raise ReportEditorialUnavailable("report editorial pass unavailable") from error
     edited = await apply_editorial_draft(report, draft)
     if edited == report:
         reason = _editorial_rejection_reason(report, draft, json.dumps(draft.model_dump(), ensure_ascii=False))
+        boundary_instruction = (
+            "\nFor evidence-limited reports, do not put hard refusal phrases in title, subtitle, objective, "
+            "executive_summary, question answers, key facts, evidence narratives, or model narratives. In those body "
+            "fields, say AERIS retained an unresolved sensor conflict for review. Keep the exact hard boundary only "
+            "in limitations and final_summary."
+            if reason == "hard refusal language outside limitations and final assessment" else ""
+        )
         corrective_prompt = prompt + (
             "\n\nThe previous draft was rejected by a deterministic guard for this reason: " + str(reason) +
-            ". Produce a corrected complete draft. Do not omit any retained figure."
+            ". Produce a corrected complete draft. Do not omit any retained figure." + boundary_instruction
         )
         try:
-            corrected = await model.with_structured_output(EditorialReportDraft).ainvoke(corrective_prompt)
+            corrected = await _invoke_editorial_model(model, corrective_prompt)
             edited = await apply_editorial_draft(report, corrected)
-        except Exception as error:  # noqa: BLE001 - the deterministic narrative remains usable
+        except Exception as error:  # noqa: BLE001 - provider exceptions are converted to the report boundary.
             logger.warning("corrective report editorial pass unavailable", extra={"reason": str(error)})
+            raise ReportEditorialUnavailable("corrective report editorial pass unavailable") from error
+    if edited == report:
+        raise ReportEditorialUnavailable("report editorial draft rejected by evidence guard")
     return edited.model_copy(update={"sections": _sections(edited, values)})

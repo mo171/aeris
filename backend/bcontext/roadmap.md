@@ -33,6 +33,13 @@ statement that can be demonstrated, not a feeling that the code looks finished.
   subsystem's `math/` (`code-standards.md` §8).
 - **No orchestration, checkpointing, streaming or retry code is written at all.** LangGraph owns the graph,
   its state, its resume and its stream; Inngest owns retry and replay; LangChain owns LLM access (ADR-002).
+- **AI-first prose and decision boundary.** Before adding any new hard-coded response, deterministic route,
+  whitelist, fallback or `if/elif` branch, explain its architecture and ask the product owner for approval
+  unless the rule is already documented in `product-truth.md` or this roadmap. Deterministic code is for
+  scientific invariants and honesty constraints only: measurement, required inputs, model domain, resolution,
+  registration, provenance, safety and typed refusal. If AI-authored prose fails validation, regenerate it
+  from the validated dossier; while AI is enabled, never publish hard-coded prose as a fallback. Prefer
+  capability registries, schemas and evidence-driven composition over growing branch trees or synonym lists.
 
 **Phase 0 establishes the setup pattern.** Every dependency added anywhere in the project repeats it:
 
