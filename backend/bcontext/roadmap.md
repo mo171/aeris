@@ -1068,7 +1068,7 @@ agreement ledger, physical-explanation or abstention records, a valid evidence g
 provenance resolves back to all contributing inputs. Existing single-temporal and single-time
 cross-modal tests remain green unchanged.
 
-## 1.12 — Report generation · **In progress — quality gate reopened 2026-09-14**
+## 1.12 — Report generation · **Done 2026-09-14**
 
 This is the user-facing reporting product, not merely an internal JSON/GeoJSON export.
 
