@@ -16,6 +16,7 @@ from typing import Final
 from langgraph.graph import StateGraph
 
 from app.constants.pipeline import GraphName
+from app.services.pipeline.graphs.cross_modal import build_cross_modal_graph
 from app.services.pipeline.graphs.probe import build_probe_graph
 from app.services.pipeline.graphs.single_image import build_single_image_graph
 from app.services.pipeline.graphs.temporal import build_temporal_graph
@@ -24,4 +25,5 @@ GRAPH_BUILDERS: Final[dict[GraphName, Callable[[], StateGraph]]] = {
     GraphName.PROBE: build_probe_graph,
     GraphName.SINGLE_IMAGE: build_single_image_graph,
     GraphName.TEMPORAL: build_temporal_graph,
+    GraphName.CROSS_MODAL: build_cross_modal_graph,
 }

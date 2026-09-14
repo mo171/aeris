@@ -31,11 +31,13 @@ from app.lib.exceptions import InvalidRequestError
 from app.schemas.events import parse_event, serialise_event
 from app.services.rendering.figures import (
     figure_object_key,
+    render_cross_modal_overlay,
     render_from_spec,
     render_index_map,
     render_mask_overlay,
     render_rgb_composite,
 )
+from app.services.rendering.math.rasterize import COLOURBAR_PANEL_HEIGHT, draw_discrete_legend
 from app.services.sessions.figure_writer import FigureWriter
 
 
@@ -263,6 +265,42 @@ async def test_a_mask_of_the_wrong_shape_is_refused() -> None:
             np.zeros((16, 16), dtype=bool), base,
             run_id=a_run_id(), trace_step_id=a_trace_step_id(), title="x", label="y",
         )
+
+
+@pytest.mark.integration
+async def test_cross_modal_overlay_keeps_agreement_disagreement_and_conflict_visually_distinct() -> None:
+    base = np.zeros((4, 4, 4), dtype=np.uint8)
+    base[..., :3] = 128
+    base[..., 3] = 255
+    optical_water = np.zeros((4, 4), dtype=bool)
+    optical_built_up = np.zeros((4, 4), dtype=bool)
+    radar_water = np.zeros((4, 4), dtype=bool)
+    radar_built_up = np.zeros((4, 4), dtype=bool)
+    optical_water[0, 0] = radar_water[0, 0] = True          # water corroborated
+    optical_built_up[0, 1] = radar_built_up[0, 1] = True    # built-up corroborated
+    optical_water[1, 0] = True                               # optical-only water
+    radar_built_up[1, 1] = True                              # radar-only built-up
+    optical_water[2, 0] = radar_built_up[2, 0] = True        # physical conflict
+
+    figure = await render_cross_modal_overlay(
+        optical_water, optical_built_up, radar_water, radar_built_up, base,
+        run_id=a_run_id(), trace_step_id=a_trace_step_id(), title="Optical/SAR agreement",
+    )
+
+    colours = {tuple(figure.rgba[row, column, :3]) for row, column in ((0, 0), (0, 1), (1, 0), (1, 1), (2, 0))}
+    labels = {entry.label for entry in figure.event.legend.entries or []}
+    assert len(colours) == 5
+    assert {"Water corroborated", "Built-up corroborated", "Conflict"} <= labels
+    assert figure.event.legend.kind is LegendKind.CATEGORICAL
+
+
+async def test_a_categorical_legend_wraps_instead_of_clipping_late_entries() -> None:
+    base = np.zeros((12, 180, 4), dtype=np.uint8)
+    entries = [("#123456", f"Category {index}") for index in range(7)]
+
+    rendered = draw_discrete_legend(base, entries=entries, label="Agreement")
+
+    assert rendered.shape[0] > base.shape[0] + COLOURBAR_PANEL_HEIGHT
 
 
 # --- The wire --------------------------------------------------------------------------------------------

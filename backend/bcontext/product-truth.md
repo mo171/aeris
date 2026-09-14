@@ -163,6 +163,19 @@ part of the evidence chain, not a screenshot.
 the `rendering/` subsystem; `roadmap.md` 1.2.1 builds it; **ADR-004** records why this is rendered on the
 backend rather than composed in the browser, and what was rejected.
 
+### 1.5.1 Cross-sensor disagreement is a first-class answer
+
+Optical and SAR are complementary measurements, not two votes that can be averaged. AERIS therefore
+analyses them independently and joins only the resulting evidence in a late-fusion ledger. A material
+agreement may support a fused headline; a material disagreement produces a confidence-null primary claim
+that says no fused conclusion is available and requests a third observation. The system must never replace
+that refusal with a fluent list of independent branch readings.
+
+The common-grid check is deliberately named **affine-grid alignment**. It establishes that the supplied
+rasters share a CRS, shape, and transform below the sub-pixel tolerance; it does not assert optical/SAR
+image-content registration. The categorical fusion figure is a visual audit aid, not an additional source
+of measurements.
+
 ### 1.6 AERIS is a session-scoped harness with two memories
 
 **Stated by the product owner on 2026-08-31.** Also a gap: nothing in these documents described memory of any

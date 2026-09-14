@@ -15,7 +15,8 @@ def test_every_intent_is_in_every_table_and_every_synonym_is_a_detector_class() 
     assert set(UNBUILT_GRAPH_PHASE) == {intent for intent, graph in INTENT_GRAPHS.items() if graph is None}
     assert INTENT_GRAPHS[Intent.INDEX_QUERY] is GraphName.SINGLE_IMAGE
     assert INTENT_GRAPHS[Intent.CHANGE_DETECT] is INTENT_GRAPHS[Intent.CHANGE_VQA] is GraphName.TEMPORAL
-    assert INTENT_GRAPHS[Intent.CROSS_MODAL] is None and "1.11" in UNBUILT_GRAPH_PHASE[Intent.CROSS_MODAL]
+    assert INTENT_GRAPHS[Intent.CROSS_MODAL] is GraphName.CROSS_MODAL
+    assert Intent.CROSS_MODAL not in UNBUILT_GRAPH_PHASE
     assert set(OBJECT_SYNONYMS.values()) == set(DOTA_CLASS_NAMES) == set(OBJECT_LENGTH_METRES)
 
 

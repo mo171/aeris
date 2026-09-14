@@ -22,7 +22,7 @@ how   : Instantiating `Settings()` at the bottom of this file means a missing or
 from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import AliasChoices, AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, field_validator
 from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
@@ -44,8 +44,9 @@ class Settings(BaseSettings):
         env_file=BACKEND_ROOT_DIRECTORY / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        # 'ignore' prevents crashing on new .env variables during phased development.
-        extra="ignore",
+        # Unknown names are configuration errors. Silently ignoring a misspelled or aliased variable creates
+        # a second, invisible configuration surface and makes the effective value impossible to audit.
+        extra="forbid",
     )
 
     # --- Identity ---
@@ -175,14 +176,12 @@ class Settings(BaseSettings):
     # --- The language model behind the agent (Phase 1.9) ---
 
     # `init_chat_model(llm_model, model_provider=llm_provider)` - the whole provider abstraction (ADR-002).
-    # A second provider is a change to these two lines and the key it reads from the environment
-    # (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`...), which LangChain reads itself. `none` runs every agent
-    # path without a model: the deterministic router, template plans and template answers.
+    # Every provider uses the single application-owned credential name `LLM_API_KEY`. `none` runs every
+    # agent path without a model: the deterministic router, template plans and template answers.
     llm_provider: Literal["openai", "anthropic", "google_genai", "ollama", "none"] = "none"
     llm_model: str = "gpt-5-mini"
-    # The provider's key, read from `.env` under the name that provider's own tooling uses so one file
-    # serves both. `.env` is not exported to the process environment, so the key is passed explicitly.
-    llm_api_key: SecretStr | None = Field(default=None, validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"))
+    # The key is passed explicitly to the provider; no provider-specific environment alias is accepted.
+    llm_api_key: SecretStr | None = None
     # OpenAI reasoning models take an effort level instead of a temperature; passed only to that provider.
     llm_reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = "minimal"
     llm_timeout_seconds: float = Field(default=60.0, gt=0, le=600)

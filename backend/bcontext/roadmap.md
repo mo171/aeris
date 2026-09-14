@@ -998,19 +998,30 @@ vocabulary so a class map can be a figure (today the segmenter's figures are the
 one amber mask per class); models trained at 10 m for land cover and change on scenes; the frontend's
 `cancelled` trace state; the S7 vocabulary entry for Sen2Cor.
 
-## 1.11 — Cross-modal fusion
+## 1.11 — Cross-modal fusion · **Done 2026-09-14**
 
 **Research:** PDF p.19 (fusion strategies, and when to fuse at all).
 
-**Deliverable** — two *independent* per-sensor runs joined by **late fusion**, the agreement ledger
-(`agreementRowSchema`), the modality advisory, and the refusal states.
+**Delivered** — two *independent* per-sensor runs joined by **late fusion**, the agreement ledger
+(`agreementRowSchema`), the modality advisory, a categorical fusion figure, and the refusal states.
 
 Late rather than early fusion, because keeping each sensor's evidence separable is what makes the joint
-answer auditable. **Fusion refuses** when co-registration is worse than sub-pixel, or when one sensor's
-silence carries no information.
+answer auditable. **Fusion refuses** when the supplied affine grids differ by a pixel or more, or when
+one sensor's silence carries no information. The affine-grid check is recorded honestly: it verifies the
+input rasters' common grid, not image-content co-registration.
 
-**Gate** — an optical/radar pair over the same ground produces a ledger with at least one row in each of
-agreement and disagreement, each with a stated physical cause.
+**Gate met** — retained real run
+[`run_01M2FS0F7KZW07CG8BA9S0HG7D`](../runs/run_01M2FS0F7KZW07CG8BA9S0HG7D/artefacts/S15_cross-modal-result.json)
+used Sentinel-2B L2A (2026-03-12) and Sentinel-1A RTC (2026-03-15) over Mumbai. The pair was three days
+apart with a 0.00 px affine-grid residual. Its material (>= 5 ha) ledger has 72 corroborated rows, 21
+optical-only rows, 6 radar-only rows, and 1 conflict. The conflict is 5.2178 ha of optical water versus
+radar built-up; the system gives no fused headline, emits a confidence-null primary refusal, and asks for
+a third observation. All 173 row feature references resolve in the evidence graph; the contract, five
+figures, provenance, and terminal journal event were validated from disk.
+
+**Deferred Phase 1.10 debt** — still deliberately outside this phase: enforce training-domain safeguards
+for 10 m land-cover and learned change requests; refresh the vendored `figure-ready` event contract; and
+validate complete figure-bearing production journals, not only the probe graph.
 
 ## 1.12 — Report generation
 

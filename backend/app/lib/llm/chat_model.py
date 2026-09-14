@@ -3,9 +3,9 @@
 what  : `build_chat_model()`, `chat_model_record()`, `probe_chat_model()` for `aeris doctor`.
 where : `agents/` (arbitration, plan prose, synthesis) and `services/answer/constrained.py` when the LLM
         phrases. Nothing else imports a provider package.
-how   : ADR-002 cancelled the `LLMProvider` protocol: LangChain's `init_chat_model` *is* the provider
-        abstraction, so a second provider is `LLM_PROVIDER` and `LLM_MODEL` in `.env` and the key that
-        provider reads from the environment - no code edit, which the 1.9 gate asserts. The one
+how  : ADR-002 cancelled the `LLMProvider` protocol: LangChain's `init_chat_model` *is* the provider
+    abstraction, so a second provider is `LLM_PROVIDER` and `LLM_MODEL` in `.env`; every provider
+    receives the single application-owned `LLM_API_KEY`. The one
         provider-specific line is `reasoning_effort`, an OpenAI reasoning-model parameter that replaces
         temperature; it is passed to that provider only and documented here rather than hidden.
 

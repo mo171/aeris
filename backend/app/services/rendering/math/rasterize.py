@@ -155,48 +155,74 @@ def draw_discrete_legend(
     from PIL import Image, ImageDraw, ImageFont
 
     height, width = rgba.shape[:2]
-    # Use a slightly taller panel if needed, but COLOURBAR_PANEL_HEIGHT works well.
-    panel = Image.new("RGBA", (width, COLOURBAR_PANEL_HEIGHT), PANEL_BACKGROUND)
-    draw = ImageDraw.Draw(panel)
     font = ImageFont.load_default()
+    gap_between_entries = 24
+    swatch_size = 18
+    swatch_gap = 8
+    usable_width = max(1, width - 2 * COLOURBAR_MARGIN)
+    prepared = [
+        (colour, _legend_label_that_fits(text, usable_width - swatch_size - swatch_gap, font))
+        for colour, text in entries
+    ]
+    entry_widths = [swatch_size + swatch_gap + int(draw_text_width(text, font)) for _, text in prepared]
+    rows: list[list[tuple[tuple[str, str], int]]] = []
+    current: list[tuple[tuple[str, str], int]] = []
+    current_width = 0
+    for entry, entry_width in zip(prepared, entry_widths, strict=True):
+        candidate_width = entry_width if not current else current_width + gap_between_entries + entry_width
+        if current and candidate_width > usable_width:
+            rows.append(current)
+            current, current_width = [], 0
+        current.append((entry, entry_width))
+        current_width = entry_width if len(current) == 1 else current_width + gap_between_entries + entry_width
+    if current:
+        rows.append(current)
 
-    # Draw the main label centered at the top
-    # Default font is roughly 6px wide per char
-    label_w = len(label) * 6
-    draw.text((width // 2 - label_w // 2, COLOURBAR_MARGIN), label, fill=PANEL_TEXT, font=font)
+    panel_height = max(
+        COLOURBAR_PANEL_HEIGHT,
+        COLOURBAR_MARGIN + 18 + len(rows) * (swatch_size + 6) + COLOURBAR_MARGIN,
+    )
+    panel = Image.new("RGBA", (width, panel_height), PANEL_BACKGROUND)
+    draw = ImageDraw.Draw(panel)
+    label_width = int(draw_text_width(label, font))
+    draw.text((width // 2 - label_width // 2, COLOURBAR_MARGIN), label, fill=PANEL_TEXT, font=font)
 
-    # Draw swatches centered horizontally below the title
-    if entries:
-        gap_between_entries = 24
-        swatch_size = 18
-        swatch_gap = 8
-        
-        entry_widths = [swatch_size + swatch_gap + len(text) * 6 for _, text in entries]
-        total_entries_width = sum(entry_widths) + gap_between_entries * (len(entries) - 1)
-        
-        current_x = width // 2 - total_entries_width // 2
-        y_pos = COLOURBAR_MARGIN + 18
-        
-        for (color_hex, text), e_width in zip(entries, entry_widths, strict=True):
+    y_pos = COLOURBAR_MARGIN + 18
+    for row in rows:
+        row_width = sum(entry_width for _, entry_width in row) + gap_between_entries * (len(row) - 1)
+        current_x = (width - row_width) // 2
+        for (color_hex, text), entry_width in row:
             color_hex = color_hex.lstrip("#")
-            r = int(color_hex[0:2], 16)
-            g = int(color_hex[2:4], 16)
-            b = int(color_hex[4:6], 16)
-            a = int(color_hex[6:8], 16) if len(color_hex) >= 8 else 255
-            
+            red, green, blue = int(color_hex[0:2], 16), int(color_hex[2:4], 16), int(color_hex[4:6], 16)
+            alpha = int(color_hex[6:8], 16) if len(color_hex) >= 8 else 255
             draw.rectangle(
-                [current_x, y_pos, current_x + swatch_size, y_pos + swatch_size],
-                fill=(r, g, b, a)
+                [current_x, y_pos, current_x + swatch_size, y_pos + swatch_size], fill=(red, green, blue, alpha)
             )
-            
             draw.text((current_x + swatch_size + swatch_gap, y_pos + 2), text, fill=PANEL_TEXT, font=font)
-            
-            current_x += e_width + gap_between_entries
+            current_x += entry_width + gap_between_entries
+        y_pos += swatch_size + 6
 
-    composed = np.zeros((height + COLOURBAR_PANEL_HEIGHT, width, 4), dtype=np.uint8)
+    composed = np.zeros((height + panel_height, width, 4), dtype=np.uint8)
     composed[:height] = rgba
     composed[height:] = np.asarray(panel)
     return composed
+
+
+def draw_text_width(text: str, font: object) -> float:
+    """Pillow's default-font width, isolated so categorical wrapping stays deterministic."""
+    from PIL import Image, ImageDraw
+
+    return ImageDraw.Draw(Image.new("RGB", (1, 1))).textlength(text, font=font)
+
+
+def _legend_label_that_fits(text: str, maximum_width: int, font: object) -> str:
+    """Keep a pathological one-entry legend inside the panel; full text remains in the event schema."""
+    if draw_text_width(text, font) <= maximum_width:
+        return text
+    shortened = text
+    while shortened and draw_text_width(f"{shortened}...", font) > maximum_width:
+        shortened = shortened[:-1]
+    return f"{shortened}..." if shortened else "..."
 
 
 def stack_horizontally(panels: list[np.ndarray], *, gap: int = 8) -> np.ndarray:

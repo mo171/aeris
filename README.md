@@ -180,7 +180,7 @@ uv run aeris route "hey aeris, show me the water bodies, then map the unhealthy 
 Phase 1.9 puts a language model behind the router, never in front of it: it arbitrates an uncertain routing
 margin, writes the plan's prose (the steps are the router's), phrases the answer under the same numeral
 guard as the VLM, and names which claim to spotlight (checked). Set `LLM_PROVIDER=openai` and
-`OPENAI_API_KEY` in `backend/.env` (`aeris doctor` shows the model row); `LLM_PROVIDER=none` runs the same
+`LLM_API_KEY` in `backend/.env` (`aeris doctor` shows the model row); `LLM_PROVIDER=none` runs the same
 agent with templates.
 
 ```bash

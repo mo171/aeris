@@ -388,7 +388,7 @@ def figures(
 def analyse(
     scene: Path = typer.Option(..., "--scene", help="A scene directory, a GeoTIFF or a picture. For a pair, the later date."),
     query: str = typer.Option(..., "--query", help='The question, e.g. "unhealthy vegetation", "count the ships", "what changed".'),
-    before: Path | None = typer.Option(None, "--before", help="The earlier date of a pair, on the same grid as --scene."),
+    before: Path | None = typer.Option(None, "--before", help="An earlier date or the other sensor, on the same grid as --scene."),
     level: ProcessingLevel = typer.Option(
         ProcessingLevel.UNKNOWN,
         "--level",
@@ -399,7 +399,7 @@ def analyse(
     before_sar: bool = typer.Option(False, "--before-sar", help="The --before input is radar."),
     registered: bool = typer.Option(False, "--registered", help="Declare the pair co-registered by its source; S9 still measures and records."),
 ) -> None:
-    """Route a question and run its graph over the input: index, count, land cover, perception, or change. Phase 1.10."""
+    """Route a question and run its graph: index, count, land cover, perception, change, or optical/SAR fusion. Phase 1.11."""
     status = asyncio.run(
         _run_dataset(
             analyse_command.execute_analyse(

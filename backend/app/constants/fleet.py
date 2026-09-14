@@ -136,7 +136,7 @@ FLEET: Final[dict[ModelId, FleetRecord]] = {
         ModelId.SAR_PREPROCESS, "1.3.0", ModelCapability.PREPROCESSING, (PipelineStage.S8,), None, 0, None
     ),
     ModelId.OPTICAL_SAR_FUSION: FleetRecord(
-        ModelId.OPTICAL_SAR_FUSION, "0.0.0", ModelCapability.CROSS_MODAL_FUSION, (PipelineStage.S14,), None, 0, None
+        ModelId.OPTICAL_SAR_FUSION, "1.0.0", ModelCapability.CROSS_MODAL_FUSION, (PipelineStage.S15,), None, 0, None
     ),
     ModelId.DOTA_DETECTOR: FleetRecord(
         model_id=ModelId.DOTA_DETECTOR,

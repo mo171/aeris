@@ -2,9 +2,9 @@
 
 what  : `execute_analyse()`, the async function behind the one Typer command in `cli/main.py`.
 where : Called from `cli/main.py`. The router decides first (1.8): the intent, the specialist and the
-        graph, or a refusal that names what the input cannot answer (a car on a 10 m pixel). From 1.10
-        the input is a scene directory, a GeoTIFF or a picture, `--before` adds the earlier date of a
-        pair, and every step with a graph is run through it.
+        graph, or a refusal that names what the input cannot answer (a car on a 10 m pixel). From 1.11
+        the input is a scene directory, a GeoTIFF or a picture, `--before` adds either an earlier date
+        or the other sensor on a common grid, and every step with a graph is run through it.
 how   : An adapter and nothing more: the question is routed by `agents/router.py`, the request is built
         by `agents/requests.py`, the work is the graph `services/pipeline/runner.py` runs - the same
         function the agent's tools call, so an operator's run and an agent's run are the same run.

@@ -19,7 +19,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from app.constants.contracts import CONTRACT_SCHEMAS_FILE
-from app.constants.fleet import FLEET, VramProfile
+from app.constants.fleet import DETERMINISTIC_ENGINES, FLEET, VramProfile
 from app.constants.model_ids import ModelId
 from app.constants.statuses import ModelHealth
 from app.lib.exceptions import ConflictError
@@ -186,6 +186,8 @@ async def test_engines_are_online_without_loading_and_cannot_be_leased() -> None
 
     assert manager.health_of(ModelId.INDEX_ENGINE) is ModelHealth.ONLINE
     assert manager.health_of(ModelId.GEOSPATIAL_ENGINE) is ModelHealth.ONLINE
+    assert ModelId.OPTICAL_SAR_FUSION in DETERMINISTIC_ENGINES
+    assert manager.health_of(ModelId.OPTICAL_SAR_FUSION) is ModelHealth.ONLINE
     with pytest.raises(ConflictError, match="deterministic engine"):
         async with manager.lease(ModelId.INDEX_ENGINE):
             pass

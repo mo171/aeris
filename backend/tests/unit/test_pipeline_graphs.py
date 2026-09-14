@@ -29,6 +29,7 @@ from app.services.evidence.builder import build_detection_evidence, build_region
 from app.services.evidence.spatial import measure_mask_nominal, measure_mask_on_grid, measure_mask_pixels
 from app.services.imagery.frames import FrameStretch, InputKind, inspect_input, read_rgb_frame
 from app.services.pipeline.graphs import GRAPH_BUILDERS
+from app.services.pipeline.graphs.cross_modal import build_cross_modal_graph
 from app.services.pipeline.graphs.single_image import (
     FIRST_STAGE_BY_INTENT,
     GROUND_STAGE_BY_TOOL,
@@ -281,6 +282,17 @@ def test_every_routed_intent_has_a_branch_and_every_branch_is_a_node() -> None:
     assert set(FIRST_STAGE_BY_INTENT.values()) | set(GROUND_STAGE_BY_TOOL.values()) | set(LOCALISER_BY_STAGE.values()) <= set(single)
     assert set(AFTER_CHANGE_BY_INTENT.values()) <= set(temporal)
     assert set(LOCALISER_BY_STAGE) == {stage for stage in FIRST_STAGE_BY_INTENT.values() if stage != "answer_question"}
+
+
+def test_cross_modal_graph_fans_out_only_after_validation_and_registration() -> None:
+    graph = build_cross_modal_graph().compile().get_graph()
+    edges = {(edge.source, edge.target) for edge in graph.edges}
+
+    assert ("validate_inputs", "coregister_modalities") in edges
+    assert ("coregister_modalities", "analyse_optical") in edges
+    assert ("coregister_modalities", "analyse_radar") in edges
+    assert ("analyse_optical", "fuse_modalities") in edges
+    assert ("analyse_radar", "fuse_modalities") in edges
 
 
 def test_the_edges_read_the_state_and_nothing_else() -> None:

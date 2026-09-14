@@ -1,3 +1,41 @@
+## Session — 2026-09-14 (1.11) · **Late fusion is allowed to decline.** One spatially material conflict is not averaged away.
+
+Phase 1.11 is complete: one optical and one RTC SAR scene run independently, then join only through an
+auditable material-region ledger. The retained Mumbai Sentinel-2B/Sentinel-1A run is
+`run_01M2FS0F7KZW07CG8BA9S0HG7D`; its result, journal, five figures, evidence graph, and provenance are
+under `runs/`.
+
+### Measured rather than assumed
+
+- **A class-wide feature list is not a region's evidence.** The first real ledger attached every feature
+  of a sensor class to every agreement row. The evidence builder now retains a component-label-to-feature
+  map; each ledger row carries only its intersecting source feature(s). The real run has 173 resolvable
+  references across 100 rows, never an invented class-wide link.
+- **A material threshold must be physical, not a pixel constant.** Ledger rows are >= 5 ha, converted from
+  the source grid's resolution (500 pixels at 10 m, 200,000 at 0.5 m). Masks remain complete artefacts;
+  the threshold limits only the operator-facing catalogue.
+- **Eight-connected components have to agree everywhere.** The ledger and evidence vectorisation now use
+  the same connectivity, preventing a diagonal region from gaining an evidence link that refers to a
+  different spatial component.
+- **An honest refusal must be the answer, not an unspoken field in an artefact.** The first live run wrote
+  its conflict to `cross-modal-result.json` but S16 only narrated independent branch claims. A conflicting
+  or otherwise unavailable fusion now emits one confidence-null primary categorical claim. Regression and
+  live tests confirm the answer begins: “AERIS cannot produce a fused conclusion …”.
+- **The real pair is grid-aligned, not content-registered.** Sentinel-2B (2026-03-12) and Sentinel-1A RTC
+  (2026-03-15) share EPSG:32643, 857 x 1228, and 0.00 px affine-grid residual. That is an input-grid fact,
+  not a claim that optical and SAR image content has been independently registered.
+- **The real gate is materially mixed.** At >= 5 ha: 72 corroborated, 21 optical-only, 6 radar-only, and
+  1 conflict rows. The conflict is 5.2178 ha of optical water versus radar built-up; a third observation
+  is requested rather than creating a fused coverage claim. Five figures were visually reviewed, including
+  a categorical legend that wraps rather than clips entries.
+
+### Deferred Phase 1.10 debt
+
+- Enforce training-domain safeguards for 10 m land-cover and learned change requests.
+- Refresh the vendored `figure-ready` event contract and validate full figure-bearing production journals.
+
+---
+
 ## Session — 2026-09-13 (1.10) · **The graphs.** Every specialist a branch of one state; inputs one vocabulary; the gate measured against sixty pairs and rewritten.
 
 Two graphs (`single-image`, `temporal`) replace the 1.4 index-query graph and the agent's model-calling
