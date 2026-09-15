@@ -405,19 +405,51 @@ async def test_speech_category_invariants_reject_contradictory_payloads(
 
 
 @pytest.mark.parametrize(
-    "audio_url",
-    ["audio/utt.opus", "//different-origin.example/utt.opus", "ftp://aeris.example/utt.opus"],
+    ("case_name", "audio_url", "normalised"),
+    [
+        (
+            "absolute HTTP URL",
+            "https://aeris.example/api/v1/speech/utt_audio.opus",
+            "https://aeris.example/api/v1/speech/utt_audio.opus",
+        ),
+        ("root-relative path", "/api/v1/speech/utt_audio.opus", "/api/v1/speech/utt_audio.opus"),
+        (
+            "whitespace-wrapped absolute URL",
+            "  https://aeris.example/api/v1/speech/utt_audio.opus  ",
+            "https://aeris.example/api/v1/speech/utt_audio.opus",
+        ),
+        (
+            "whitespace-wrapped root-relative path",
+            "  /api/v1/speech/utt_audio.opus  ",
+            "/api/v1/speech/utt_audio.opus",
+        ),
+        ("malformed absolute URL port", "https://aeris.example:not-a-port/utt_audio.opus", None),
+        ("unsupported scheme", "ftp://aeris.example/utt_audio.opus", None),
+        ("protocol-relative path", "//different-origin.example/utt_audio.opus", None),
+        ("empty path", "", None),
+    ],
 )
-async def test_audio_url_rejects_non_http_or_non_root_relative_locations(audio_url: str) -> None:
-    with pytest.raises(ValidationError, match="audio_url|audioUrl"):
-        SpeechEvent(
-            run_id=RUN_ID,
-            utterance_id="utt_bad_audio",
-            kind="grounded",
-            text="The validated result is available.",
-            audio_url=audio_url,
-            claim_ids=["clm_01J000000000000000000000"],
-        )
+async def test_audio_url_backend_runtime_matrix(
+    case_name: str, audio_url: str, normalised: str | None
+) -> None:
+    """The backend uses the same accepted locations and trim result as the frontend's runtime matrix."""
+    event_arguments = {
+        "run_id": RUN_ID,
+        "utterance_id": "utt_audio",
+        "kind": "grounded",
+        "text": "The validated result is available.",
+        "audio_url": audio_url,
+        "claim_ids": ["clm_01J000000000000000000000"],
+    }
+
+    if normalised is None:
+        with pytest.raises(ValidationError, match="audio_url|audioUrl"):
+            SpeechEvent(**event_arguments)
+        return
+
+    event = SpeechEvent(**event_arguments)
+
+    assert serialise_event(event)["audioUrl"] == normalised
 
 
 @pytest.mark.parametrize("event_type", sorted(MODELLED_EVENTS))

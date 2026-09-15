@@ -17,13 +17,14 @@ export const uiCommandEventSchema = z.object({
 
 export const speechKindSchema = z.enum(["grounded", "provisional", "progress", "refusal"]);
 
-const absoluteAudioUrlSchema = z
-  .url()
-  .refine((value) => /^https?:\/\//i.test(value), "Audio URLs must use HTTP or HTTPS.");
+const normalisedAudioLocationSchema = z.string().trim().min(1);
 
-const sameOriginAudioPathSchema = z
-  .string()
-  .regex(/^\/(?:[^/\s]\S*)?$/, "Audio paths must be root-relative and cannot be protocol-relative.");
+const absoluteAudioUrlSchema = normalisedAudioLocationSchema.url({ protocol: /^https?$/ });
+
+const sameOriginAudioPathSchema = normalisedAudioLocationSchema.regex(
+  /^\/(?:[^/\s]\S*)?$/,
+  "Audio paths must be root-relative and cannot be protocol-relative.",
+);
 
 export const audioLocationSchema = z
   .union([absoluteAudioUrlSchema, sameOriginAudioPathSchema])

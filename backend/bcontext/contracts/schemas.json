@@ -5235,9 +5235,11 @@
                   "anyOf": [
                     {
                       "format": "uri",
+                      "minLength": 1,
                       "type": "string"
                     },
                     {
+                      "minLength": 1,
                       "pattern": "^\\/(?:[^/\\s]\\S*)?$",
                       "type": "string"
                     }
@@ -11432,9 +11434,11 @@
                   "anyOf": [
                     {
                       "format": "uri",
+                      "minLength": 1,
                       "type": "string"
                     },
                     {
+                      "minLength": 1,
                       "pattern": "^\\/(?:[^/\\s]\\S*)?$",
                       "type": "string"
                     }
@@ -13731,9 +13735,11 @@
           "anyOf": [
             {
               "format": "uri",
+              "minLength": 1,
               "type": "string"
             },
             {
+              "minLength": 1,
               "pattern": "^\\/(?:[^/\\s]\\S*)?$",
               "type": "string"
             }
@@ -13753,9 +13759,11 @@
               "anyOf": [
                 {
                   "format": "uri",
+                  "minLength": 1,
                   "type": "string"
                 },
                 {
+                  "minLength": 1,
                   "pattern": "^\\/(?:[^/\\s]\\S*)?$",
                   "type": "string"
                 }
