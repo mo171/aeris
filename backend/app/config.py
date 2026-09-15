@@ -22,6 +22,7 @@ how   : Instantiating `Settings()` at the bottom of this file means a missing or
 from pathlib import Path
 from typing import Final, Literal
 
+import ctranslate2
 from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, ValidationInfo, field_validator
 from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,8 +33,6 @@ from app.constants.voice import (
     SUPPORTED_VOICE_OUTPUT_SAMPLE_RATES_HERTZ,
     VOICE_INPUT_SAMPLE_RATE_HERTZ,
     VOICE_OUTPUT_SAMPLE_RATE_HERTZ,
-    VOICE_WHISPER_COMPUTE_TYPES,
-    VOICE_WHISPER_CPU_COMPUTE_TYPES,
 )
 
 # The repository's `backend/` directory, resolved statically.
@@ -206,6 +205,9 @@ class Settings(BaseSettings):
 
     # --- Offline voice session (Phase 1.13) ---
 
+    # Every operational default in this section is provisional Task 3 configuration. Task 8 promotes values
+    # only after retaining the target machine's real-device WER and latency measurements.
+
     # A selector is either the sounddevice device index or its stable display name. `None` intentionally
     # asks sounddevice to use its configured default; the session fails with remediation if it has none.
     voice_input_device: int | str | None = None
@@ -214,8 +216,10 @@ class Settings(BaseSettings):
     # are valid because accepting a host-native rate would silently change recognition or playback.
     voice_input_sample_rate_hertz: int = VOICE_INPUT_SAMPLE_RATE_HERTZ
     voice_output_sample_rate_hertz: int = VOICE_OUTPUT_SAMPLE_RATE_HERTZ
+    # Provisional defaults pending Task 8's measured WER and latency gate. CPU/int8 starts safely on every
+    # supported operator machine; a measured CUDA profile is an explicit deployment change, not a guess.
     voice_whisper_model: str = Field(default="small.en", min_length=1, max_length=200)
-    voice_whisper_device: Literal["auto", "cpu", "cuda"] = "auto"
+    voice_whisper_device: Literal["auto", "cpu", "cuda"] = "cpu"
     voice_whisper_compute_type: str = "int8"
     voice_whisper_language: str = Field(default="en", pattern=r"^[a-z]{2,3}$")
     # A turn is bounded so Ctrl+P cannot create an always-listening stream. Silero, not an RMS heuristic,
@@ -223,10 +227,18 @@ class Settings(BaseSettings):
     voice_capture_max_duration_seconds: float = Field(default=30.0, ge=1.0, le=300.0)
     voice_vad_silence_duration_seconds: float = Field(default=0.8, ge=0.1, le=5.0)
     voice_vad_min_speech_duration_milliseconds: int = Field(default=250, ge=32, le=5_000)
-    # Kokoro remains entirely local. The voice is a stock British English voice, not an imitation profile.
-    voice_kokoro_model: str = Field(default="kokoro-v1.0", min_length=1, max_length=200)
-    voice_kokoro_voice: str = Field(default="bf_emma", min_length=1, max_length=100)
-    voice_kokoro_speed: float = Field(default=1.0, gt=0.5, le=2.0)
+    # Explicit local Piper assets make provisioning observable and prevent a runtime download on a turn.
+    # These are provisional Task 8 candidates, not a performance claim or a model identifier shortcut.
+    voice_synthesis_model_path: Path = Path("data/models/piper/en_GB-alba-medium.onnx")
+    voice_synthesis_config_path: Path = Path("data/models/piper/en_GB-alba-medium.onnx.json")
+    voice_synthesis_asset_repository: str = Field(
+        default="rhasspy/piper-voices", pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    )
+    voice_synthesis_asset_revision: str = Field(
+        default="1af0d6b01d3dbe698a426f0c3424650ef77fc131", pattern=r"^[0-9a-f]{40}$"
+    )
+    voice_synthesis_speaker_id: int = Field(default=0, ge=0)
+    voice_synthesis_length_scale: float = Field(default=1.0, gt=0.5, le=2.0)
     # Progress speech is an AI-authored projection of the trace, throttled independently from results.
     voice_narration_enabled: bool = True
     voice_narration_minimum_interval_seconds: float = Field(default=8.0, ge=1.0, le=300.0)
@@ -271,16 +283,46 @@ class Settings(BaseSettings):
     @field_validator("voice_whisper_compute_type")
     @classmethod
     def require_supported_voice_whisper_compute_type(cls, value: str, info: ValidationInfo) -> str:
-        """Reject a CTranslate2 compute profile before a transcription turn reaches model loading."""
+        """Use CTranslate2's own device capability query rather than maintaining a stale profile list."""
         normalised = value.strip().lower()
-        if normalised not in VOICE_WHISPER_COMPUTE_TYPES:
-            raise ValueError(f"supported Whisper compute types: {sorted(VOICE_WHISPER_COMPUTE_TYPES)}")
-        if info.data.get("voice_whisper_device") == "cpu" and normalised not in VOICE_WHISPER_CPU_COMPUTE_TYPES:
+        device = info.data.get("voice_whisper_device")
+        supported_compute_types = ctranslate2.get_supported_compute_types(device)
+        if normalised not in supported_compute_types:
             raise ValueError(
-                "VOICE_WHISPER_COMPUTE_TYPE must be one of "
-                f"{sorted(VOICE_WHISPER_CPU_COMPUTE_TYPES)} when VOICE_WHISPER_DEVICE=cpu"
+                f"supported Whisper compute types for {device}: {sorted(supported_compute_types)}"
             )
         return normalised
+
+    @field_validator("voice_vad_min_speech_duration_milliseconds")
+    @classmethod
+    def require_capture_to_fit_vad_endpointing(cls, value: int, info: ValidationInfo) -> int:
+        """Ensure the bounded hotkey turn can contain minimum speech and its required silence endpoint."""
+        capture_duration = info.data.get("voice_capture_max_duration_seconds")
+        silence_duration = info.data.get("voice_vad_silence_duration_seconds")
+        if capture_duration is not None and silence_duration is not None:
+            endpoint_duration = silence_duration + value / 1_000
+            if endpoint_duration >= capture_duration:
+                raise ValueError(
+                    "VOICE_CAPTURE_MAX_DURATION_SECONDS must exceed the minimum speech duration plus "
+                    "VOICE_VAD_SILENCE_DURATION_SECONDS"
+                )
+        return value
+
+    @field_validator("voice_synthesis_model_path")
+    @classmethod
+    def require_synthesis_onnx_model_path(cls, value: Path) -> Path:
+        """Make a Piper ONNX asset explicit without requiring Task 8 provisioning during settings tests."""
+        if value.suffix.lower() != ".onnx":
+            raise ValueError("VOICE_SYNTHESIS_MODEL_PATH must point to an .onnx model asset")
+        return value
+
+    @field_validator("voice_synthesis_config_path")
+    @classmethod
+    def require_synthesis_onnx_config_path(cls, value: Path) -> Path:
+        """Require Piper's separate local ONNX configuration alongside the model file."""
+        if value.suffixes[-2:] != [".onnx", ".json"]:
+            raise ValueError("VOICE_SYNTHESIS_CONFIG_PATH must point to an .onnx.json model configuration")
+        return value
 
     @property
     def database_url_without_password(self) -> str:
