@@ -137,6 +137,42 @@ describe("dispatchUiCommandEvent", () => {
     expect(executed).toBe(true);
   });
 
+  it("contains a command availability exception and continues the stream", async () => {
+    const expectedError = new Error("availability lookup failed");
+    let executed = false;
+    register({
+      id: "investigation.throwingAvailability",
+      title: "Throwing availability",
+      description: "Exercises command-boundary containment",
+      group: "investigation",
+      paramsSchema: z.object({}),
+      isEnabled: () => {
+        throw expectedError;
+      },
+      handler: () => {
+        throw new Error("unreachable when availability fails");
+      },
+    });
+    registerSuccessfulCommand(() => {
+      executed = true;
+    });
+
+    await expect(
+      dispatchUiCommandEvent({
+        commandId: "investigation.throwingAvailability",
+        params: {},
+        reason: "Capability lookup",
+      }),
+    ).resolves.toEqual({
+      status: "failed",
+      commandId: "investigation.throwingAvailability",
+      error: expectedError,
+    });
+
+    await expect(dispatchSuccessfulCommand()).resolves.toMatchObject({ status: "completed" });
+    expect(executed).toBe(true);
+  });
+
   it("continues after a command handler fails", async () => {
     let executed = false;
     register({

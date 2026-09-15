@@ -16,7 +16,12 @@ export async function dispatchUiCommandEvent(
   event: UiCommandEvent,
   observeResult?: UiCommandDispatchObserver,
 ): Promise<CommandDispatchResult> {
-  const result = await dispatchCommand(event.commandId, event.params);
+  let result: CommandDispatchResult;
+  try {
+    result = await dispatchCommand(event.commandId, event.params);
+  } catch (error) {
+    result = { status: "failed", commandId: event.commandId, error };
+  }
   observeResult?.(result);
   return result;
 }
