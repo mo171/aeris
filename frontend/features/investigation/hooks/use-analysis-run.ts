@@ -26,6 +26,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 
 import { QUERY_KEYS } from "@/lib/constants/query-keys";
+import {
+  dispatchUiCommandEvent,
+  type UiCommandDispatchObserver,
+} from "@/lib/streaming/ui-command-bridge";
 
 import { streamAnalysisRun } from "../services/analysis.service";
 import { useInvestigationStore } from "../store/investigation-store";
@@ -88,6 +92,12 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
     if (flushTimerRef.current !== null) {
       window.clearInterval(flushTimerRef.current);
       flushTimerRef.current = null;
+    }
+  }, []);
+
+  const observeUiCommandDispatch = useCallback<UiCommandDispatchObserver>((result) => {
+    if (result.status !== "completed") {
+      console.warn("[AERIS] Analysis UI command was not dispatched.", result);
     }
   }, []);
 
@@ -181,9 +191,13 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
           flushPendingAnswer();
           store.failRun(event.runId, event.message);
           break;
+
+        case "ui-command":
+          void dispatchUiCommandEvent(event, observeUiCommandDispatch);
+          break;
       }
     },
-    [commitClaim, commitLayer, flushPendingAnswer],
+    [commitClaim, commitLayer, flushPendingAnswer, observeUiCommandDispatch],
   );
 
   const ask = useCallback(
