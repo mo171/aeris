@@ -44,6 +44,7 @@ from app.schemas.events import (
     RunErrorEvent,
     RunStartEvent,
     TraceStepEvent,
+    serialise_event,
 )
 from app.services.pipeline.cancellation import (
     AbandonmentSignal,
@@ -172,6 +173,22 @@ async def test_every_trace_step_is_emitted_twice_under_one_id(graph) -> None:
             assert event.step.duration_ms is None
         else:
             assert event.step.duration_ms is not None
+
+
+async def test_trace_steps_expose_context_without_inventing_it(graph) -> None:
+    """The generic producer emits the complete wire shape and leaves unavailable plan context empty."""
+    async with open_session() as session:
+        _, recorder = await run_to_completion(session, graph, "anything")
+
+    for event in recorder.trace_steps():
+        step = serialise_event(event)["step"]
+        assert step["operationId"] is None
+        assert step["inputs"] == []
+        assert step["parameters"] == {}
+        assert step["outputs"] == []
+        assert step["model"] is None
+        assert step["rationale"] is None
+        assert step["dependsOn"] == []
 
 
 async def test_the_run_declines_to_state_a_confidence_it_did_not_measure(graph) -> None:

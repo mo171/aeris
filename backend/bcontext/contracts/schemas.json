@@ -3386,6 +3386,12 @@
         "steps": {
           "items": {
             "properties": {
+              "dependsOn": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "description": {
                 "minLength": 1,
                 "type": "string"
@@ -3394,12 +3400,136 @@
                 "minLength": 1,
                 "type": "string"
               },
+              "inputs": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "scene",
+                        "region",
+                        "layer",
+                        "figure",
+                        "claim",
+                        "step"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
               "isEnabled": {
                 "type": "boolean"
               },
-              "modelId": {
-                "minLength": 1,
-                "type": "string"
+              "model": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "version"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "operationId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "outputs": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "scene",
+                        "region",
+                        "layer",
+                        "figure",
+                        "claim",
+                        "step"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "rationale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "stageCode": {
                 "enum": [
@@ -3433,10 +3563,16 @@
             },
             "required": [
               "id",
+              "operationId",
+              "stageCode",
+              "inputs",
+              "parameters",
+              "outputs",
+              "model",
+              "rationale",
+              "dependsOn",
               "title",
               "description",
-              "modelId",
-              "stageCode",
               "isEnabled"
             ],
             "type": "object"
@@ -3458,6 +3594,12 @@
     "analysisPlanStepSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
+        "dependsOn": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "description": {
           "minLength": 1,
           "type": "string"
@@ -3466,12 +3608,136 @@
           "minLength": 1,
           "type": "string"
         },
+        "inputs": {
+          "items": {
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "scene",
+                  "region",
+                  "layer",
+                  "figure",
+                  "claim",
+                  "step"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "isEnabled": {
           "type": "boolean"
         },
-        "modelId": {
-          "minLength": 1,
-          "type": "string"
+        "model": {
+          "anyOf": [
+            {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operationId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputs": {
+          "items": {
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "scene",
+                  "region",
+                  "layer",
+                  "figure",
+                  "claim",
+                  "step"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {},
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "stageCode": {
           "enum": [
@@ -3505,10 +3771,16 @@
       },
       "required": [
         "id",
+        "operationId",
+        "stageCode",
+        "inputs",
+        "parameters",
+        "outputs",
+        "model",
+        "rationale",
+        "dependsOn",
         "title",
         "description",
-        "modelId",
-        "stageCode",
         "isEnabled"
       ],
       "type": "object"
@@ -3524,6 +3796,51 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parameterOverrides": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -3573,6 +3890,16 @@
               "type": "null"
             }
           ]
+        },
+        "rerunFromStepId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -3593,6 +3920,186 @@
         "cancelled"
       ],
       "type": "string"
+    },
+    "analysisStepSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "dependsOn": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "inputs": {
+          "items": {
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "scene",
+                  "region",
+                  "layer",
+                  "figure",
+                  "claim",
+                  "step"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operationId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputs": {
+          "items": {
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "scene",
+                  "region",
+                  "layer",
+                  "figure",
+                  "claim",
+                  "step"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {},
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stageCode": {
+          "enum": [
+            "S1",
+            "S2",
+            "S3",
+            "S4",
+            "S5",
+            "S6",
+            "S7",
+            "S8",
+            "S9",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S15",
+            "S16",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "operationId",
+        "stageCode",
+        "inputs",
+        "parameters",
+        "outputs",
+        "model",
+        "rationale",
+        "dependsOn"
+      ],
+      "type": "object"
     },
     "analysisStreamEventSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3653,6 +4160,12 @@
                     }
                   ]
                 },
+                "dependsOn": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "detail": {
                   "anyOf": [
                     {
@@ -3679,7 +4192,56 @@
                   "minLength": 1,
                   "type": "string"
                 },
-                "modelId": {
+                "inputs": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "scene",
+                          "region",
+                          "layer",
+                          "figure",
+                          "claim",
+                          "step"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "model": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "operationId": {
                   "anyOf": [
                     {
                       "type": "string"
@@ -3689,7 +4251,66 @@
                     }
                   ]
                 },
-                "modelVersion": {
+                "outputs": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "scene",
+                          "region",
+                          "layer",
+                          "figure",
+                          "claim",
+                          "step"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "parameters": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "additionalProperties": {},
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "rationale": {
                   "anyOf": [
                     {
                       "type": "string"
@@ -3737,12 +4358,17 @@
               },
               "required": [
                 "id",
+                "operationId",
                 "stageCode",
+                "inputs",
+                "parameters",
+                "outputs",
+                "model",
+                "rationale",
+                "dependsOn",
                 "detail",
                 "state",
                 "durationMs",
-                "modelId",
-                "modelVersion",
                 "artefactLayerId"
               ],
               "type": "object"
@@ -4604,11 +5230,19 @@
         {
           "properties": {
             "audioUrl": {
-              "format": "uri",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uri",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "claimIds": {
               "items": {
+                "minLength": 1,
                 "type": "string"
               },
               "type": "array"
@@ -4623,46 +5257,284 @@
               "minLength": 1,
               "type": "string"
             },
+            "supersedesUtteranceId": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "minLength": 1,
+              "type": "string"
+            },
             "type": {
               "const": "speech",
+              "type": "string"
+            },
+            "utteranceId": {
+              "minLength": 1,
               "type": "string"
             }
           },
           "required": [
             "type",
             "runId",
-            "claimIds",
+            "utteranceId",
+            "text",
             "audioUrl",
-            "interruptible"
+            "claimIds",
+            "interruptible",
+            "provisional",
+            "supersedesUtteranceId"
           ],
           "type": "object"
         },
         {
           "properties": {
+            "caption": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "claimIds": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
             "figureId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "height": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "imageUrl": {
               "minLength": 1,
               "type": "string"
             },
             "isPrimary": {
               "type": "boolean"
             },
-            "legend": {},
-            "renderSpec": {},
+            "kind": {
+              "enum": [
+                "rgb-composite",
+                "index-map",
+                "mask-overlay",
+                "detection-overlay",
+                "comparison",
+                "histogram",
+                "sar-backscatter"
+              ],
+              "type": "string"
+            },
+            "legend": {
+              "properties": {
+                "colorRamp": {
+                  "enum": [
+                    "true-color",
+                    "sar-grayscale",
+                    "change-diverging",
+                    "index-vegetation",
+                    "confidence-magma",
+                    "detection-teal",
+                    "mask-amber",
+                    "artefact-neutral"
+                  ],
+                  "type": "string"
+                },
+                "domain": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "number"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "entries": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "properties": {
+                          "color": {
+                            "pattern": "^#[0-9a-fA-F]{6}$",
+                            "type": "string"
+                          },
+                          "label": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "color",
+                          "label"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": [
+                    "continuous",
+                    "categorical",
+                    "binary"
+                  ],
+                  "type": "string"
+                },
+                "label": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "label",
+                "colorRamp",
+                "domain",
+                "entries"
+              ],
+              "type": "object"
+            },
+            "renderSpec": {
+              "properties": {
+                "bands": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "colorRamp": {
+                  "enum": [
+                    "true-color",
+                    "sar-grayscale",
+                    "change-diverging",
+                    "index-vegetation",
+                    "confidence-magma",
+                    "detection-teal",
+                    "mask-amber",
+                    "artefact-neutral"
+                  ],
+                  "type": "string"
+                },
+                "crs": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "decimation": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maskApplied": {
+                  "type": "boolean"
+                },
+                "resampling": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sceneIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "stretch": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "sceneIds",
+                "bands",
+                "stretch",
+                "colorRamp",
+                "resampling",
+                "crs",
+                "decimation",
+                "maskApplied"
+              ],
+              "type": "object"
+            },
             "runId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "traceStepId": {
               "minLength": 1,
               "type": "string"
             },
             "type": {
               "const": "figure-ready",
               "type": "string"
+            },
+            "width": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
             "type",
             "runId",
             "figureId",
+            "kind",
+            "title",
+            "caption",
+            "imageUrl",
+            "width",
+            "height",
+            "traceStepId",
+            "claimIds",
             "legend",
-            "renderSpec"
+            "renderSpec",
+            "isPrimary"
           ],
           "type": "object"
         }
@@ -4680,6 +5552,12 @@
               "type": "null"
             }
           ]
+        },
+        "dependsOn": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "detail": {
           "anyOf": [
@@ -4707,7 +5585,56 @@
           "minLength": 1,
           "type": "string"
         },
-        "modelId": {
+        "inputs": {
+          "items": {
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "scene",
+                  "region",
+                  "layer",
+                  "figure",
+                  "claim",
+                  "step"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operationId": {
           "anyOf": [
             {
               "type": "string"
@@ -4717,7 +5644,66 @@
             }
           ]
         },
-        "modelVersion": {
+        "outputs": {
+          "items": {
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "scene",
+                  "region",
+                  "layer",
+                  "figure",
+                  "claim",
+                  "step"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {},
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "rationale": {
           "anyOf": [
             {
               "type": "string"
@@ -4765,13 +5751,288 @@
       },
       "required": [
         "id",
+        "operationId",
         "stageCode",
+        "inputs",
+        "parameters",
+        "outputs",
+        "model",
+        "rationale",
+        "dependsOn",
         "detail",
         "state",
         "durationMs",
-        "modelId",
-        "modelVersion",
         "artefactLayerId"
+      ],
+      "type": "object"
+    },
+    "figureReadyEventSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claimIds": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "figureId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "imageUrl": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "isPrimary": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "rgb-composite",
+            "index-map",
+            "mask-overlay",
+            "detection-overlay",
+            "comparison",
+            "histogram",
+            "sar-backscatter"
+          ],
+          "type": "string"
+        },
+        "legend": {
+          "properties": {
+            "colorRamp": {
+              "enum": [
+                "true-color",
+                "sar-grayscale",
+                "change-diverging",
+                "index-vegetation",
+                "confidence-magma",
+                "detection-teal",
+                "mask-amber",
+                "artefact-neutral"
+              ],
+              "type": "string"
+            },
+            "domain": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "entries": {
+              "anyOf": [
+                {
+                  "items": {
+                    "properties": {
+                      "color": {
+                        "pattern": "^#[0-9a-fA-F]{6}$",
+                        "type": "string"
+                      },
+                      "label": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "color",
+                      "label"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "enum": [
+                "continuous",
+                "categorical",
+                "binary"
+              ],
+              "type": "string"
+            },
+            "label": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "colorRamp",
+            "domain",
+            "entries"
+          ],
+          "type": "object"
+        },
+        "renderSpec": {
+          "properties": {
+            "bands": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "colorRamp": {
+              "enum": [
+                "true-color",
+                "sar-grayscale",
+                "change-diverging",
+                "index-vegetation",
+                "confidence-magma",
+                "detection-teal",
+                "mask-amber",
+                "artefact-neutral"
+              ],
+              "type": "string"
+            },
+            "crs": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "decimation": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maskApplied": {
+              "type": "boolean"
+            },
+            "resampling": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "sceneIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "stretch": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "sceneIds",
+            "bands",
+            "stretch",
+            "colorRamp",
+            "resampling",
+            "crs",
+            "decimation",
+            "maskApplied"
+          ],
+          "type": "object"
+        },
+        "runId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "traceStepId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": {
+          "const": "figure-ready",
+          "type": "string"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "runId",
+        "figureId",
+        "kind",
+        "title",
+        "caption",
+        "imageUrl",
+        "width",
+        "height",
+        "traceStepId",
+        "claimIds",
+        "legend",
+        "renderSpec",
+        "isPrimary"
+      ],
+      "type": "object"
+    },
+    "nodeRefSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "scene",
+            "region",
+            "layer",
+            "figure",
+            "claim",
+            "step"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
       ],
       "type": "object"
     },
@@ -6464,6 +7725,10 @@
             }
           ]
         },
+        "projectId": {
+          "minLength": 1,
+          "type": "string"
+        },
         "sceneIds": {
           "items": {
             "minLength": 1,
@@ -6484,6 +7749,7 @@
         }
       },
       "required": [
+        "projectId",
         "sceneIds",
         "seedQuery",
         "missionId"
@@ -6923,9 +8189,67 @@
           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
           "type": "string"
         },
+        "events": {
+          "items": {
+            "properties": {
+              "date": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "construction",
+                  "natural-event",
+                  "policy",
+                  "conflict",
+                  "observation",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              "label": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "date",
+              "label",
+              "description",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "id": {
           "minLength": 1,
           "type": "string"
+        },
+        "layerNotes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
         "missionId": {
           "anyOf": [
@@ -6945,6 +8269,10 @@
           "type": "string"
         },
         "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "projectId": {
           "minLength": 1,
           "type": "string"
         },
@@ -7071,6 +8399,7 @@
         "cameraBookmark",
         "seedQuery",
         "missionId",
+        "projectId",
         "traceId"
       ],
       "type": "object"
@@ -7146,6 +8475,53 @@
         "aux"
       ],
       "type": "string"
+    },
+    "timelineEventAnnotationSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "date": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "construction",
+            "natural-event",
+            "policy",
+            "conflict",
+            "observation",
+            "custom"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "label",
+        "description",
+        "kind"
+      ],
+      "type": "object"
     },
     "workspaceModeSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8329,6 +9705,1317 @@
       ]
     }
   },
+  "features/investigation/schemas/version.schema.ts": {
+    "claimMetricSummarySchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "claimId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "claimId",
+        "label",
+        "value",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "investigationVersionSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "actor": {
+          "enum": [
+            "operator",
+            "agent"
+          ],
+          "type": "string"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "parentVersionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot": {
+          "properties": {
+            "layerIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "resultSummary": {
+              "properties": {
+                "claimMetrics": {
+                  "items": {
+                    "properties": {
+                      "claimId": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "label": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "claimId",
+                      "label",
+                      "value",
+                      "unit"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "confidence": {
+                  "anyOf": [
+                    {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "claimMetrics",
+                "confidence"
+              ],
+              "type": "object"
+            },
+            "sceneSlots": {
+              "items": {
+                "properties": {
+                  "capturedAt": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                    "type": "string"
+                  },
+                  "cloudCoverPercentage": {
+                    "anyOf": [
+                      {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "coordinateReferenceSystem": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "groundSampleDistanceMeters": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "layerId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "modality": {
+                    "enum": [
+                      "optical",
+                      "sar",
+                      "multispectral",
+                      "hyperspectral"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "t0",
+                      "t1",
+                      "sar",
+                      "aux"
+                    ],
+                    "type": "string"
+                  },
+                  "sceneId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sensorPlatform": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "sceneId",
+                  "name",
+                  "capturedAt",
+                  "modality",
+                  "sensorPlatform",
+                  "groundSampleDistanceMeters",
+                  "cloudCoverPercentage",
+                  "coordinateReferenceSystem",
+                  "layerId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "steps": {
+              "items": {
+                "properties": {
+                  "artefactLayerId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "detail": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "durationMs": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "inputs": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "scene",
+                            "region",
+                            "layer",
+                            "figure",
+                            "claim",
+                            "step"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "version"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "operationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "outputs": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "scene",
+                            "region",
+                            "layer",
+                            "figure",
+                            "claim",
+                            "step"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "parameters": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "rationale": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stageCode": {
+                    "enum": [
+                      "S1",
+                      "S2",
+                      "S3",
+                      "S4",
+                      "S5",
+                      "S6",
+                      "S7",
+                      "S8",
+                      "S9",
+                      "S10",
+                      "S11",
+                      "S12",
+                      "S13",
+                      "S14",
+                      "S15",
+                      "S16",
+                      "S17",
+                      "S18",
+                      "S19",
+                      "S20"
+                    ],
+                    "type": "string"
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "running",
+                      "completed",
+                      "failed",
+                      "skipped"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "operationId",
+                  "stageCode",
+                  "inputs",
+                  "parameters",
+                  "outputs",
+                  "model",
+                  "rationale",
+                  "dependsOn",
+                  "detail",
+                  "state",
+                  "durationMs",
+                  "artefactLayerId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "timelinePair": {
+              "properties": {
+                "baselineSceneId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "comparisonSceneId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "baselineSceneId",
+                "comparisonSceneId"
+              ],
+              "type": "object"
+            },
+            "traceId": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "sceneSlots",
+            "timelinePair",
+            "steps",
+            "resultSummary",
+            "layerIds",
+            "traceId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "createdAt",
+        "actor",
+        "parentVersionId",
+        "snapshot"
+      ],
+      "type": "object"
+    },
+    "saveVersionRequestSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "label": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "snapshot": {
+          "properties": {
+            "layerIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "resultSummary": {
+              "properties": {
+                "claimMetrics": {
+                  "items": {
+                    "properties": {
+                      "claimId": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "label": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "claimId",
+                      "label",
+                      "value",
+                      "unit"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "confidence": {
+                  "anyOf": [
+                    {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "claimMetrics",
+                "confidence"
+              ],
+              "type": "object"
+            },
+            "sceneSlots": {
+              "items": {
+                "properties": {
+                  "capturedAt": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                    "type": "string"
+                  },
+                  "cloudCoverPercentage": {
+                    "anyOf": [
+                      {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "coordinateReferenceSystem": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "groundSampleDistanceMeters": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "layerId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "modality": {
+                    "enum": [
+                      "optical",
+                      "sar",
+                      "multispectral",
+                      "hyperspectral"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "t0",
+                      "t1",
+                      "sar",
+                      "aux"
+                    ],
+                    "type": "string"
+                  },
+                  "sceneId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sensorPlatform": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "sceneId",
+                  "name",
+                  "capturedAt",
+                  "modality",
+                  "sensorPlatform",
+                  "groundSampleDistanceMeters",
+                  "cloudCoverPercentage",
+                  "coordinateReferenceSystem",
+                  "layerId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "steps": {
+              "items": {
+                "properties": {
+                  "artefactLayerId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "detail": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "durationMs": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "inputs": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "scene",
+                            "region",
+                            "layer",
+                            "figure",
+                            "claim",
+                            "step"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "version"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "operationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "outputs": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "scene",
+                            "region",
+                            "layer",
+                            "figure",
+                            "claim",
+                            "step"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "parameters": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "rationale": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stageCode": {
+                    "enum": [
+                      "S1",
+                      "S2",
+                      "S3",
+                      "S4",
+                      "S5",
+                      "S6",
+                      "S7",
+                      "S8",
+                      "S9",
+                      "S10",
+                      "S11",
+                      "S12",
+                      "S13",
+                      "S14",
+                      "S15",
+                      "S16",
+                      "S17",
+                      "S18",
+                      "S19",
+                      "S20"
+                    ],
+                    "type": "string"
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "running",
+                      "completed",
+                      "failed",
+                      "skipped"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "operationId",
+                  "stageCode",
+                  "inputs",
+                  "parameters",
+                  "outputs",
+                  "model",
+                  "rationale",
+                  "dependsOn",
+                  "detail",
+                  "state",
+                  "durationMs",
+                  "artefactLayerId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "timelinePair": {
+              "properties": {
+                "baselineSceneId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "comparisonSceneId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "baselineSceneId",
+                "comparisonSceneId"
+              ],
+              "type": "object"
+            },
+            "traceId": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "sceneSlots",
+            "timelinePair",
+            "steps",
+            "resultSummary",
+            "layerIds",
+            "traceId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "label",
+        "snapshot"
+      ],
+      "type": "object"
+    },
+    "versionSnapshotSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "layerIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resultSummary": {
+          "properties": {
+            "claimMetrics": {
+              "items": {
+                "properties": {
+                  "claimId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "label": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "unit": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "claimId",
+                  "label",
+                  "value",
+                  "unit"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "confidence": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "claimMetrics",
+            "confidence"
+          ],
+          "type": "object"
+        },
+        "sceneSlots": {
+          "items": {
+            "properties": {
+              "capturedAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "type": "string"
+              },
+              "cloudCoverPercentage": {
+                "anyOf": [
+                  {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "coordinateReferenceSystem": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "groundSampleDistanceMeters": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "layerId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "modality": {
+                "enum": [
+                  "optical",
+                  "sar",
+                  "multispectral",
+                  "hyperspectral"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "role": {
+                "enum": [
+                  "t0",
+                  "t1",
+                  "sar",
+                  "aux"
+                ],
+                "type": "string"
+              },
+              "sceneId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "sensorPlatform": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "role",
+              "sceneId",
+              "name",
+              "capturedAt",
+              "modality",
+              "sensorPlatform",
+              "groundSampleDistanceMeters",
+              "cloudCoverPercentage",
+              "coordinateReferenceSystem",
+              "layerId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "properties": {
+              "artefactLayerId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "dependsOn": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "detail": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "durationMs": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "inputs": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "scene",
+                        "region",
+                        "layer",
+                        "figure",
+                        "claim",
+                        "step"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "model": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "version"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "operationId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "outputs": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "scene",
+                        "region",
+                        "layer",
+                        "figure",
+                        "claim",
+                        "step"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "parameters": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "rationale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "stageCode": {
+                "enum": [
+                  "S1",
+                  "S2",
+                  "S3",
+                  "S4",
+                  "S5",
+                  "S6",
+                  "S7",
+                  "S8",
+                  "S9",
+                  "S10",
+                  "S11",
+                  "S12",
+                  "S13",
+                  "S14",
+                  "S15",
+                  "S16",
+                  "S17",
+                  "S18",
+                  "S19",
+                  "S20"
+                ],
+                "type": "string"
+              },
+              "state": {
+                "enum": [
+                  "pending",
+                  "running",
+                  "completed",
+                  "failed",
+                  "skipped"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "operationId",
+              "stageCode",
+              "inputs",
+              "parameters",
+              "outputs",
+              "model",
+              "rationale",
+              "dependsOn",
+              "detail",
+              "state",
+              "durationMs",
+              "artefactLayerId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "timelinePair": {
+          "properties": {
+            "baselineSceneId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "comparisonSceneId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "baselineSceneId",
+            "comparisonSceneId"
+          ],
+          "type": "object"
+        },
+        "traceId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "sceneSlots",
+        "timelinePair",
+        "steps",
+        "resultSummary",
+        "layerIds",
+        "traceId"
+      ],
+      "type": "object"
+    }
+  },
   "features/missionCommand/schemas/assistant.schema.ts": {
     "assistantAskRequestSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8690,10 +11377,6 @@
               "minLength": 1,
               "type": "string"
             },
-            "messageId": {
-              "minLength": 1,
-              "type": "string"
-            },
             "params": {
               "additionalProperties": {},
               "propertyNames": {
@@ -8705,6 +11388,10 @@
               "minLength": 1,
               "type": "string"
             },
+            "runId": {
+              "minLength": 1,
+              "type": "string"
+            },
             "type": {
               "const": "ui-command",
               "type": "string"
@@ -8712,7 +11399,7 @@
           },
           "required": [
             "type",
-            "messageId",
+            "runId",
             "commandId",
             "params",
             "reason"
@@ -8722,11 +11409,19 @@
         {
           "properties": {
             "audioUrl": {
-              "format": "uri",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uri",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "claimIds": {
               "items": {
+                "minLength": 1,
                 "type": "string"
               },
               "type": "array"
@@ -8734,53 +11429,291 @@
             "interruptible": {
               "type": "boolean"
             },
-            "messageId": {
-              "minLength": 1,
-              "type": "string"
-            },
             "provisional": {
               "type": "boolean"
             },
+            "runId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "supersedesUtteranceId": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "minLength": 1,
+              "type": "string"
+            },
             "type": {
               "const": "speech",
+              "type": "string"
+            },
+            "utteranceId": {
+              "minLength": 1,
               "type": "string"
             }
           },
           "required": [
             "type",
-            "messageId",
-            "claimIds",
+            "runId",
+            "utteranceId",
+            "text",
             "audioUrl",
-            "interruptible"
+            "claimIds",
+            "interruptible",
+            "provisional",
+            "supersedesUtteranceId"
           ],
           "type": "object"
         },
         {
           "properties": {
+            "caption": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "claimIds": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
             "figureId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "height": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "imageUrl": {
               "minLength": 1,
               "type": "string"
             },
             "isPrimary": {
               "type": "boolean"
             },
-            "legend": {},
-            "messageId": {
+            "kind": {
+              "enum": [
+                "rgb-composite",
+                "index-map",
+                "mask-overlay",
+                "detection-overlay",
+                "comparison",
+                "histogram",
+                "sar-backscatter"
+              ],
+              "type": "string"
+            },
+            "legend": {
+              "properties": {
+                "colorRamp": {
+                  "enum": [
+                    "true-color",
+                    "sar-grayscale",
+                    "change-diverging",
+                    "index-vegetation",
+                    "confidence-magma",
+                    "detection-teal",
+                    "mask-amber",
+                    "artefact-neutral"
+                  ],
+                  "type": "string"
+                },
+                "domain": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "number"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "entries": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "properties": {
+                          "color": {
+                            "pattern": "^#[0-9a-fA-F]{6}$",
+                            "type": "string"
+                          },
+                          "label": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "color",
+                          "label"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": [
+                    "continuous",
+                    "categorical",
+                    "binary"
+                  ],
+                  "type": "string"
+                },
+                "label": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "label",
+                "colorRamp",
+                "domain",
+                "entries"
+              ],
+              "type": "object"
+            },
+            "renderSpec": {
+              "properties": {
+                "bands": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "colorRamp": {
+                  "enum": [
+                    "true-color",
+                    "sar-grayscale",
+                    "change-diverging",
+                    "index-vegetation",
+                    "confidence-magma",
+                    "detection-teal",
+                    "mask-amber",
+                    "artefact-neutral"
+                  ],
+                  "type": "string"
+                },
+                "crs": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "decimation": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maskApplied": {
+                  "type": "boolean"
+                },
+                "resampling": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sceneIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "stretch": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "sceneIds",
+                "bands",
+                "stretch",
+                "colorRamp",
+                "resampling",
+                "crs",
+                "decimation",
+                "maskApplied"
+              ],
+              "type": "object"
+            },
+            "runId": {
               "minLength": 1,
               "type": "string"
             },
-            "renderSpec": {},
+            "title": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "traceStepId": {
+              "minLength": 1,
+              "type": "string"
+            },
             "type": {
               "const": "figure-ready",
               "type": "string"
+            },
+            "width": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
             "type",
-            "messageId",
+            "runId",
             "figureId",
+            "kind",
+            "title",
+            "caption",
+            "imageUrl",
+            "width",
+            "height",
+            "traceStepId",
+            "claimIds",
             "legend",
-            "renderSpec"
+            "renderSpec",
+            "isPrimary"
           ],
           "type": "object"
         }
@@ -9415,6 +12348,10 @@
                 ],
                 "type": "object"
               },
+              "projectId": {
+                "minLength": 1,
+                "type": "string"
+              },
               "status": {
                 "enum": [
                   "active",
@@ -9427,6 +12364,7 @@
             },
             "required": [
               "id",
+              "projectId",
               "missionId",
               "label",
               "position",
@@ -9489,6 +12427,10 @@
           ],
           "type": "object"
         },
+        "projectId": {
+          "minLength": 1,
+          "type": "string"
+        },
         "status": {
           "enum": [
             "active",
@@ -9501,6 +12443,7 @@
       },
       "required": [
         "id",
+        "projectId",
         "missionId",
         "label",
         "position",
@@ -9523,29 +12466,28 @@
     "missionCreateRequestSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
-        "analysisKind": {
-          "enum": [
-            "change-detection",
-            "vegetation-health",
-            "urban-growth",
-            "flood-mapping",
-            "cross-modal"
-          ],
-          "type": "string"
-        },
-        "investigationId": {
+        "cadence": {
           "minLength": 1,
           "type": "string"
         },
         "name": {
           "minLength": 1,
           "type": "string"
+        },
+        "projectId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "templateVersionId": {
+          "minLength": 1,
+          "type": "string"
         }
       },
       "required": [
-        "investigationId",
+        "projectId",
+        "templateVersionId",
         "name",
-        "analysisKind"
+        "cadence"
       ],
       "type": "object"
     },
@@ -9555,6 +12497,16 @@
         "items": {
           "items": {
             "properties": {
+              "alertRule": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "analysisKind": {
                 "enum": [
                   "change-detection",
@@ -9567,6 +12519,9 @@
               },
               "areaOfInterestName": {
                 "minLength": 1,
+                "type": "string"
+              },
+              "cadence": {
                 "type": "string"
               },
               "centroid": {
@@ -9642,6 +12597,10 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "projectId": {
+                "minLength": 1,
+                "type": "string"
+              },
               "sceneCount": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
@@ -9658,10 +12617,22 @@
               },
               "summary": {
                 "type": "string"
+              },
+              "templateVersionId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
               "id",
+              "projectId",
+              "templateVersionId",
               "name",
               "status",
               "analysisKind",
@@ -9673,7 +12644,9 @@
               "sceneCount",
               "confidence",
               "openAlertCount",
-              "summary"
+              "summary",
+              "cadence",
+              "alertRule"
             ],
             "type": "object"
           },
@@ -9712,6 +12685,16 @@
     "missionSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
+        "alertRule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "analysisKind": {
           "enum": [
             "change-detection",
@@ -9724,6 +12707,9 @@
         },
         "areaOfInterestName": {
           "minLength": 1,
+          "type": "string"
+        },
+        "cadence": {
           "type": "string"
         },
         "centroid": {
@@ -9799,6 +12785,10 @@
           "minimum": 0,
           "type": "integer"
         },
+        "projectId": {
+          "minLength": 1,
+          "type": "string"
+        },
         "sceneCount": {
           "maximum": 9007199254740991,
           "minimum": 0,
@@ -9815,10 +12805,22 @@
         },
         "summary": {
           "type": "string"
+        },
+        "templateVersionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "id",
+        "projectId",
+        "templateVersionId",
         "name",
         "status",
         "analysisKind",
@@ -9830,7 +12832,9 @@
         "sceneCount",
         "confidence",
         "openAlertCount",
-        "summary"
+        "summary",
+        "cadence",
+        "alertRule"
       ],
       "type": "object"
     },
@@ -10146,6 +13150,279 @@
       "type": "object"
     }
   },
+  "features/project/schemas/project.schema.ts": {
+    "projectCreateRequestSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "areaOfInterest": {
+          "properties": {
+            "east": {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            },
+            "north": {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            "south": {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            "west": {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            }
+          },
+          "required": [
+            "west",
+            "south",
+            "east",
+            "north"
+          ],
+          "type": "object"
+        },
+        "areaOfInterestName": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "areaOfInterestName",
+        "areaOfInterest"
+      ],
+      "type": "object"
+    },
+    "projectPageSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "items": {
+          "items": {
+            "properties": {
+              "areaOfInterest": {
+                "properties": {
+                  "east": {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                  },
+                  "north": {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                  },
+                  "south": {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                  },
+                  "west": {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "west",
+                  "south",
+                  "east",
+                  "north"
+                ],
+                "type": "object"
+              },
+              "areaOfInterestName": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "centroid": {
+                "properties": {
+                  "latitude": {
+                    "maximum": 90,
+                    "minimum": -90,
+                    "type": "number"
+                  },
+                  "longitude": {
+                    "maximum": 180,
+                    "minimum": -180,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "latitude",
+                  "longitude"
+                ],
+                "type": "object"
+              },
+              "createdAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "type": "string"
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "lastActivityAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "type": "string"
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "updatedAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "areaOfInterestName",
+              "areaOfInterest",
+              "centroid",
+              "createdAt",
+              "updatedAt",
+              "lastActivityAt"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalCount": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor",
+        "totalCount"
+      ],
+      "type": "object"
+    },
+    "projectSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "areaOfInterest": {
+          "properties": {
+            "east": {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            },
+            "north": {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            "south": {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            "west": {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            }
+          },
+          "required": [
+            "west",
+            "south",
+            "east",
+            "north"
+          ],
+          "type": "object"
+        },
+        "areaOfInterestName": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "centroid": {
+          "properties": {
+            "latitude": {
+              "maximum": 90,
+              "minimum": -90,
+              "type": "number"
+            },
+            "longitude": {
+              "maximum": 180,
+              "minimum": -180,
+              "type": "number"
+            }
+          },
+          "required": [
+            "latitude",
+            "longitude"
+          ],
+          "type": "object"
+        },
+        "createdAt": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "lastActivityAt": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "areaOfInterestName",
+        "areaOfInterest",
+        "centroid",
+        "createdAt",
+        "updatedAt",
+        "lastActivityAt"
+      ],
+      "type": "object"
+    }
+  },
   "features/sceneInspector/schemas/scene-inspection.schema.ts": {
     "sceneInspectionSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -10408,6 +13685,112 @@
       "format": "date-time",
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
       "type": "string"
+    }
+  },
+  "lib/schemas/stream-events.schema.ts": {
+    "speechEventSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "audioUrl": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claimIds": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "interruptible": {
+          "type": "boolean"
+        },
+        "provisional": {
+          "type": "boolean"
+        },
+        "runId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "supersedesUtteranceId": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": {
+          "const": "speech",
+          "type": "string"
+        },
+        "utteranceId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "runId",
+        "utteranceId",
+        "text",
+        "audioUrl",
+        "claimIds",
+        "interruptible",
+        "provisional",
+        "supersedesUtteranceId"
+      ],
+      "type": "object"
+    },
+    "uiCommandEventSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "commandId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {},
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "runId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": {
+          "const": "ui-command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "runId",
+        "commandId",
+        "params",
+        "reason"
+      ],
+      "type": "object"
     }
   }
 }

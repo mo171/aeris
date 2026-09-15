@@ -16,9 +16,8 @@ how   : `api-contract.md` §3 makes a claim the whole two-phase plan rests on: "
         frontend's schema for that event**, field by field.
 
         The test that keeps this honest over time is `test_every_analysis_event_is_modelled_or_recorded`.
-        Five of the seven events can be built today; the other two carry payloads no subsystem produces
-        yet. Recording those two with the phase that will produce them - rather than leaving a silent gap -
-        means adding a sixth model, or the frontend adding an eighth event, forces a decision here.
+        Every current event has a real model and fixture. A future frontend event must gain the same or be
+        recorded with the phase that will produce it, so union growth always forces an explicit decision.
 """
 
 import json
@@ -38,6 +37,7 @@ from app.constants.events import (
     AssistantEventType,
 )
 from app.constants.evidence import ClaimKind, EvidenceKind, MetricDirection
+from app.constants.figure_kinds import FigureKind, LegendKind
 from app.constants.intents import Intent
 from app.constants.layers import ComparatorSide, LayerKind, LayerRenderMode
 from app.constants.model_ids import ModelId
@@ -53,15 +53,21 @@ from app.schemas.events import (
     EvidenceFeature,
     EvidenceItem,
     EvidenceLayer,
+    FigureLegend,
+    FigureReadyEvent,
     InsufficientEvidence,
     InsufficientEvidenceRemedy,
     LayerProvenance,
     LayerReadyEvent,
     PolygonGeometry,
+    RenderSpec,
     RunCompleteEvent,
     RunErrorEvent,
     RunStartEvent,
+    SpeechEvent,
+    TraceModelRef,
     TraceStepEvent,
+    UiCommandEvent,
     ValueDomain,
     parse_event,
     serialise_event,
@@ -100,8 +106,7 @@ MODELLED_EVENTS = {
             state=TraceStepState.COMPLETED,
             detail="ChangeFormer over the co-registered pair",
             duration_ms=1200,
-            model_id="changeformer",
-            model_version="1.0.0",
+            model=TraceModelRef(id="changeformer", version="1.0.0"),
             artefact_layer_id="lyr_01J000000000000000000000",
         ),
     ),
@@ -183,6 +188,48 @@ MODELLED_EVENTS = {
         ),
     ),
     AnalysisEventType.ANSWER_TOKEN: AnswerTokenEvent(run_id=RUN_ID, text="Built-up"),
+    AnalysisEventType.FIGURE_READY: FigureReadyEvent(
+        run_id=RUN_ID,
+        figure_id="fig_01J000000000000000000000",
+        kind=FigureKind.INDEX_MAP,
+        title="NDVI",
+        caption="Vegetation index over the area of interest.",
+        image_url="/api/v1/figures/fig_01J000000000000000000000.webp",
+        width=1024,
+        height=1024,
+        trace_step_id=STEP_ID,
+        claim_ids=["clm_01J000000000000000000000"],
+        legend=FigureLegend(
+            kind=LegendKind.CONTINUOUS,
+            label="NDVI",
+            color_ramp=ColorRampId.INDEX_VEGETATION,
+            domain=[-1.0, 1.0],
+        ),
+        render_spec=RenderSpec(
+            scene_ids=["scn_01J000000000000000000000"],
+            bands=["B08", "B04"],
+            stretch={"min": -1.0, "max": 1.0, "method": "fixed"},
+            color_ramp=ColorRampId.INDEX_VEGETATION,
+            resampling="nearest",
+            crs="EPSG:32643",
+            decimation=4,
+            mask_applied=True,
+        ),
+        is_primary=True,
+    ),
+    AnalysisEventType.UI_COMMAND: UiCommandEvent(
+        run_id=RUN_ID,
+        command_id="investigation.focusEvidence",
+        params={"evidenceId": "ev_01J000000000000000000000"},
+        reason="Raise the largest validated change region.",
+    ),
+    AnalysisEventType.SPEECH: SpeechEvent(
+        run_id=RUN_ID,
+        utterance_id="utt_01J000000000000000000000",
+        text="The validated result is available.",
+        audio_url=None,
+        claim_ids=["clm_01J000000000000000000000"],
+    ),
     AnalysisEventType.RUN_COMPLETE: RunCompleteEvent(
         run_id=RUN_ID, confidence=0.91, insufficient_evidence=None, total_duration_ms=42_000
     ),
@@ -203,10 +250,9 @@ async def test_the_backend_event_names_are_the_frontend_union_exactly() -> None:
     worse: the backend emits something the frontend's Zod has never heard of, the parse throws at the
     boundary, and the operator sees a blank surface rather than an error naming the field.
 
-    **The exclusion is narrow on purpose.** `api-contract.md` marks three events agreed and not yet
-    implemented on the frontend (§4 `ui-command`, §5 `speech`, §6 `figure-ready`), and the backend
-    implements them ahead of it - 1.2.1 built `figure-ready`. Excluding exactly those, by name and with a
-    reason, keeps the equality check on everything else rather than weakening it to a subset.
+    **The exclusion is narrow on purpose.** It is empty while the contracts match. If the backend ever
+    models an event ahead of the frontend, the named compatibility map records that one event and why;
+    everything else remains an exact comparison rather than weakening the check to a subset.
     """
     emitted = {member.value for member in AnalysisEventType}
     agreed_but_unparsed = {
@@ -219,9 +265,9 @@ async def test_the_backend_event_names_are_the_frontend_union_exactly() -> None:
 async def test_nothing_is_listed_as_unparsed_that_the_frontend_now_parses() -> None:
     """The staleness check that makes the exclusion above safe.
 
-    When the frontend ships its figure panel, `figure-ready` joins its union - and this fails until the
-    entry is removed, at which point the equality test starts enforcing the event properly. Without this,
-    an exclusion added once would silently stay forever.
+    When the frontend begins parsing a backend-first event, this fails until its compatibility entry is
+    removed, at which point the equality test starts enforcing the event properly. Without this, an
+    exclusion added once would silently stay forever.
     """
     still_unparsed = {
         member.value for member in EVENT_TYPES_NOT_YET_PARSED_BY_THE_FRONTEND
@@ -237,6 +283,63 @@ async def test_nothing_is_listed_as_unparsed_that_the_frontend_now_parses() -> N
 async def test_the_assistant_event_names_are_its_union_exactly() -> None:
     """The same, for the assistant stream. Two enums because the two streams' trace steps differ in shape."""
     assert {member.value for member in AssistantEventType} == set(ASSISTANT_MEMBERS)
+
+
+@pytest.mark.parametrize("event_type", [AnalysisEventType.SPEECH, AnalysisEventType.UI_COMMAND])
+async def test_shared_events_have_one_shape_on_both_streams(event_type: AnalysisEventType) -> None:
+    """A producer does not need a second payload model merely because transport chooses another stream."""
+    payload = serialise_event(MODELLED_EVENTS[event_type])
+
+    assert ANALYSIS_MEMBERS[event_type.value] == ASSISTANT_MEMBERS[event_type.value]
+    validator_for(ANALYSIS_MEMBERS[event_type.value]).validate(payload)
+    validator_for(ASSISTANT_MEMBERS[event_type.value]).validate(payload)
+
+
+async def test_provisional_speech_is_explicit_and_can_be_superseded() -> None:
+    provisional = SpeechEvent(
+        run_id=RUN_ID,
+        utterance_id="utt_provisional",
+        text="Provisional: cloud may obscure it.",
+        claim_ids=[],
+        provisional=True,
+    )
+    grounded = SpeechEvent(
+        run_id=RUN_ID,
+        utterance_id="utt_grounded",
+        text="The validated result is available.",
+        claim_ids=["clm_01J000000000000000000000"],
+        supersedes_utterance_id="utt_provisional",
+    )
+
+    provisional_payload = serialise_event(provisional)
+    grounded_payload = serialise_event(grounded)
+
+    assert provisional_payload["provisional"] is True
+    assert provisional_payload["audioUrl"] is None
+    assert grounded_payload["supersedesUtteranceId"] == "utt_provisional"
+    validator_for(ANALYSIS_MEMBERS["speech"]).validate(provisional_payload)
+    validator_for(ANALYSIS_MEMBERS["speech"]).validate(grounded_payload)
+
+
+async def test_empty_claim_ids_require_a_provisional_label() -> None:
+    with pytest.raises(ValidationError, match="provisional"):
+        SpeechEvent(
+            run_id=RUN_ID,
+            utterance_id="utt_unlabelled",
+            text="Cloud may obscure it.",
+            claim_ids=[],
+        )
+
+
+async def test_provisional_speech_cannot_claim_grounding() -> None:
+    with pytest.raises(ValidationError, match="claim_ids|claimIds"):
+        SpeechEvent(
+            run_id=RUN_ID,
+            utterance_id="utt_mislabelled",
+            text="Provisional: cloud may obscure it.",
+            claim_ids=["clm_01J000000000000000000000"],
+            provisional=True,
+        )
 
 
 @pytest.mark.parametrize("event_type", sorted(MODELLED_EVENTS))
@@ -258,8 +361,8 @@ async def test_every_analysis_event_is_modelled_or_recorded() -> None:
 
     Same rule as `test_every_backend_enum_is_classified` in 0.7, pointed at events. An event that is
     neither modelled nor explicitly recorded as owed is a gap nothing surfaces - and the way this suite
-    would rot is that Phase 1.5 adds a `claim` model, nobody adds it here, and it is never validated
-    against the schema that parses it.
+    would rot is that a model is added without a fixture and is never validated against the schema that
+    parses it.
     """
     modelled = {event_type.value for event_type in MODELLED_EVENTS}
     recorded = {event_type.value for event_type in EVENT_TYPES_NOT_YET_EMITTED}

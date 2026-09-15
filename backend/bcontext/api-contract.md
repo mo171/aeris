@@ -88,6 +88,7 @@ journals**, which is what makes Phase 2 a transport swap rather than a rewrite.
 ### 3.1 Assistant stream — `POST /assistant/stream`
 
 `message-start` · `trace-step` · `token` · `message-complete` · `stream-error`
+plus `figure-ready` (§6) · `ui-command` (§4) · `speech` (§5)
 
 **Emit every trace step twice** — once `running`, then again `completed` with `durationMs`. That transition
 *is* the execution-trace UI, and it is the product's credibility signal. Tokens in word-sized chunks.
@@ -96,6 +97,12 @@ journals**, which is what makes Phase 2 a transport swap rather than a rewrite.
 
 `run-start` · `trace-step` · `layer-ready` · `claim` · `answer-token` · `run-complete` · `run-error`
 plus **NEW** `figure-ready` (§6) · `ui-command` (§4) · `speech` (§5)
+
+An analysis `trace-step.step` carries the same execution context as `analysisStepSchema`: `operationId`,
+`inputs`, `parameters`, `outputs`, `model`, `rationale`, and `dependsOn`, followed by its live state,
+detail, duration, and `artefactLayerId`. `model` is atomic — either `{ "id", "version" }` or null — so a
+consumer never joins two independently nullable fields into a model identity that did not exist. Context
+the pipeline producer cannot establish is explicitly null or empty; it is never inferred from display copy.
 
 **`layer-ready` is its own event and must stay that way.** The viewer draws a layer the moment it exists,
 rather than waiting for the run to finish. The frontend's own note calls this "the single most important
@@ -121,14 +128,15 @@ never batched to the end of the run.
 
 ## 4. NEW · `ui-command` — the agent drives the interface
 
-**Agreed 2026-08-30. Not yet implemented on the frontend.**
+**Agreed 2026-08-30. Typed backend and frontend stream contracts implemented in Phase 1.13.** Frontend
+dispatch remains a separate adapter over the command bus; parsing this event never bypasses the registry.
 
 Emitted on both the assistant and analysis streams.
 
 ```jsonc
 {
   "type": "ui-command",
-  "runId": "run_01J...",          // or messageId on the assistant stream
+  "runId": "run_01J...",          // the evidence-bearing run, on either stream
   "commandId": "investigation.focusEvidence",   // from lib/constants/commands.ts
   "params": { "evidenceId": "ev_01J..." },
   "reason": "Raising the largest change region."  // one line, spoken or shown; never null
@@ -157,7 +165,8 @@ eleven times in one answer is a bug, not a feature.
 
 ## 5. NEW · `speech` — what AERIS says out loud
 
-**Agreed 2026-08-30. Not yet implemented on the frontend.**
+**Agreed 2026-08-30. Typed backend and frontend stream contracts implemented in Phase 1.13.** Phase 1 audio
+plays locally; browser playback remains Phase 2.7.
 
 ```jsonc
 {
@@ -167,7 +176,9 @@ eleven times in one answer is a bug, not a feature.
   "text": "Built-up area increased about eighteen percent. Fourteen hectares, mostly north-east.",
   "audioUrl": "/api/v1/speech/utt_01J....opus",   // null while synthesis streams over the socket
   "claimIds": ["clm_01J..."],                      // what this utterance is grounded in; never empty
-  "interruptible": true
+  "interruptible": true,
+  "provisional": false,
+  "supersedesUtteranceId": null
 }
 ```
 
@@ -175,9 +186,10 @@ eleven times in one answer is a bug, not a feature.
 written answer aloud produces a screen reader: the written answer is precise, cites figures and is meant to
 be re-read, while speech must be short and must never voice a number no specialist produced.
 
-Hence `claimIds`. **An utterance with no claim behind it is not emitted** — the same evidence-first rule the
-rest of the system runs on, applied to a second surface. Spoken numbers are rounded for the ear ("about
-eighteen percent") while the written claim keeps its declared `precision`; the underlying value is identical.
+Hence `claimIds`. **An ordinary utterance with no claim behind it is not emitted** — the same evidence-first
+rule the rest of the system runs on, applied to a second surface. The only exception is an explicitly
+provisional utterance described below. Spoken numbers are rounded for the ear ("about eighteen percent")
+while the written claim keeps its declared `precision`; the underlying value is identical.
 
 `interruptible: false` marks a refusal or a safety statement that should finish before barge-in silences it.
 
@@ -205,8 +217,9 @@ utterance that later supersedes it carries `supersedesUtteranceId`.
 
 ## 6. NEW · `figure-ready` — the images the backend renders
 
-**Agreed 2026-08-30. Not yet implemented on the frontend.** The requirement is `product-truth.md` §1.5; the
-decision and its rejected alternatives are **ADR-004**.
+**Agreed 2026-08-30. Typed backend and frontend stream contracts implemented by Phase 1.13.** The reference
+surface remains Phase 2.3. The requirement is `product-truth.md` §1.5; the decision and its rejected
+alternatives are **ADR-004**.
 
 The backend renders finished images from the data it reasoned over — a colourised index map with a colourbar,
 a mask over the true-colour scene, detections with boxes drawn, T1 and T2 side by side with the change mask.

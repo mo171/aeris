@@ -8,8 +8,9 @@ how   : A `Field(discriminator="type")` union rather than a base class and `isin
         one call and an unknown `type` is a validation error naming the field - which is what replay needs
         in order to fail on a journal written by a newer backend rather than silently drop the line.
 
-        **All eight analysis events.** `figure-ready` joined in 1.2.1 when `services/rendering/` gave it
-        something to carry; `layer-ready` and `claim` joined in 1.5 when `services/evidence/` did.
+        **All ten analysis events.** `figure-ready` joined in 1.2.1 when `services/rendering/` gave it
+        something to carry; `layer-ready` and `claim` joined in 1.5 when `services/evidence/` did; speech
+        and interface proposals joined in 1.13.
         `tests/contracts/test_stream_events.py` validates one of each against the frontend's schema, so
         the union grows by decision rather than by drift.
 """
@@ -27,6 +28,7 @@ from app.schemas.events.figure import (
     LegendEntry,
     RenderSpec,
 )
+from app.schemas.events.interface import UiCommandEvent
 from app.schemas.events.layer import (
     BoundingBoxGeometry,
     EvidenceFeature,
@@ -45,7 +47,8 @@ from app.schemas.events.run import (
     RunErrorEvent,
     RunStartEvent,
 )
-from app.schemas.events.trace import AnalysisTraceStep, TraceStepEvent
+from app.schemas.events.trace import AnalysisTraceStep, TraceModelRef, TraceNodeRef, TraceStepEvent
+from app.schemas.events.voice import SpeechEvent
 
 type AnalysisStreamEvent = Annotated[
     RunStartEvent
@@ -54,6 +57,8 @@ type AnalysisStreamEvent = Annotated[
     | ClaimEvent
     | AnswerTokenEvent
     | FigureReadyEvent
+    | UiCommandEvent
+    | SpeechEvent
     | RunCompleteEvent
     | RunErrorEvent,
     Field(discriminator="type"),
@@ -106,8 +111,12 @@ __all__ = [
     "RunCompleteEvent",
     "RunErrorEvent",
     "RunStartEvent",
+    "SpeechEvent",
     "StreamEvent",
+    "TraceModelRef",
+    "TraceNodeRef",
     "TraceStepEvent",
+    "UiCommandEvent",
     "parse_event",
     "serialise_event",
 ]
