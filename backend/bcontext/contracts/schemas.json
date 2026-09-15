@@ -5232,8 +5232,16 @@
             "audioUrl": {
               "anyOf": [
                 {
-                  "format": "uri",
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^\\/(?:[^/\\s]\\S*)?$",
+                      "type": "string"
+                    }
+                  ]
                 },
                 {
                   "type": "null"
@@ -5249,6 +5257,15 @@
             },
             "interruptible": {
               "type": "boolean"
+            },
+            "kind": {
+              "enum": [
+                "grounded",
+                "provisional",
+                "progress",
+                "refusal"
+              ],
+              "type": "string"
             },
             "provisional": {
               "type": "boolean"
@@ -5285,6 +5302,7 @@
             "type",
             "runId",
             "utteranceId",
+            "kind",
             "text",
             "audioUrl",
             "claimIds",
@@ -11411,8 +11429,16 @@
             "audioUrl": {
               "anyOf": [
                 {
-                  "format": "uri",
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^\\/(?:[^/\\s]\\S*)?$",
+                      "type": "string"
+                    }
+                  ]
                 },
                 {
                   "type": "null"
@@ -11428,6 +11454,15 @@
             },
             "interruptible": {
               "type": "boolean"
+            },
+            "kind": {
+              "enum": [
+                "grounded",
+                "provisional",
+                "progress",
+                "refusal"
+              ],
+              "type": "string"
             },
             "provisional": {
               "type": "boolean"
@@ -11464,6 +11499,7 @@
             "type",
             "runId",
             "utteranceId",
+            "kind",
             "text",
             "audioUrl",
             "claimIds",
@@ -13688,14 +13724,42 @@
     }
   },
   "lib/schemas/stream-events.schema.ts": {
+    "audioLocationSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "format": "uri",
+              "type": "string"
+            },
+            {
+              "pattern": "^\\/(?:[^/\\s]\\S*)?$",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "speechEventSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "audioUrl": {
           "anyOf": [
             {
-              "format": "uri",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uri",
+                  "type": "string"
+                },
+                {
+                  "pattern": "^\\/(?:[^/\\s]\\S*)?$",
+                  "type": "string"
+                }
+              ]
             },
             {
               "type": "null"
@@ -13711,6 +13775,15 @@
         },
         "interruptible": {
           "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "grounded",
+            "provisional",
+            "progress",
+            "refusal"
+          ],
+          "type": "string"
         },
         "provisional": {
           "type": "boolean"
@@ -13747,6 +13820,7 @@
         "type",
         "runId",
         "utteranceId",
+        "kind",
         "text",
         "audioUrl",
         "claimIds",
@@ -13755,6 +13829,16 @@
         "supersedesUtteranceId"
       ],
       "type": "object"
+    },
+    "speechKindSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "enum": [
+        "grounded",
+        "provisional",
+        "progress",
+        "refusal"
+      ],
+      "type": "string"
     },
     "uiCommandEventSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

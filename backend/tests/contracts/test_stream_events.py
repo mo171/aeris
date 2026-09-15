@@ -226,8 +226,9 @@ MODELLED_EVENTS = {
     AnalysisEventType.SPEECH: SpeechEvent(
         run_id=RUN_ID,
         utterance_id="utt_01J000000000000000000000",
+        kind="grounded",
         text="The validated result is available.",
-        audio_url=None,
+        audio_url="https://aeris.example/api/v1/speech/utt_01J000000000000000000000.opus",
         claim_ids=["clm_01J000000000000000000000"],
     ),
     AnalysisEventType.RUN_COMPLETE: RunCompleteEvent(
@@ -299,6 +300,7 @@ async def test_provisional_speech_is_explicit_and_can_be_superseded() -> None:
     provisional = SpeechEvent(
         run_id=RUN_ID,
         utterance_id="utt_provisional",
+        kind="provisional",
         text="Provisional: cloud may obscure it.",
         claim_ids=[],
         provisional=True,
@@ -306,7 +308,9 @@ async def test_provisional_speech_is_explicit_and_can_be_superseded() -> None:
     grounded = SpeechEvent(
         run_id=RUN_ID,
         utterance_id="utt_grounded",
+        kind="grounded",
         text="The validated result is available.",
+        audio_url="/api/v1/speech/utt_grounded.opus",
         claim_ids=["clm_01J000000000000000000000"],
         supersedes_utterance_id="utt_provisional",
     )
@@ -316,18 +320,19 @@ async def test_provisional_speech_is_explicit_and_can_be_superseded() -> None:
 
     assert provisional_payload["provisional"] is True
     assert provisional_payload["audioUrl"] is None
+    assert grounded_payload["audioUrl"] == "/api/v1/speech/utt_grounded.opus"
     assert grounded_payload["supersedesUtteranceId"] == "utt_provisional"
     validator_for(ANALYSIS_MEMBERS["speech"]).validate(provisional_payload)
     validator_for(ANALYSIS_MEMBERS["speech"]).validate(grounded_payload)
 
 
-async def test_empty_claim_ids_require_a_provisional_label() -> None:
-    with pytest.raises(ValidationError, match="provisional"):
+async def test_speech_kind_is_required() -> None:
+    with pytest.raises(ValidationError, match="kind"):
         SpeechEvent(
             run_id=RUN_ID,
-            utterance_id="utt_unlabelled",
-            text="Cloud may obscure it.",
-            claim_ids=[],
+            utterance_id="utt_untyped",
+            text="The validated result is available.",
+            claim_ids=["clm_01J000000000000000000000"],
         )
 
 
@@ -336,9 +341,82 @@ async def test_provisional_speech_cannot_claim_grounding() -> None:
         SpeechEvent(
             run_id=RUN_ID,
             utterance_id="utt_mislabelled",
+            kind="provisional",
             text="Provisional: cloud may obscure it.",
             claim_ids=["clm_01J000000000000000000000"],
             provisional=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "claim_ids", "interruptible"),
+    [
+        ("progress", [], True),
+        ("refusal", [], False),
+    ],
+)
+async def test_non_result_speech_categories_are_explicit(
+    kind: str, claim_ids: list[str], interruptible: bool
+) -> None:
+    event = SpeechEvent(
+        run_id=RUN_ID,
+        utterance_id=f"utt_{kind}",
+        kind=kind,
+        text="The current stage has no result to claim.",
+        claim_ids=claim_ids,
+        interruptible=interruptible,
+    )
+
+    payload = serialise_event(event)
+    assert payload["kind"] == kind
+    validator_for(ANALYSIS_MEMBERS["speech"]).validate(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"kind": "grounded", "claim_ids": [], "provisional": False, "interruptible": True},
+        {
+            "kind": "provisional",
+            "claim_ids": [],
+            "provisional": False,
+            "interruptible": True,
+        },
+        {"kind": "progress", "claim_ids": [], "provisional": True, "interruptible": True},
+        {
+            "kind": "refusal",
+            "claim_ids": ["clm_01J000000000000000000000"],
+            "provisional": False,
+            "interruptible": True,
+        },
+    ],
+)
+async def test_speech_category_invariants_reject_contradictory_payloads(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        SpeechEvent(
+            run_id=RUN_ID,
+            utterance_id="utt_invalid",
+            text="Invalid speech state.",
+            audio_url="/api/v1/speech/utt_invalid.opus",
+            **payload,
+        )
+
+
+@pytest.mark.parametrize(
+    "audio_url",
+    ["audio/utt.opus", "//different-origin.example/utt.opus", "ftp://aeris.example/utt.opus"],
+)
+async def test_audio_url_rejects_non_http_or_non_root_relative_locations(audio_url: str) -> None:
+    with pytest.raises(ValidationError, match="audio_url|audioUrl"):
+        SpeechEvent(
+            run_id=RUN_ID,
+            utterance_id="utt_bad_audio",
+            kind="grounded",
+            text="The validated result is available.",
+            audio_url=audio_url,
+            claim_ids=["clm_01J000000000000000000000"],
         )
 
 
@@ -487,31 +565,17 @@ async def test_an_unknown_event_type_is_rejected_rather_than_ignored() -> None:
 
 # --- Recorded run ----------------------------------------------------------------------------------------
 #
-# $ uv run pytest tests/contracts/ -q                                                2026-08-31
+# $ uv run pytest tests/contracts/test_stream_events.py -q                          2026-09-15
 #
-#   .....................................................                    [100%]
-#   53 passed in 3.62s
+#   ...................................                                      [100%]
+#   35 passed in 1.56s
 #
-# 15 of those are this file. No infrastructure - the contracts are a committed artefact (0.7) and the event
-# models are pure, so these run on a machine that has never installed Node or started a container.
+# All ten analysis event models validate against the freshly exported frontend union; both frontend unions
+# carry the same `speech` and `ui-command` shapes. The speech cases cover grounded results, provisional
+# knowledge, progress narration, explicit refusal, supersession, null/local/absolute audio locations, and
+# every category-specific rejection.
 #
-# Five of the seven analysis events are modelled; `layer-ready` and `claim` are recorded in
-# `EVENT_TYPES_NOT_YET_EMITTED` with the sub-phase that will build their payloads (1.2.1 and 1.5). Both
-# assistant-stream discriminators match too, though nothing emits them until Phase 2.
-#
-# Checked by mutation:
-#
-#   `serialise_event` without `by_alias=True`     -> 4 tests FAILED here, and all 4 in test_run_journal.py
-#   an eighth member added to AnalysisEventType   -> test_the_backend_event_names_are_the_frontend_union
-#                                                    _exactly FAILED
-#   `layer-ready` removed from EVENT_TYPES_NOT    -> test_every_analysis_event_is_modelled_or_recorded
-#   _YET_EMITTED                                     FAILED
-#   a frontend vocabulary listed that the         -> test_every_frontend_vocabulary_is_classified FAILED
-#   frontend no longer defines                       (0.7's test, still holding in 1.0)
-#
-# The `EVENT_TYPES_NOT_YET_EMITTED` one is what keeps this file honest over time. Without it, Phase 1.5 adds
-# a `claim` model, nobody adds it here, and it is never validated against the schema that will parse it.
-#
-# Worth recording about the process rather than the code: the first version of this comment listed two
-# mutations that had not actually been run. They were run afterwards and both behaved as claimed - but a
-# recorded result nobody executed is exactly the kind of evidence this file exists to replace.
+# Observed RED in this task: the pre-category model admitted missing `kind`, progress/refusal could not be
+# represented, contradictory flags and interruptible refusals passed, and the frontend rejected the
+# documented root-relative audio path. The focused suite and export-time Zod `safeParse` cases now catch
+# those failures at both runtime boundaries.

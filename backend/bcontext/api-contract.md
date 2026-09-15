@@ -173,8 +173,9 @@ plays locally; browser playback remains Phase 2.7.
   "type": "speech",
   "runId": "run_01J...",
   "utteranceId": "utt_01J...",
+  "kind": "grounded",
   "text": "Built-up area increased about eighteen percent. Fourteen hectares, mostly north-east.",
-  "audioUrl": "/api/v1/speech/utt_01J....opus",   // null while synthesis streams over the socket
+  "audioUrl": "/api/v1/speech/utt_01J....opus",   // root-relative or absolute HTTP(S); null during local streaming
   "claimIds": ["clm_01J..."],                      // what this utterance is grounded in; never empty
   "interruptible": true,
   "provisional": false,
@@ -186,12 +187,24 @@ plays locally; browser playback remains Phase 2.7.
 written answer aloud produces a screen reader: the written answer is precise, cites figures and is meant to
 be re-read, while speech must be short and must never voice a number no specialist produced.
 
-Hence `claimIds`. **An ordinary utterance with no claim behind it is not emitted** — the same evidence-first
-rule the rest of the system runs on, applied to a second surface. The only exception is an explicitly
-provisional utterance described below. Spoken numbers are rounded for the ear ("about eighteen percent")
-while the written claim keeps its declared `precision`; the underlying value is identical.
+Hence `claimIds`. The `kind` discriminator makes the truth source explicit and owns the corresponding
+grounding/interruption rules:
 
-`interruptible: false` marks a refusal or a safety statement that should finish before barge-in silences it.
+| `kind` | `claimIds` | `provisional` | interruption |
+|---|---|---|---|
+| `grounded` | one or more validated claim ids | `false` | may be interruptible |
+| `provisional` | empty | `true` | may be interruptible |
+| `progress` | may be empty; any ids present must already be validated | `false` | may be interruptible |
+| `refusal` | may be empty | `false` | **must be non-interruptible** |
+
+The boolean is retained because existing clients use it directly to mark provisional output, but it must
+agree exactly with `kind`: it is true only for `kind: "provisional"`. Spoken numbers are rounded for the ear
+("about eighteen percent") while the written claim keeps its declared `precision`; the underlying value is
+identical.
+
+`audioUrl` is null while Phase 1 streams PCM locally. When present it is either a same-origin root-relative
+path beginning with one `/`, such as the example above, or an absolute HTTP(S) URL. Protocol-relative,
+non-root-relative, and non-HTTP locations are invalid.
 
 **Barge-in cancels the utterance, not the run.** *(Corrected 2026-08-31; the earlier text here said it
 cancels both, and that was wrong — `product-truth.md` §1.3.)* Speech detected during playback stops synthesis
@@ -208,10 +221,10 @@ Three signals, three effects:
 | Abandon (explicit "stop this run") | The run stops at the next node boundary and emits `run-error` with a cancellation reason. **The only thing that uses the Phase 1.0 cancellation.** |
 
 **Provisional utterances.** A question asked mid-run that the analysis has not answered yet is answered from
-model knowledge, and that is the one case where `claimIds` is empty. It **must** then carry
-`"provisional": true`, and the client must mark it unsourced. An unlabelled empty-`claimIds` utterance is a
-contract violation, not a degraded case — it is a fluent number with nothing behind it. The grounded
-utterance that later supersedes it carries `supersedesUtteranceId`.
+model knowledge with `kind: "provisional"`, empty `claimIds`, and `"provisional": true`; the client marks it
+unsourced. Empty ids are also honest for explicitly labelled progress and refusals, which assert no result.
+An unlabelled category or a contradictory category/boolean pair is a contract violation, not a degraded
+case. The grounded utterance that later supersedes provisional speech carries `supersedesUtteranceId`.
 
 ---
 

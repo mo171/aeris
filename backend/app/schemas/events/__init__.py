@@ -48,7 +48,7 @@ from app.schemas.events.run import (
     RunStartEvent,
 )
 from app.schemas.events.trace import AnalysisTraceStep, TraceModelRef, TraceNodeRef, TraceStepEvent
-from app.schemas.events.voice import SpeechEvent
+from app.schemas.events.voice import SpeechEvent, SpeechKind
 
 type AnalysisStreamEvent = Annotated[
     RunStartEvent
@@ -112,6 +112,7 @@ __all__ = [
     "RunErrorEvent",
     "RunStartEvent",
     "SpeechEvent",
+    "SpeechKind",
     "StreamEvent",
     "TraceModelRef",
     "TraceNodeRef",
