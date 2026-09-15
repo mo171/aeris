@@ -164,6 +164,97 @@ async def test_database_password_is_masked_for_reporting(
     assert "aeris@localhost" in masked or "***" in masked
 
 
+async def test_voice_configuration_rejects_an_unsupported_input_sample_rate(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Silero and Whisper receive PCM16 at one declared rate, never a silently resampled stream."""
+    monkeypatch.setenv("VOICE_INPUT_SAMPLE_RATE_HERTZ", "44100")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_input_sample_rate_hertz" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_an_unsupported_output_sample_rate(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Playback must honour the sample rate emitted by the configured Kokoro pipeline."""
+    monkeypatch.setenv("VOICE_OUTPUT_SAMPLE_RATE_HERTZ", "48000")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_output_sample_rate_hertz" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_a_silence_window_outside_the_vad_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """A negative endpoint window would let capture run without a valid VAD policy."""
+    monkeypatch.setenv("VOICE_VAD_SILENCE_DURATION_SECONDS", "-0.1")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_vad_silence_duration_seconds" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_an_unbounded_capture_duration(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Capture is a hotkey turn, not an accidental always-listening microphone."""
+    monkeypatch.setenv("VOICE_CAPTURE_MAX_DURATION_SECONDS", "0")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_capture_max_duration_seconds" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_an_invalid_kokoro_speed(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Speech playback needs a positive, intelligible speed before synthesis starts."""
+    monkeypatch.setenv("VOICE_KOKORO_SPEED", "0")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_kokoro_speed" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_cpu_half_precision_whisper(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """CTranslate2 cannot execute Whisper's float16 compute profile on a CPU device."""
+    monkeypatch.setenv("VOICE_WHISPER_DEVICE", "cpu")
+    monkeypatch.setenv("VOICE_WHISPER_COMPUTE_TYPE", "float16")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_whisper_compute_type" in str(raised.value)
+
+
+async def test_voice_model_download_token_is_masked_in_representation(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """A private model-cache token remains a secret even when voice settings are reported."""
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "voice-model-download-token")
+
+    configured = Settings(_env_file=None)
+
+    assert "voice-model-download-token" not in repr(configured.huggingface_token)
+
+
 # --- Recorded run ----------------------------------------------------------------------------------------
 #
 # $ uv run pytest tests/unit/test_config.py -q                               2026-08-31

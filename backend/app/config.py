@@ -22,10 +22,19 @@ how   : Instantiating `Settings()` at the bottom of this file means a missing or
 from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, ValidationInfo, field_validator
 from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
+
+from app.constants.voice import (
+    SUPPORTED_VOICE_INPUT_SAMPLE_RATES_HERTZ,
+    SUPPORTED_VOICE_OUTPUT_SAMPLE_RATES_HERTZ,
+    VOICE_INPUT_SAMPLE_RATE_HERTZ,
+    VOICE_OUTPUT_SAMPLE_RATE_HERTZ,
+    VOICE_WHISPER_COMPUTE_TYPES,
+    VOICE_WHISPER_CPU_COMPUTE_TYPES,
+)
 
 # The repository's `backend/` directory, resolved statically.
 BACKEND_ROOT_DIRECTORY: Path = Path(__file__).resolve().parent.parent
@@ -195,6 +204,35 @@ class Settings(BaseSettings):
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str = "aeris"
 
+    # --- Offline voice session (Phase 1.13) ---
+
+    # A selector is either the sounddevice device index or its stable display name. `None` intentionally
+    # asks sounddevice to use its configured default; the session fails with remediation if it has none.
+    voice_input_device: int | str | None = None
+    voice_output_device: int | str | None = None
+    # These settings make the model boundary explicit in `aeris doctor`; only the formats in constants/voice
+    # are valid because accepting a host-native rate would silently change recognition or playback.
+    voice_input_sample_rate_hertz: int = VOICE_INPUT_SAMPLE_RATE_HERTZ
+    voice_output_sample_rate_hertz: int = VOICE_OUTPUT_SAMPLE_RATE_HERTZ
+    voice_whisper_model: str = Field(default="small.en", min_length=1, max_length=200)
+    voice_whisper_device: Literal["auto", "cpu", "cuda"] = "auto"
+    voice_whisper_compute_type: str = "int8"
+    voice_whisper_language: str = Field(default="en", pattern=r"^[a-z]{2,3}$")
+    # A turn is bounded so Ctrl+P cannot create an always-listening stream. Silero, not an RMS heuristic,
+    # owns the speech decision; these values only bound its endpoint policy.
+    voice_capture_max_duration_seconds: float = Field(default=30.0, ge=1.0, le=300.0)
+    voice_vad_silence_duration_seconds: float = Field(default=0.8, ge=0.1, le=5.0)
+    voice_vad_min_speech_duration_milliseconds: int = Field(default=250, ge=32, le=5_000)
+    # Kokoro remains entirely local. The voice is a stock British English voice, not an imitation profile.
+    voice_kokoro_model: str = Field(default="kokoro-v1.0", min_length=1, max_length=200)
+    voice_kokoro_voice: str = Field(default="bf_emma", min_length=1, max_length=100)
+    voice_kokoro_speed: float = Field(default=1.0, gt=0.5, le=2.0)
+    # Progress speech is an AI-authored projection of the trace, throttled independently from results.
+    voice_narration_enabled: bool = True
+    voice_narration_minimum_interval_seconds: float = Field(default=8.0, ge=1.0, le=300.0)
+    # Presentation-only proposals are bounded per scientific run; the frontend still validates each one.
+    voice_ui_command_budget_per_run: int = Field(default=6, ge=1, le=20)
+
     @field_validator("log_level", mode="before")
     @classmethod
     def normalise_log_level(cls, raw_value: object) -> object:
@@ -202,6 +240,47 @@ class Settings(BaseSettings):
         if isinstance(raw_value, str):
             return raw_value.strip().upper()
         return raw_value
+
+    @field_validator("voice_input_device", "voice_output_device", mode="before")
+    @classmethod
+    def normalise_voice_device_selector(cls, raw_value: object) -> object:
+        """Accept an optional sounddevice name or index, but never an empty selector."""
+        if isinstance(raw_value, str):
+            selector = raw_value.strip()
+            if not selector:
+                raise ValueError("voice device selector must be a device index or non-empty device name")
+            return int(selector) if selector.isdecimal() else selector
+        return raw_value
+
+    @field_validator("voice_input_sample_rate_hertz")
+    @classmethod
+    def require_supported_voice_input_sample_rate(cls, value: int) -> int:
+        """Keep input PCM at the rate Silero and Whisper consume without hidden resampling."""
+        if value not in SUPPORTED_VOICE_INPUT_SAMPLE_RATES_HERTZ:
+            raise ValueError(f"supported input sample rates: {sorted(SUPPORTED_VOICE_INPUT_SAMPLE_RATES_HERTZ)}")
+        return value
+
+    @field_validator("voice_output_sample_rate_hertz")
+    @classmethod
+    def require_supported_voice_output_sample_rate(cls, value: int) -> int:
+        """Keep output PCM at the rate emitted by the selected Kokoro pipeline."""
+        if value not in SUPPORTED_VOICE_OUTPUT_SAMPLE_RATES_HERTZ:
+            raise ValueError(f"supported output sample rates: {sorted(SUPPORTED_VOICE_OUTPUT_SAMPLE_RATES_HERTZ)}")
+        return value
+
+    @field_validator("voice_whisper_compute_type")
+    @classmethod
+    def require_supported_voice_whisper_compute_type(cls, value: str, info: ValidationInfo) -> str:
+        """Reject a CTranslate2 compute profile before a transcription turn reaches model loading."""
+        normalised = value.strip().lower()
+        if normalised not in VOICE_WHISPER_COMPUTE_TYPES:
+            raise ValueError(f"supported Whisper compute types: {sorted(VOICE_WHISPER_COMPUTE_TYPES)}")
+        if info.data.get("voice_whisper_device") == "cpu" and normalised not in VOICE_WHISPER_CPU_COMPUTE_TYPES:
+            raise ValueError(
+                "VOICE_WHISPER_COMPUTE_TYPE must be one of "
+                f"{sorted(VOICE_WHISPER_CPU_COMPUTE_TYPES)} when VOICE_WHISPER_DEVICE=cpu"
+            )
+        return normalised
 
     @property
     def database_url_without_password(self) -> str:

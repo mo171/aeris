@@ -87,6 +87,14 @@ dependencies = [
     "langchain-openai>=1.0",
     # Phase 1.12 - deterministic researcher and summary PDF exports.
     "reportlab>=4.4",
+    # Phase 1.13 - an offline terminal voice loop. All six resolve on CPython 3.14/Windows; audio drivers
+    # remain host-provisioned and are intentionally exercised by the later real-device gate.
+    "faster-whisper>=1.2.1",
+    "silero-vad>=6.2.0",
+    "kokoro>=0.9.4",
+    "sounddevice>=0.5.3",
+    "soundfile>=0.13.1",
+    "prompt-toolkit>=3.0.52",
 ]
 
 [tool.uv.sources]
