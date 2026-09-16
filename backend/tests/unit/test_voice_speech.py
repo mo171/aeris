@@ -310,6 +310,60 @@ async def test_closing_piper_stream_stops_requesting_more_generator_chunks() -> 
     assert voice.closed.is_set() is True
 
 
+async def test_cancelled_delayed_piper_next_exception_is_observed_while_generator_closes() -> None:
+    class DelayedFailureIterator:
+        def __init__(self) -> None:
+            self.next_started = threading.Event()
+            self.release = threading.Event()
+            self.closed = threading.Event()
+            self.close_calls = 0
+            self._first = True
+
+        def __iter__(self):
+            return self
+
+        def __next__(self) -> bytes:
+            if self._first:
+                self._first = False
+                return b"aa"
+            self.next_started.set()
+            self.release.wait()
+            raise RuntimeError("delayed Piper failure")
+
+        def close(self) -> None:
+            self.close_calls += 1
+            self.closed.set()
+
+    iterator = DelayedFailureIterator()
+
+    class DelayedFailureVoice:
+        def synthesize(self, text: str, **kwargs: object):
+            return iterator
+
+    synthesizer = PiperSynthesizer(voice=DelayedFailureVoice(), speaker_id=0, length_scale=1.0)
+    chunks = synthesizer.chunks("hello").__aiter__()
+    loop = asyncio.get_running_loop()
+    unhandled: list[dict[str, object]] = []
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: unhandled.append(context))
+    try:
+        assert (await chunks.__anext__()).samples == b"aa"
+        pending = asyncio.create_task(chunks.__anext__())
+        await asyncio.to_thread(iterator.next_started.wait)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+
+        iterator.release.set()
+        await asyncio.to_thread(iterator.closed.wait)
+        await asyncio.sleep(0)
+    finally:
+        loop.set_exception_handler(previous_handler)
+
+    assert iterator.close_calls >= 1
+    assert unhandled == []
+
+
 async def test_player_interrupts_only_current_utterance_and_standby_suppresses_new_speech() -> None:
     output = FakeOutput()
     player = SpeechPlayer(output_factory=lambda: output)

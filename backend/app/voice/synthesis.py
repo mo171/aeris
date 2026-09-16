@@ -209,6 +209,24 @@ class PiperSynthesizer:
             close()
 
     @staticmethod
+    def _observe_next_task(task: asyncio.Future[tuple[bool, Any]]) -> None:
+        """Retrieve a detached worker exception after cancellation.
+
+        ``chunks`` waits for Piper's worker task without propagating cancellation into it, so a cancellation
+        can close the generator on the worker thread that owns it.  Once detached, asyncio will otherwise
+        report a delayed ``next()`` failure as an unhandled task exception.  The worker's ``finally`` already
+        closes the generator, so observing this task is the only event-loop callback needed here.
+        """
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            # A task cancelled before its worker starts has no exception to surface.
+            return
+        except Exception:
+            # The synthesis boundary has already ended; the active speak task owns any user-facing error.
+            logger.debug("Detached Piper next() task failed after utterance cancellation.", exc_info=True)
+
+    @staticmethod
     def _audio_chunk(item: Any) -> AudioChunk:
         if isinstance(item, bytes):
             return AudioChunk(item)
@@ -249,7 +267,10 @@ class PiperSynthesizer:
             generator = await asyncio.to_thread(self._generator_blocking, text)
             while not stop.is_set():
                 next_task = asyncio.create_task(asyncio.to_thread(self._next_blocking, generator, stop))
-                has_value, item = await asyncio.shield(next_task)
+                # Register immediately so a detached worker exception is observed before the task is retired.
+                next_task.add_done_callback(self._observe_next_task)
+                done, _ = await asyncio.wait((next_task,), return_when=asyncio.FIRST_COMPLETED)
+                has_value, item = next(iter(done)).result()
                 next_task = None
                 if not has_value or stop.is_set():
                     return
@@ -264,11 +285,9 @@ class PiperSynthesizer:
         finally:
             stop.set()
             if generator is not None:
-                if next_task is not None and not next_task.done():
-                    # The worker owns a live generator until next() returns; its finally closes it safely.
-                    next_task.add_done_callback(lambda _: asyncio.create_task(asyncio.to_thread(self._close_blocking, generator)))
-                else:
+                if next_task is None or next_task.done():
                     await asyncio.to_thread(self._close_blocking, generator)
+                # A pending worker owns the live generator; its finally closes it safely when next() returns.
 
 
 # The plan called this interface Kokoro before the accepted Piper ruling. Keep the name import-compatible
