@@ -85,6 +85,11 @@ class AgentState(TypedDict, total=False):
     answer: str
     answer_source: str
     ui_commands: list[dict[str, Any]]
+    # Validated presentation resources exposed to the interface controller. Coordinates remain server-owned.
+    camera_targets: dict[str, dict[str, Any]]
+    report_ids: list[str]
+    # Explicitly injected only by tests/development when AI is intentionally disabled.
+    ui_command_fixture: list[dict[str, Any]]
     # the assistant stream's trace, `executionTraceStepSchema` in wire form
     trace: Annotated[list[dict[str, Any]], add]
 

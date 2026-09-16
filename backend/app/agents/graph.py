@@ -1,6 +1,7 @@
-"""The agent as a StateGraph: understand -> plan -> approve (interrupt) -> execute -> synthesise. Plans, routes, dispatches; computes nothing.
+"""The agent as a StateGraph: understand -> plan -> approve (interrupt) -> execute -> synthesise -> interface-control.
+Plans, routes, dispatches and presentation proposals; computes nothing.
 
-what  : `build_agent_graph()` and the five nodes.
+what  : `build_agent_graph()` and the six nodes.
 where : `agents/run.py` compiles it with the run checkpointer and drives it from the CLI (and, in Phase 2,
         from `/assistant/stream`); tests call the nodes and the graph both.
 how   : PDF pp.24-25: a deterministic router with constrained planning. `understand` is the 1.8 router
@@ -8,8 +9,8 @@ how   : PDF pp.24-25: a deterministic router with constrained planning. `underst
         operator's plan, prose by the model, steps by the table; `approve` pauses at a checkpoint with
         LangGraph's `interrupt()` and comes back with the steps the operator kept; `execute` dispatches
         each enabled step to its tool by the routing table; `synthesise` phrases every claim through the
-        1.7 numeral guard and asks the model, bound with the interface tools, which claim to spotlight -
-        each id checked against the run before it is emitted.
+        1.7 numeral guard; `control_interface` asks a separately scoped model call for presentation-only
+        proposals, resolving only opaque ids held by the run.
 
         Nothing here retries, streams or checkpoints by hand: the graph is compiled with the sqlite
         checkpointer, the pause is an interrupt, the resume is a `Command`. A node reads its dependencies
@@ -32,7 +33,7 @@ from app.agents.tools.analysis_tools import (
     recall_evidence_step,
     run_graph_step,
 )
-from app.agents.tools.interface_tools import INTERFACE_TOOLS, default_ui_commands, validate_ui_commands
+from app.agents.tools.interface_tools import INTERFACE_TOOLS, UI_CAPABILITIES, validate_ui_commands
 from app.config import settings
 from app.constants.intents import Intent
 from app.constants.raster import ProcessingLevel
@@ -185,16 +186,10 @@ async def synthesise(state: AgentState) -> dict[str, Any]:
 
         manager = await get_manager()
     phrased = await phrase_claims(state["request"], claims, manager=manager, model=model, template=SYNTHESIS_TEMPLATE, notes=notes)
-    claim_ids = {claim["id"] for claim in claims if claim.get("id")}
-    evidence_ids = {identifier for result in own for identifier in result.get("evidence_ids") or []}
-    layer_ids = {identifier for result in own for identifier in result.get("layer_ids") or []}
-    commands = default_ui_commands(claims, sorted(evidence_ids))
-    if model is not None and claim_ids:
-        commands = await _ask_for_ui_commands(model, state["request"], claims, evidence_ids, layer_ids) or commands
     record = chat_model_record()
-    detail = f"{len(claims)} claims phrased by {phrased.source}" + (f" - model phrasing rejected: {phrased.rejection_reason}" if phrased.rejected_phrasing else "") + f"; {len(commands)} interface commands"
+    detail = f"{len(claims)} claims phrased by {phrased.source}" + (f" - model phrasing rejected: {phrased.rejection_reason}" if phrased.rejected_phrasing else "")
     return {
-        "answer": phrased.text, "answer_source": phrased.source, "ui_commands": commands,
+        "answer": phrased.text, "answer_source": phrased.source,
         "trace": [_trace(state, "Answering", detail, state_name=TraceStepState.COMPLETED, started=started, model_id=record.version if record and phrased.source == "llm" else phrased.model_version)],
     }
 
@@ -225,19 +220,75 @@ def synthesis_facts(results: list[StepResult], steps: list[StepRecord]) -> tuple
     return facts, notes
 
 
-async def _ask_for_ui_commands(model, request: str, claims: list[dict[str, Any]], evidence_ids: set[str], layer_ids: set[str]) -> list[dict[str, Any]]:  # noqa: ANN001
-    """The model, bound with the interface tools, names what to spotlight; every id is checked."""
-    listing = "\n".join(f"- claim {claim['id']}: {claim['text'][:120]} (evidence {', '.join(claim.get('evidenceIds') or []) or 'none'})" for claim in claims if claim.get("id"))
+def _interface_resources(state: AgentState) -> str:
+    """Render only opaque ids for the controller prompt; numeric values stay behind resolvers."""
+    results = state.get("results") or []
+    request_id = state.get("request_id")
+    current = [result for result in results if not request_id or not result.get("request_id") or result.get("request_id") == request_id]
+    claims = [str(claim["id"]) for result in current for claim in result.get("claims") or [] if claim.get("id")]
+    evidence = [str(identifier) for result in current for identifier in result.get("evidence_ids") or []]
+    evidence.extend(str(identifier) for result in current for claim in result.get("claims") or [] for identifier in claim.get("evidenceIds") or claim.get("evidence_ids") or [])
+    layers = [str(identifier) for result in current for identifier in result.get("layer_ids") or result.get("layerIds") or []]
+    targets = list((state.get("camera_targets") or {}).keys()) if isinstance(state.get("camera_targets"), dict) else [str(item.get("id")) for item in state.get("camera_targets") or [] if isinstance(item, dict) and item.get("id")]
+    reports = [str(identifier) for identifier in state.get("report_ids") or []]
+    return f"claims={claims}; evidence={evidence}; layers={layers}; cameraTargetIds={targets}; completedReportIds={reports}"
+
+
+async def control_interface(state: AgentState) -> dict[str, Any]:
+    """Ask the model for safe presentation proposals after synthesis; never substitute a deterministic action."""
+    started = time.perf_counter()
+    budget = int(getattr(settings, "voice_ui_command_budget_per_run", 6))
+    try:
+        model = build_chat_model()
+    except Exception as error:  # noqa: BLE001 - provider construction is also an AI failure, with no safe fallback
+        logger.warning("interface model construction failed; no command emitted", extra={"reason": str(error)})
+        record = chat_model_record()
+        return {
+            "ui_commands": [],
+            "trace": [_trace(state, "Interface control", f"AI interface selection failed: {type(error).__name__}", state_name=TraceStepState.FAILED, started=started, model_id=record.version if record else None)],
+        }
+    fixture = state.get("ui_command_fixture")
+    if model is None:
+        if fixture is None:
+            commands: list[dict[str, Any]] = []
+            detail = "AI-disabled interface control; no fixture supplied"
+            # The established template-only agent trace ends at Answering. Keep that deliberate dev path
+            # byte-compatible while the controller remains available for explicit fixtures and AI runs.
+            trace: list[dict[str, Any]] = []
+        else:
+            commands = validate_ui_commands(list(fixture), state=state, budget=budget)
+            detail = f"AI-disabled interface-control fixture; {len(commands)} validated commands"
+            trace = [_trace(state, "Interface control", detail, state_name=TraceStepState.COMPLETED, started=started, model_id=None)]
+        return {
+            "ui_commands": commands,
+            "trace": trace,
+        }
+    capability_text = "\n".join(
+        f"- {capability.tool_name}: {capability.description}; opaque resource kind={capability.resource_kind.value}"
+        for capability in UI_CAPABILITIES
+    )
     prompt = (
-        f"The operator asked: \"{request}\"\nThese claims answer it:\n{listing}\n"
-        "Call spotlight_claim for the one claim that best answers the request, and focus_evidence for its first evidence item if it has one. Use the ids exactly."
+        f"The operator asked: {state.get('request', '')!r}\nValidated interface resources: {_interface_resources(state)}\n"
+        f"Allowed presentation capabilities:\n{capability_text}\n"
+        "Select only capabilities that help present the validated findings or progress. Use resource ids exactly "
+        "as listed. Never provide coordinates, measurements, counts, report paths or other invented values. "
+        "Every call must include a concise reason with no numerals."
     )
     try:
         reply = await model.bind_tools(INTERFACE_TOOLS).ainvoke([("system", AGENT_SYSTEM_PROMPT), ("human", prompt)])
-    except Exception as error:  # noqa: BLE001 - the deterministic commands stand
-        logger.warning("interface tool call failed; default commands used", extra={"reason": str(error)})
-        return []
-    return validate_ui_commands(list(getattr(reply, "tool_calls", []) or []), claim_ids={c["id"] for c in claims if c.get("id")}, evidence_ids=evidence_ids, layer_ids=layer_ids)
+    except Exception as error:  # noqa: BLE001 - no deterministic UI action is safe after model failure
+        logger.warning("interface tool call failed; no command emitted", extra={"reason": str(error)})
+        record = chat_model_record()
+        return {
+            "ui_commands": [],
+            "trace": [_trace(state, "Interface control", f"AI interface selection failed: {type(error).__name__}", state_name=TraceStepState.FAILED, started=started, model_id=record.version if record else None)],
+        }
+    commands = validate_ui_commands(list(getattr(reply, "tool_calls", []) or []), state=state, budget=budget)
+    record = chat_model_record()
+    return {
+        "ui_commands": commands,
+        "trace": [_trace(state, "Interface control", f"{len(commands)} validated presentation commands", state_name=TraceStepState.COMPLETED, started=started, model_id=record.version if record else None)],
+    }
 
 
 def build_agent_graph() -> StateGraph:
@@ -247,10 +298,12 @@ def build_agent_graph() -> StateGraph:
     builder.add_node("approve", approve)
     builder.add_node("execute", execute)
     builder.add_node("synthesise", synthesise)
+    builder.add_node("interface-control", control_interface)
     builder.add_edge(START, "understand")
     builder.add_edge("understand", "plan")
     builder.add_edge("plan", "approve")
     builder.add_edge("approve", "execute")
     builder.add_edge("execute", "synthesise")
-    builder.add_edge("synthesise", END)
+    builder.add_edge("synthesise", "interface-control")
+    builder.add_edge("interface-control", END)
     return builder
