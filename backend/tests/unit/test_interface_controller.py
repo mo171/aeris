@@ -84,6 +84,44 @@ def test_camera_targets_and_reports_are_taken_from_completed_step_data() -> None
     ) == []
 
 
+def test_active_report_collapses_multiple_completed_steps_to_the_latest_current_report() -> None:
+    state = controller_state()
+    state["results"] = [
+        {
+            "request_id": "run-1",
+            "state": "completed",
+            "report_id": "report-first",
+            "report_status": "completed",
+        },
+        {
+            "request_id": "other-request",
+            "state": "completed",
+            "report_id": "report-other-request",
+            "report_status": "completed",
+        },
+        {
+            "request_id": "run-1",
+            "state": "completed",
+            "report_id": "report-latest",
+            "report_status": "completed",
+        },
+    ]
+
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-first", "reason": "open the earlier report"}}], state=state
+    ) == []
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-latest", "reason": "open the latest report"}}], state=state
+    ) == [{
+        "commandId": "investigation.openReport",
+        "params": {},
+        "reason": "open the latest report",
+    }]
+    prompt_resources = graph._interface_resources(state)
+    assert "activeReportId=report-latest" in prompt_resources
+    assert "report-first" not in prompt_resources and "report-other-request" not in prompt_resources
+
+
 def test_registered_capabilities_are_agent_allowed_and_frontend_declared() -> None:
     from pathlib import Path
 

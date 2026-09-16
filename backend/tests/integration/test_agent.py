@@ -12,6 +12,7 @@ how   : Every number asserted is a number a specialist computed: 3 basketball co
         add a step, name an id the run does not hold - and for carrying every measured number exactly.
 """
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -20,15 +21,22 @@ from typing import Any
 
 import pytest
 
+from app.agents import graph as agent_graph
 from app.agents.planner import build_plan
+from app.agents.requests import InputPaths
 from app.agents.run import converse
-from app.agents.state import StepRecord
+from app.agents.state import AgentState, StepRecord
+from app.agents.tools.analysis_tools import run_graph_step
 from app.config import settings
 from app.constants.datasets import DatasetId, DatasetSplit
+from app.constants.model_ids import ModelId
+from app.constants.pipeline import GraphName
 from app.constants.raster import ProcessingLevel
+from app.constants.statuses import RunStatus
 from app.constants.vlm import NUMERAL_PATTERN
 from app.lib.llm.chat_model import build_chat_model, probe_chat_model
 from app.services.datasets.loader import split_directory
+from app.services.pipeline import runner as pipeline_runner
 
 pytestmark = pytest.mark.integration
 
@@ -147,6 +155,53 @@ async def test_a_scene_request_runs_the_graph_refuses_the_count_and_phrases_the_
     assert commands[0]["params"]["claimId"] in {c["id"] for c in water["claims"]}
     # The record on disk for the operator.
     assert _exists(str(Path(water["journal"]).parent / water["run_id"] / "provenance.json"))
+
+
+async def test_real_report_bundle_id_survives_graph_step_and_authorizes_active_report(isolated_pipeline_paths: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The report document's id is the only report handle the controller may authorize."""
+    captured: dict[str, Any] = {}
+    real_run_analysis = pipeline_runner.run_analysis
+
+    async def capture_run_analysis(request: Any, **kwargs: Any) -> Any:
+        outcome = await real_run_analysis(request, **kwargs)
+        captured["outcome"] = outcome
+        return outcome
+
+    monkeypatch.setattr(pipeline_runner, "run_analysis", capture_run_analysis)
+    step = StepRecord(
+        id="step-1", query="count the basketball courts", intent="DETECT", tool=ModelId.DOTA_DETECTOR.value,
+        graph=GraphName.SINGLE_IMAGE.value, method="rule", rule="counts an object", refusal=None, objects=["basketball court"], unknown_objects=[],
+        spectral_phrase=None, wants_count=True, wants_location=False, wants_area=False,
+    )
+    result = await run_graph_step(step, inputs=InputPaths(scene=crop_path()))
+    outcome = captured["outcome"]
+    assert outcome.status is RunStatus.COMPLETE, outcome.error
+    report_json = json.loads(await asyncio.to_thread(Path(outcome.values["report_json_path"]).read_text, encoding="utf-8"))
+    canonical_report_id = report_json["id"]
+    assert outcome.values["report_id"] == canonical_report_id
+    assert result["report_id"] == canonical_report_id and result["report_status"] == "completed"
+
+    state = AgentState(
+        request_id="request-real-report",
+        request="open the completed report",
+        results=[dict(result, request_id="request-real-report", step_id=step["id"], intent=step["intent"], query=step["query"])],
+    )
+
+    class ReportModel:
+        def bind_tools(self, tools: list[Any]) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any) -> Any:
+            return type("Reply", (), {"tool_calls": [{
+                "name": "open_report", "args": {"report_id": canonical_report_id, "reason": "open the completed report"},
+            }]})()
+
+    monkeypatch.setattr(agent_graph, "build_chat_model", lambda: ReportModel())
+    controlled = await agent_graph.control_interface(state)
+    assert controlled["ui_commands"] == [{
+        "commandId": "investigation.openReport", "params": {}, "reason": "open the completed report",
+    }]
+    assert f"activeReportId={canonical_report_id}" in agent_graph._interface_resources(state)
 
 
 async def test_evidence_is_recalled_across_requests_on_a_thread_without_a_model_run(isolated_pipeline_paths: Any, monkeypatch: pytest.MonkeyPatch) -> None:

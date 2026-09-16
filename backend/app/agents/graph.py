@@ -33,7 +33,13 @@ from app.agents.tools.analysis_tools import (
     recall_evidence_step,
     run_graph_step,
 )
-from app.agents.tools.interface_tools import INTERFACE_TOOLS, UI_CAPABILITIES, validate_ui_commands
+from app.agents.tools.interface_tools import (
+    INTERFACE_TOOLS,
+    UI_CAPABILITIES,
+    _active_report_id,
+    _current_results,
+    validate_ui_commands,
+)
 from app.config import settings
 from app.constants.intents import Intent
 from app.constants.raster import ProcessingLevel
@@ -222,9 +228,7 @@ def synthesis_facts(results: list[StepResult], steps: list[StepRecord]) -> tuple
 
 def _interface_resources(state: AgentState) -> str:
     """Render only opaque ids for the controller prompt; numeric values stay behind resolvers."""
-    results = state.get("results") or []
-    request_id = state.get("request_id")
-    current = [result for result in results if not request_id or not result.get("request_id") or result.get("request_id") == request_id]
+    current = _current_results(state)
     claims = [
         f"{claim['id']}: {claim.get('text', '')} (evidenceIds={claim.get('evidenceIds') or claim.get('evidence_ids') or []})"
         for result in current
@@ -245,17 +249,13 @@ def _interface_resources(state: AgentState) -> str:
     for result in current:
         target_sources.extend(f"{identifier} (layerId={identifier})" for identifier in (result.get("camera_targets") or {}))
     targets = target_sources
-    reports = [
-        str(result["report_id"])
-        for result in current
-        if result.get("report_id") and result.get("report_status") == "completed" and result.get("state") == "completed"
-    ]
+    active_report_id = _active_report_id(state)
     associations = [
         f"{identifier}: {resource}"
         for result in current
         for identifier, resource in (result.get("evidence_resources") or {}).items()
     ]
-    return f"claims={claims}; evidence={evidence}; evidenceAssociations={associations}; layers={layers}; cameraTargetIds={targets}; completedReportIds={reports}"
+    return f"claims={claims}; evidence={evidence}; evidenceAssociations={associations}; layers={layers}; cameraTargetIds={targets}; activeReportId={active_report_id}"
 
 
 async def control_interface(state: AgentState) -> dict[str, Any]:

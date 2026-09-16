@@ -50,10 +50,35 @@ def _mapping_items(value: Any) -> list[tuple[str, Any]]:
     return []
 
 
-def _resource_ids(state: Mapping[str, Any], kind: UiResourceKind) -> set[str]:
+def _current_results(state: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return only this request's step results, preserving execution order for UI state selection."""
     results = state.get("results") or []
     request_id = state.get("request_id")
-    current = [result for result in results if not request_id or not result.get("request_id") or result.get("request_id") == request_id]
+    if not request_id:
+        return [result for result in results if isinstance(result, Mapping)]
+    return [
+        result
+        for result in results
+        if isinstance(result, Mapping) and result.get("request_id") == request_id
+    ]
+
+
+def _active_report_id(state: Mapping[str, Any]) -> str | None:
+    """Select the latest completed report in current-request UI state, never from model prose."""
+    for result in reversed(_current_results(state)):
+        report_id = result.get("report_id")
+        if (
+            isinstance(report_id, str)
+            and report_id
+            and result.get("report_status") == "completed"
+            and result.get("state") == "completed"
+        ):
+            return report_id
+    return None
+
+
+def _resource_ids(state: Mapping[str, Any], kind: UiResourceKind) -> set[str]:
+    current = _current_results(state)
     sources: dict[UiResourceKind, set[str]] = {
         UiResourceKind.CLAIM: {str(claim["id"]) for result in current for claim in result.get("claims") or [] if claim.get("id")},
         UiResourceKind.EVIDENCE: {
@@ -77,11 +102,9 @@ def _resource_ids(state: Mapping[str, Any], kind: UiResourceKind) -> set[str]:
     for result in current:
         camera_sources.extend(_mapping_items(result.get("camera_targets")))
     sources[UiResourceKind.CAMERA_TARGET].update(identifier for identifier, target in camera_sources if isinstance(target, Mapping))
-    sources[UiResourceKind.REPORT].update(
-        str(result["report_id"])
-        for result in current
-        if result.get("report_id") and result.get("report_status") == "completed" and result.get("state") == "completed"
-    )
+    active_report_id = _active_report_id(state)
+    if active_report_id is not None:
+        sources[UiResourceKind.REPORT].add(active_report_id)
     return sources[kind]
 
 
@@ -96,7 +119,7 @@ def _camera_resolver(value: str | None, state: Mapping[str, Any]) -> dict[str, A
     if not isinstance(value, str) or value not in _resource_ids(state, UiResourceKind.CAMERA_TARGET):
         return None
     targets = dict(_mapping_items(state.get("camera_targets")))
-    for result in state.get("results") or []:
+    for result in _current_results(state):
         targets.update(dict(_mapping_items(result.get("camera_targets"))))
     target = dict(targets.get(value) or {})
     latitude, longitude = target.get("latitude"), target.get("longitude")
