@@ -61,6 +61,15 @@ class AudioChunk:
     def pcm(self) -> bytes:
         return self.samples
 
+    @property
+    def audio_int16_bytes(self) -> bytes:
+        """Piper's native field name, retained for adapters that pass chunks onward."""
+        return self.samples
+
+    @property
+    def sample_channels(self) -> int:
+        return self.channels
+
 
 class PiperSynthesizer:
     """Stream chunks from Piper's local ONNX runtime through an async generator."""
@@ -268,23 +277,25 @@ KokoroSynthesizer = PiperSynthesizer
 
 
 class SpeechPlayer:
-    """Play one utterance at a time, with cancellation scoped to the utterance rather than its run."""
+    """Play one utterance at a time from a recreatable ``output_factory``.
+
+    A stream instance is deliberately not accepted: PortAudio streams become one-shot after abort, so a
+    factory is required to make every interruption recoverable.
+    """
 
     def __init__(
         self,
         *,
-        output: Any = None,
+        output_factory: Callable[[], Any],
         sample_rate: int = VOICE_OUTPUT_SAMPLE_RATE_HERTZ,
         channels: int = VOICE_OUTPUT_CHANNELS,
         device: int | str | None = None,
-        output_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.channels = channels
         self.device = device
-        self._output = output
+        self._output: Any = None
         self._output_factory = output_factory
-        self._provided_output = output
         self._active: AuthoredSpeech | None = None
         self._interrupt_requested = False
         self._standby = False
@@ -292,41 +303,19 @@ class SpeechPlayer:
         self._output_ready: asyncio.Event | None = None
         self._write_task: asyncio.Task[None] | None = None
         self._player_closed = False
-        self._supplied_output_closed = False
         self._retiring_output: Any = None
+        self._speak_task: asyncio.Task[Any] | None = None
 
     def _open_output(self) -> Any:
         if self._player_closed:
             raise SpeechPlaybackError("Voice playback has been closed.", details={"upstream": "sounddevice"})
-        if self._supplied_output_closed and self._output_factory is None:
-            raise SpeechPlaybackError(
-                "The supplied voice output is one-shot and cannot be reopened; provide output_factory for interruption-safe playback.",
-                details={"upstream": "sounddevice", "reason": "closed supplied output"},
-            )
         if self._output is not None:
             return self._output
-        if self._output_factory is not None:
-            try:
-                self._output = self._output_factory()
-                start = getattr(self._output, "start", None)
-                if start is not None:
-                    start()
-                return self._output
-            except Exception as error:  # noqa: BLE001 - injected and production factories share this boundary
-                raise SpeechPlaybackError(
-                    "The configured voice output device could not be opened.",
-                    details={"upstream": "sounddevice", "reason": str(error)},
-                ) from error
         try:
-            import sounddevice as sd
-
-            self._output = sd.RawOutputStream(
-                samplerate=self.sample_rate,
-                channels=self.channels,
-                dtype="int16",
-                device=self.device,
-            )
-            self._output.start()
+            self._output = self._output_factory()
+            start = getattr(self._output, "start", None)
+            if start is not None:
+                start()
             return self._output
         except Exception as error:  # noqa: BLE001 - device errors are typed at the edge
             raise SpeechPlaybackError(
@@ -339,18 +328,22 @@ class SpeechPlayer:
         async with self._lock:
             if self._standby:
                 return
+            if self._player_closed:
+                raise SpeechPlaybackError("Voice playback has been closed.", details={"upstream": "sounddevice"})
+            self._speak_task = asyncio.current_task()
             self._active = utterance
             self._interrupt_requested = False
             self._output_ready = asyncio.Event()
             iterator = chunks.__aiter__()
             output: Any = None
+            failed = False
             try:
                 try:
                     output = await asyncio.to_thread(self._open_output)
                 finally:
                     self._output_ready.set()
                 async for chunk in iterator:
-                    if self._interrupt_requested and utterance.interruptible:
+                    if self._interrupt_requested and (utterance.interruptible or self._player_closed):
                         break
                     if chunk.sample_rate != self.sample_rate or chunk.channels != self.channels:
                         raise SpeechPlaybackError(
@@ -372,15 +365,22 @@ class SpeechPlayer:
                         ) from error
                     finally:
                         self._write_task = None
+            except BaseException:
+                failed = True
+                raise
             finally:
-                close_iterator = getattr(iterator, "aclose", None)
-                if close_iterator is not None:
-                    await close_iterator()
-                if self._interrupt_requested:
-                    await self._retire_output(output)
-                self._active = None
-                self._interrupt_requested = False
-                self._output_ready = None
+                try:
+                    close_iterator = getattr(iterator, "aclose", None)
+                    if close_iterator is not None:
+                        await close_iterator()
+                finally:
+                    if self._interrupt_requested or failed:
+                        await self._retire_output(output or self._output)
+                    self._active = None
+                    self._interrupt_requested = False
+                    self._output_ready = None
+                    self._write_task = None
+                    self._speak_task = None
 
     async def interrupt(self, utterance_id: str | None = None) -> None:
         """Request cancellation of the active interruptible utterance only."""
@@ -404,9 +404,7 @@ class SpeechPlayer:
             except Exception:
                 # ``speak`` owns the typed playback failure; interrupt must still complete the safe abort order.
                 pass
-        # PortAudio streams cannot be reliably written after abort. Close this exact stream before the lock
-        # permits the next utterance; production recreates it lazily and tests can inject output_factory.
-        await self._retire_output(output)
+        # ``speak`` closes its async chunk source, then retires this exact output before releasing the lock.
 
     async def _retire_output(self, output: Any) -> None:
         """Close one exact output stream and make its reopen policy explicit."""
@@ -416,13 +414,18 @@ class SpeechPlayer:
         try:
             close = getattr(output, "close", None)
             if close is not None:
-                await asyncio.to_thread(close)
-            if self._output_factory is not None or self._provided_output is None:
-                self._output = None
-                self._supplied_output_closed = False
-            else:
-                self._supplied_output_closed = True
+                try:
+                    await asyncio.to_thread(close)
+                except Exception as error:  # noqa: BLE001 - retirement is still a typed playback boundary
+                    raise SpeechPlaybackError(
+                        "The voice output device failed while closing.",
+                        details={"upstream": "sounddevice", "reason": str(error)},
+                    ) from error
+            self._output = None
         finally:
+            # A failed close must never leave a broken stream eligible for the next utterance.
+            if self._output is output:
+                self._output = None
             self._retiring_output = None
 
     async def standby(self) -> None:
@@ -437,4 +440,27 @@ class SpeechPlayer:
     async def close(self) -> None:
         """Close an opened sounddevice stream without affecting scientific run state."""
         self._player_closed = True
+        active = self._active
+        if active is not None:
+            if active.interruptible:
+                await self.interrupt(active.utterance_id)
+            else:
+                # Shutdown is a terminal lifecycle boundary, not operator barge-in; it may stop even a
+                # refusal that is intentionally non-interruptible during normal session operation.
+                self._interrupt_requested = True
+                output = self._output
+                abort = getattr(output, "abort", None)
+                if abort is not None:
+                    await asyncio.to_thread(abort)
+                if self._write_task is not None and not self._write_task.done():
+                    try:
+                        await asyncio.shield(self._write_task)
+                    except Exception:
+                        pass
+            speak_task = self._speak_task
+            if speak_task is not None and speak_task is not asyncio.current_task():
+                try:
+                    await asyncio.shield(speak_task)
+                except Exception:
+                    pass
         await self._retire_output(self._output)

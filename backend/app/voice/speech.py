@@ -58,12 +58,12 @@ _ORDINAL_VALUES.update({"hundredth": 100, "thousandth": 1_000, "millionth": 1_00
 class SpeechRequest:
     """The operator context needed to author one grounded utterance."""
 
+    run_id: str
+    utterance_id: str
     question: str = ""
-    run_id: str | None = None
     refusal: str | None = None
     supersedes_utterance_id: str | None = None
     context: Any = None
-    utterance_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,18 +71,21 @@ class AuthoredSpeech:
     """Validated model prose plus the truth metadata needed by ``SpeechEvent``."""
 
     text: str
+    run_id: str
+    utterance_id: str
     claim_ids: tuple[str, ...] = ()
     kind: SpeechKind | str = SpeechKind.GROUNDED
     interruptible: bool = True
     provisional: bool = False
     supersedes_utterance_id: str | None = None
     model_version: str | None = None
-    utterance_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", self.text.strip())
         object.__setattr__(self, "kind", SpeechKind(self.kind))
         object.__setattr__(self, "claim_ids", tuple(self.claim_ids))
+        if not self.run_id or not self.utterance_id:
+            raise ValueError("authored speech requires run_id and utterance_id")
         if not self.text:
             raise ValueError("speech text cannot be empty")
         if self.kind is SpeechKind.PROVISIONAL and self.claim_ids:
@@ -95,13 +98,11 @@ class AuthoredSpeech:
         if self.provisional != expected_provisional:
             raise ValueError("provisional must match the speech kind")
 
-    def to_event(self, *, run_id: str, audio_url: str | None = None) -> SpeechEvent:
+    def to_event(self, *, audio_url: str | None = None, supersedes_utterance_id: str | None = None) -> SpeechEvent:
         """Build the wire event using the utterance identity carried by this authored object."""
-        if not self.utterance_id:
-            raise ValueError("authored speech requires utterance_id before event serialization")
         return SpeechEvent(
             type=AnalysisEventType.SPEECH,
-            run_id=run_id,
+            run_id=self.run_id,
             utterance_id=self.utterance_id,
             kind=self.kind,
             text=self.text,
@@ -109,7 +110,7 @@ class AuthoredSpeech:
             claim_ids=list(self.claim_ids),
             interruptible=self.interruptible,
             provisional=self.provisional,
-            supersedes_utterance_id=self.supersedes_utterance_id,
+            supersedes_utterance_id=supersedes_utterance_id or self.supersedes_utterance_id,
         )
 
 
@@ -117,15 +118,25 @@ def _request(value: SpeechRequest | str | dict[str, Any]) -> SpeechRequest:
     if isinstance(value, SpeechRequest):
         return value
     if isinstance(value, str):
-        return SpeechRequest(question=value)
+        raise SpeechGenerationError(
+            "SpeechRequest requires run_id and utterance_id.",
+            details={"upstream": "voice", "reason": "missing request identity"},
+        )
     if isinstance(value, dict):
+        run_id = value.get("run_id", value.get("runId"))
+        utterance_id = value.get("utterance_id", value.get("utteranceId"))
+        if not run_id or not utterance_id:
+            raise SpeechGenerationError(
+                "SpeechRequest requires run_id and utterance_id.",
+                details={"upstream": "voice", "reason": "missing request identity"},
+            )
         return SpeechRequest(
+            run_id=str(run_id),
+            utterance_id=str(utterance_id),
             question=str(value.get("question", "")),
-            run_id=value.get("run_id", value.get("runId")),
             refusal=value.get("refusal"),
             supersedes_utterance_id=value.get("supersedes_utterance_id", value.get("supersedesUtteranceId")),
             context=value.get("context", value.get("trace", value.get("active_trace"))),
-            utterance_id=value.get("utterance_id", value.get("utteranceId")),
         )
     raise TypeError("speech request must be SpeechRequest, text, or mapping")
 
@@ -277,12 +288,13 @@ async def author_grounded_speech(
     kind = SpeechKind.REFUSAL if refusal else SpeechKind.GROUNDED
     return AuthoredSpeech(
         text=fill_placeholders(draft, facts),
+        run_id=context.run_id,
+        utterance_id=context.utterance_id,
         claim_ids=claim_ids,
         kind=kind,
         interruptible=kind is not SpeechKind.REFUSAL,
         supersedes_utterance_id=context.supersedes_utterance_id,
         model_version=version,
-        utterance_id=context.utterance_id,
     )
 
 
@@ -296,8 +308,11 @@ def _trace_fact(trace_step: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
 
-async def author_progress_speech(trace_step: Any, model: Any = None) -> AuthoredSpeech | None:
+async def author_progress_speech(
+    request: SpeechRequest | dict[str, Any], trace_step: Any, model: Any = None
+) -> AuthoredSpeech | None:
     """Author a progress update from one trace fact; an empty trace has nothing honest to say."""
+    context = _request(request)
     try:
         trace_text = _trace_fact(trace_step)
     except Exception as error:  # noqa: BLE001 - malformed active trace becomes a typed speech failure
@@ -319,7 +334,14 @@ async def author_progress_speech(trace_step: Any, model: Any = None) -> Authored
             f"The language model produced progress speech that failed the evidence guard: {reason}.",
             details={"upstream": "llm", "reason": reason},
         )
-    return AuthoredSpeech(text=draft, claim_ids=(), kind=SpeechKind.PROGRESS, model_version=version)
+    return AuthoredSpeech(
+        text=draft,
+        run_id=context.run_id,
+        utterance_id=context.utterance_id,
+        claim_ids=(),
+        kind=SpeechKind.PROGRESS,
+        model_version=version,
+    )
 
 
 async def author_provisional_speech(
@@ -351,10 +373,11 @@ async def author_provisional_speech(
         )
     return AuthoredSpeech(
         text=draft,
+        run_id=context.run_id,
+        utterance_id=context.utterance_id,
         claim_ids=(),
         kind=SpeechKind.PROVISIONAL,
         provisional=True,
         supersedes_utterance_id=context.supersedes_utterance_id,
-        utterance_id=context.utterance_id,
         model_version=version,
     )

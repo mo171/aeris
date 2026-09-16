@@ -10,6 +10,7 @@ from app.constants.voice import VOICE_OUTPUT_SAMPLE_RATE_HERTZ
 from app.voice.speech import (
     AuthoredSpeech,
     SpeechGenerationError,
+    SpeechRequest,
     author_grounded_speech,
     author_progress_speech,
     author_provisional_speech,
@@ -42,23 +43,29 @@ def claim(*, claim_id: str = "clm_1", text: str = "Built-up land covers 12.50 ha
     }
 
 
+def request(*, utterance_id: str = "utt_1", **values: object) -> SpeechRequest:
+    return SpeechRequest(run_id="run_1", utterance_id=utterance_id, **values)
+
+
 async def test_grounded_speech_fills_model_placeholders_and_keeps_claim_ids() -> None:
     model = FakeModel("The mapped area is {m1}.")
 
-    authored = await author_grounded_speech("How much built-up land?", [claim()], model)
+    authored = await author_grounded_speech(request(question="How much built-up land?"), [claim()], model)
 
     assert authored.text == "The mapped area is 12.50 ha."
     assert authored.claim_ids == ("clm_1",)
     assert authored.provisional is False
     assert authored.kind.value == "grounded"
     assert authored.model_version == "fake:voice"
+    assert authored.run_id == "run_1"
+    assert authored.utterance_id == "utt_1"
 
 
 async def test_invalid_numbers_are_retried_then_raise_typed_error_without_fallback() -> None:
     model = FakeModel("The mapped area is 99 hectares.", "Still 99 hectares.")
 
     with pytest.raises(SpeechGenerationError, match="numeral"):
-        await author_grounded_speech("How much?", [claim()], model)
+        await author_grounded_speech(request(question="How much?"), [claim()], model)
 
     assert len(model.prompts) == 2
 
@@ -68,7 +75,7 @@ async def test_refusal_must_survive_as_exact_ai_authored_text_and_is_non_interru
     model = FakeModel(f"{refusal} Please review the separate observations.")
 
     authored = await author_grounded_speech(
-        {"question": "Can they be fused?", "run_id": "run_1", "refusal": refusal}, [], model
+        request(question="Can they be fused?", refusal=refusal), [], model
     )
 
     assert authored.kind.value == "refusal"
@@ -81,7 +88,7 @@ async def test_internal_identifiers_are_not_allowed_in_spoken_prose() -> None:
     model = FakeModel("The mapped area is {m1}; claim clm_1 is ready.", "The mapped area is {m1}; claim clm_1 is ready.")
 
     with pytest.raises(SpeechGenerationError, match="identifier"):
-        await author_grounded_speech("What happened?", [claim()], model)
+        await author_grounded_speech(request(question="What happened?"), [claim()], model)
 
 
 async def test_missing_refusal_or_claim_binding_is_rejected() -> None:
@@ -89,7 +96,7 @@ async def test_missing_refusal_or_claim_binding_is_rejected() -> None:
 
     with pytest.raises(SpeechGenerationError, match="refusal"):
         await author_grounded_speech(
-            {"question": "Can they be fused?", "refusal": "The observations conflict."}, [], model
+            {"question": "Can they be fused?", "refusal": "The observations conflict.", "runId": "run_1", "utteranceId": "utt_1"}, [], model
         )
 
 
@@ -97,19 +104,28 @@ async def test_progress_speech_cannot_introduce_a_measurement() -> None:
     model = FakeModel("The registration step is complete and the evidence is being checked.")
 
     authored = await author_progress_speech(
-        {"id": "stp_1", "stageCode": "S9", "detail": "Checking registration residual"}, model
+        request(), {"id": "stp_1", "stageCode": "S9", "detail": "Checking registration residual"}, model
     )
 
     assert authored is not None
     assert authored.kind.value == "progress"
     assert authored.claim_ids == ()
     assert authored.provisional is False
+    assert authored.run_id == "run_1"
+    assert authored.utterance_id == "utt_1"
+
+
+async def test_speech_request_requires_run_and_utterance_identity() -> None:
+    with pytest.raises(TypeError):
+        SpeechRequest(question="missing identity")
+    with pytest.raises(SpeechGenerationError, match="run_id and utterance_id"):
+        await author_grounded_speech("missing identity", [claim()], FakeModel("unused"))
 
 
 async def test_progress_prompt_json_serializes_structured_active_trace() -> None:
     model = FakeModel("The evidence stage is being checked.")
 
-    await author_progress_speech({"detail": "Checking", "activeTrace": {"stage": "registration", "ready": True}}, model)
+    await author_progress_speech(request(), {"detail": "Checking", "activeTrace": {"stage": "registration", "ready": True}}, model)
 
     prompt = model.prompts[0]
     assert '"activeTrace": {"ready": true, "stage": "registration"}' in str(prompt)
@@ -120,7 +136,7 @@ async def test_provisional_speech_is_explicitly_ungrounded_and_supersedable() ->
     model = FakeModel("The run is still checking the evidence.")
 
     authored = await author_provisional_speech(
-        {"question": "What is happening?", "context": "The active analysis has not completed.", "supersedesUtteranceId": "utt_1"},
+        request(question="What is happening?", context="The active analysis has not completed.", supersedes_utterance_id="utt_1"),
         model,
     )
 
@@ -132,29 +148,29 @@ async def test_provisional_speech_is_explicitly_ungrounded_and_supersedable() ->
 
 async def test_progress_numbers_are_rejected_and_provider_failures_are_typed() -> None:
     with pytest.raises(SpeechGenerationError, match="numeral"):
-        await author_progress_speech({"detail": "Checking evidence"}, FakeModel("Step 2 is complete.", "Step 3 is complete."))
+        await author_progress_speech(request(), {"detail": "Checking evidence"}, FakeModel("Step 2 is complete.", "Step 3 is complete."))
 
     class BrokenModel:
         async def ainvoke(self, prompt: object) -> Reply:
             raise RuntimeError("provider unavailable")
 
     with pytest.raises(SpeechGenerationError, match="provider"):
-        await author_progress_speech({"detail": "Checking evidence"}, BrokenModel())
+        await author_progress_speech(request(), {"detail": "Checking evidence"}, BrokenModel())
 
 
 async def test_grounded_authored_speech_requires_claim_ids() -> None:
     with pytest.raises(ValueError, match="claim ids"):
-        AuthoredSpeech(text="A result", kind="grounded")
+        AuthoredSpeech(text="A result", run_id="run_1", utterance_id="utt_1", kind="grounded")
 
 
 async def test_authored_utterance_id_is_the_only_event_identity() -> None:
-    speech = AuthoredSpeech(text="A result", claim_ids=("clm_1",), utterance_id="utt_1")
+    speech = AuthoredSpeech(text="A result", run_id="run_1", claim_ids=("clm_1",), utterance_id="utt_1")
 
-    event = speech.to_event(run_id="run_1")
+    event = speech.to_event()
 
     assert event.utterance_id == "utt_1"
     with pytest.raises(TypeError):
-        speech.to_event(run_id="run_1", utterance_id="stale")
+        speech.to_event(utterance_id="stale")
 
 
 async def test_unresolved_or_duplicate_placeholders_are_rejected_for_every_speech_kind() -> None:
@@ -162,20 +178,20 @@ async def test_unresolved_or_duplicate_placeholders_are_rejected_for_every_speec
         model = FakeModel("The update is {m1}.", "The update is {m1}.")
         with pytest.raises(SpeechGenerationError, match="placeholder"):
             if kind == "progress":
-                await author_progress_speech({"detail": "Checking evidence"}, model)
+                await author_progress_speech(request(), {"detail": "Checking evidence"}, model)
             else:
-                await author_provisional_speech({"question": "What is happening?"}, model)
+                await author_provisional_speech(request(question="What is happening?"), model)
 
     model = FakeModel("The mapped area is {m1} {m1}.", "The mapped area is {m1} {m1}.")
     with pytest.raises(SpeechGenerationError, match="placeholder"):
-        await author_grounded_speech("How much?", [claim()], model)
+        await author_grounded_speech(request(question="How much?"), [claim()], model)
 
 
 async def test_spelled_out_cardinal_and_ordinal_numbers_are_guarded() -> None:
     model = FakeModel("The mapped area is two hectares.", "The mapped area is second hectares.")
 
     with pytest.raises(SpeechGenerationError, match="number"):
-        await author_grounded_speech("How much?", [claim()], model)
+        await author_grounded_speech(request(question="How much?"), [claim()], model)
 
 
 class FakeVoice:
@@ -296,7 +312,7 @@ async def test_closing_piper_stream_stops_requesting_more_generator_chunks() -> 
 
 async def test_player_interrupts_only_current_utterance_and_standby_suppresses_new_speech() -> None:
     output = FakeOutput()
-    player = SpeechPlayer(output=output)
+    player = SpeechPlayer(output_factory=lambda: output)
     first_started = asyncio.Event()
     release_first = asyncio.Event()
     chunks_closed = False
@@ -311,7 +327,7 @@ async def test_player_interrupts_only_current_utterance_and_standby_suppresses_n
         finally:
             chunks_closed = True
 
-    first = AuthoredSpeech(text="one", claim_ids=("clm_1",), utterance_id="one")
+    first = AuthoredSpeech(text="one", run_id="run_1", claim_ids=("clm_1",), utterance_id="one")
     task = asyncio.create_task(player.speak(first, first_chunks()))
     await asyncio.wait_for(first_started.wait(), 1)
     await player.interrupt("one")
@@ -320,37 +336,27 @@ async def test_player_interrupts_only_current_utterance_and_standby_suppresses_n
     assert chunks_closed is True
 
     await player.standby()
-    await player.speak(AuthoredSpeech(text="quiet", claim_ids=("clm_1",)), _chunks("quiet"))
+    await player.speak(AuthoredSpeech(text="quiet", run_id="run_1", utterance_id="utt_quiet", claim_ids=("clm_1",)), _chunks("quiet"))
     assert output.writes == [b"one!"]
     await player.resume()
 
 
-async def test_interrupted_one_shot_output_cannot_be_reused() -> None:
-    output = FakeOutput()
-    player = SpeechPlayer(output=output)
-    started = asyncio.Event()
-    release = asyncio.Event()
+async def test_output_failure_retires_factory_stream_and_next_utterance_recovers() -> None:
+    outputs = [FakeOutput(fail=True), FakeOutput()]
+    player = SpeechPlayer(output_factory=lambda: outputs.pop(0))
+    first = AuthoredSpeech(text="first", run_id="run_1", claim_ids=("clm_1",), utterance_id="utt_1")
 
-    async def chunks():
-        yield AudioChunk(b"aa", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
-        started.set()
-        await release.wait()
+    with pytest.raises(SpeechPlaybackError, match="speaker"):
+        await player.speak(first, _chunks("first"))
+    await player.speak(AuthoredSpeech(text="next", run_id="run_1", claim_ids=("clm_1",), utterance_id="utt_2"), _chunks("next"))
 
-    first = AuthoredSpeech(text="first", claim_ids=("clm_1",), utterance_id="utt_1")
-    task = asyncio.create_task(player.speak(first, chunks()))
-    await started.wait()
-    await player.interrupt("utt_1")
-    release.set()
-    await task
-
-    with pytest.raises(SpeechPlaybackError, match="one-shot"):
-        await player.speak(AuthoredSpeech(text="next", claim_ids=("clm_1",), utterance_id="utt_2"), _chunks("next"))
+    assert outputs == []
 
 
 async def test_interrupt_aborts_then_awaits_inflight_write_before_closing_output() -> None:
     output = BlockingOutput()
-    player = SpeechPlayer(output=output)
-    utterance = AuthoredSpeech(text="first", claim_ids=("clm_1",), utterance_id="utt_1")
+    player = SpeechPlayer(output_factory=lambda: output)
+    utterance = AuthoredSpeech(text="first", run_id="run_1", claim_ids=("clm_1",), utterance_id="utt_1")
     task = asyncio.create_task(player.speak(utterance, _chunks("first")))
     await asyncio.to_thread(output.write_started.wait)
 
@@ -363,10 +369,28 @@ async def test_interrupt_aborts_then_awaits_inflight_write_before_closing_output
     assert output.closed is True
 
 
+async def test_close_aborts_active_utterance_and_waits_for_write_cleanup() -> None:
+    output = BlockingOutput()
+    player = SpeechPlayer(output_factory=lambda: output)
+    utterance = AuthoredSpeech(text="first", run_id="run_1", claim_ids=("clm_1",), utterance_id="utt_1")
+    task = asyncio.create_task(player.speak(utterance, _chunks("first")))
+    await asyncio.to_thread(output.write_started.wait)
+
+    close_task = asyncio.create_task(player.close())
+    await asyncio.to_thread(output.abort_called.wait)
+    assert output.closed is False
+    output.release.set()
+    await close_task
+    await task
+    assert output.closed is True
+    with pytest.raises(SpeechPlaybackError, match="closed"):
+        await player.speak(utterance, _chunks("next"))
+
+
 async def test_refusal_ignores_interrupt_until_playback_finishes() -> None:
     output = FakeOutput()
-    player = SpeechPlayer(output=output)
-    refusal = AuthoredSpeech(text="refusal", kind="refusal", interruptible=False)
+    player = SpeechPlayer(output_factory=lambda: output)
+    refusal = AuthoredSpeech(text="refusal", run_id="run_1", utterance_id="utt_refusal", kind="refusal", interruptible=False)
 
     await player.speak(refusal, _chunks("refusal", "boundary"))
     await player.interrupt()
@@ -378,7 +402,7 @@ async def test_stale_interrupt_id_cannot_abort_a_new_utterance_and_abort_restart
     output_instances = [FakeOutput(), FakeOutput()]
     outputs = list(output_instances)
     player = SpeechPlayer(output_factory=lambda: outputs.pop(0))
-    first = AuthoredSpeech(text="first", claim_ids=("clm_1",), utterance_id="utt_1")
+    first = AuthoredSpeech(text="first", run_id="run_1", claim_ids=("clm_1",), utterance_id="utt_1")
     first_started = asyncio.Event()
     release_first = asyncio.Event()
 
@@ -394,7 +418,7 @@ async def test_stale_interrupt_id_cannot_abort_a_new_utterance_and_abort_restart
     release_first.set()
     await task
 
-    second = AuthoredSpeech(text="next", claim_ids=("clm_1",), utterance_id="utt_2")
+    second = AuthoredSpeech(text="next", run_id="run_1", claim_ids=("clm_1",), utterance_id="utt_2")
     await player.interrupt("utt_1")
     await player.speak(second, _chunks("next"))
 
@@ -404,10 +428,10 @@ async def test_stale_interrupt_id_cannot_abort_a_new_utterance_and_abort_restart
 
 
 async def test_output_failures_are_typed_and_do_not_become_provider_fallbacks() -> None:
-    player = SpeechPlayer(output=FakeOutput(fail=True))
+    player = SpeechPlayer(output_factory=lambda: FakeOutput(fail=True))
 
     with pytest.raises(SpeechPlaybackError, match="speaker"):
-        await player.speak(AuthoredSpeech(text="hello", claim_ids=("clm_1",)), _chunks("hello"))
+        await player.speak(AuthoredSpeech(text="hello", run_id="run_1", utterance_id="utt_1", claim_ids=("clm_1",)), _chunks("hello"))
 
 
 async def _chunks(*values: str):
