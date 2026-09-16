@@ -42,6 +42,7 @@ from app.cli import models as models_command
 from app.cli import preprocess as preprocess_command
 from app.cli import route as route_command
 from app.cli import run as run_command
+from app.cli import voice as voice_command
 from app.config import settings
 from app.constants.datasets import DatasetId, DatasetSplit
 from app.constants.intents import Intent
@@ -545,6 +546,47 @@ def agent(
     )
     if not outcome.answer:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def voice(
+    request: str = typer.Argument("", help="An initial question to start analysing. Omit for an open session."),
+    scene: Path | None = typer.Option(None, "--scene", help="A scene directory (or the later date of a pair)."),
+    before: Path | None = typer.Option(None, "--before", help="The earlier date of a scene pair, on the same grid as --scene."),
+    image: list[Path] = typer.Option([], "--image", help="One or two pictures."),
+    sar: list[bool] = typer.Option([], "--sar", help="Per image: true if it is radar."),
+    level: ProcessingLevel = typer.Option(ProcessingLevel.UNKNOWN, "--level", help="The scene's processing level."),
+    gsd: float | None = typer.Option(None, "--gsd", help="Metres per pixel."),
+    registered: bool = typer.Option(False, "--registered", help="Declare a pair co-registered."),
+    thread: str | None = typer.Option(None, "--thread", help="Continue a conversation: the agent id from a previous run."),
+) -> None:
+    """Start an interactive voice session. Press Ctrl+P to speak, Ctrl+C to exit. Phase 1.13."""
+    flags = list(sar) + [False] * (len(image) - len(sar))
+    asyncio.run(
+        _run_voice(
+            voice_command.execute_voice(
+                console=console,
+                scene=scene,
+                before=before,
+                images=list(image),
+                sar=flags[: len(image)],
+                level=None if level is ProcessingLevel.UNKNOWN else level,
+                gsd=gsd,
+                registered=registered,
+                thread=thread,
+                request=request or None,
+            )
+        )
+    )
+
+
+async def _run_voice[T](work: Coroutine[object, object, T]) -> T:
+    """Configure logging, do the voice work, and close connections."""
+    await configure_logging()
+    try:
+        return await work
+    finally:
+        await _close_connections()
 
 
 @models_app.command("evaluate")

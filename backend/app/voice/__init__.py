@@ -5,6 +5,7 @@ scientific execution remain outside this package, so a device adapter cannot acc
 """
 
 from app.voice.audio import MicrophoneCapture, SoundDeviceBlockSource
+from app.voice.session import VoiceSession
 from app.voice.speech import (
     AuthoredSpeech,
     SpeechGenerationError,
@@ -22,6 +23,7 @@ from app.voice.synthesis import (
     SpeechSynthesisError,
 )
 from app.voice.transcription import WhisperTranscriber, normalize_transcript
+from app.voice.turns import VoiceTurnAction, VoiceTurnDecision, classify_voice_turn
 from app.voice.types import CapturedTurn, Transcript, TranscriptSegment, VoiceInputError
 
 __all__ = [
@@ -45,4 +47,8 @@ __all__ = [
     "SpeechPlaybackError",
     "SpeechPlayer",
     "SpeechSynthesisError",
+    "VoiceSession",
+    "VoiceTurnAction",
+    "VoiceTurnDecision",
+    "classify_voice_turn",
 ]

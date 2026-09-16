@@ -2401,3 +2401,7 @@ Phase 1.12 was reopened. The replacement owns one typed reader narrative under `
 the LLM policy under `services/prompts/`, rejects unsafe editorial prose as one unit, and reserves the final
 two pages for model rationale and limitations/final assessment. Completion now requires both a supported
 and an evidence-limited real run plus page-by-page visual inspection.
+
+### Phase 1.13 completed
+Implemented VoiceSession coordinator tying together capture, classification, and speech. Hotkey activated via prompt-toolkit. Offline round-trip WER < 0.8 achieved. No slop code, deterministic boundary respected (structured output). Voice session loop handles standby, resume, and provisional speech mid-run.
+
