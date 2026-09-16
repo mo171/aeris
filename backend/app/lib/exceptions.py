@@ -84,6 +84,10 @@ class UpstreamUnavailableError(AerisError):
     status = 503
 
 
+class SpeechGenerationError(UpstreamUnavailableError):
+    """The configured language model could not author admissible spoken text."""
+
+
 class RunCancelledError(AerisError):
     """The operator explicitly abandoned the run.
 
