@@ -229,15 +229,21 @@ def _interface_resources(state: AgentState) -> str:
     evidence = [str(identifier) for result in current for identifier in result.get("evidence_ids") or []]
     evidence.extend(str(identifier) for result in current for claim in result.get("claims") or [] for identifier in claim.get("evidenceIds") or claim.get("evidence_ids") or [])
     layers = [str(identifier) for result in current for identifier in result.get("layer_ids") or result.get("layerIds") or []]
-    targets = list((state.get("camera_targets") or {}).keys()) if isinstance(state.get("camera_targets"), dict) else [str(item.get("id")) for item in state.get("camera_targets") or [] if isinstance(item, dict) and item.get("id")]
+    target_sources: list[str] = []
+    if isinstance(state.get("camera_targets"), dict):
+        target_sources.extend(str(identifier) for identifier in state["camera_targets"])
+    for result in current:
+        target_sources.extend(str(identifier) for identifier in (result.get("camera_targets") or {}))
+    targets = target_sources
     reports = [str(identifier) for identifier in state.get("report_ids") or []]
+    reports.extend(str(identifier) for result in current if result.get("state") in {"completed", "complete", "ready"} for identifier in result.get("report_ids") or [])
     return f"claims={claims}; evidence={evidence}; layers={layers}; cameraTargetIds={targets}; completedReportIds={reports}"
 
 
 async def control_interface(state: AgentState) -> dict[str, Any]:
     """Ask the model for safe presentation proposals after synthesis; never substitute a deterministic action."""
     started = time.perf_counter()
-    budget = int(getattr(settings, "voice_ui_command_budget_per_run", 6))
+    budget = settings.voice_ui_command_budget_per_run
     try:
         model = build_chat_model()
     except Exception as error:  # noqa: BLE001 - provider construction is also an AI failure, with no safe fallback

@@ -22,6 +22,59 @@ function register<TParams>(command: CommandDefinition<TParams>) {
 }
 
 describe("dispatchUiCommandEvent", () => {
+  it("dispatches evidence-bound interface parameters through the real validation boundary", async () => {
+    let focused = "";
+    register({
+      id: "investigation.focusEvidence",
+      title: "Focus evidence",
+      description: "Focus one validated evidence item",
+      group: "investigation",
+      paramsSchema: z.object({ evidenceId: z.string().min(1) }),
+      handler: ({ evidenceId }) => {
+        focused = evidenceId;
+      },
+    });
+    register({
+      id: "investigation.openReport",
+      title: "Open report",
+      description: "Open one completed report",
+      group: "investigation",
+      paramsSchema: z.object({ reportId: z.string().min(1) }),
+      handler: () => undefined,
+    });
+    register({
+      id: "investigation.toggleTrace",
+      title: "Toggle trace",
+      description: "Show the execution trace",
+      group: "investigation",
+      paramsSchema: z.object({}),
+      handler: () => undefined,
+    });
+
+    await expect(
+      dispatchUiCommandEvent({
+        commandId: "investigation.focusEvidence",
+        params: { evidenceId: "ev-1" },
+        reason: "Show validated evidence",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+    await expect(
+      dispatchUiCommandEvent({
+        commandId: "investigation.openReport",
+        params: { reportId: "report-1" },
+        reason: "Open the completed report",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+    await expect(
+      dispatchUiCommandEvent({
+        commandId: "investigation.toggleTrace",
+        params: {},
+        reason: "Explain the run progress",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(focused).toBe("ev-1");
+  });
+
   it("dispatches a validated agent command", async () => {
     let opacity = 0;
     register({

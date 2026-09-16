@@ -51,6 +51,10 @@ class StepResult(TypedDict, total=False):
     provenance: dict[str, Any]
     evidence_ids: list[str]
     layer_ids: list[str]
+    # Coordinates derived from validated georeferenced layer bounds; never supplied by the model.
+    camera_targets: dict[str, dict[str, Any]]
+    # A report id exists only after the pipeline has completed its report bundle.
+    report_ids: list[str]
     run_id: str | None
     journal: str | None
     figures: list[str]

@@ -6,8 +6,9 @@ import pytest
 
 from app.agents import graph
 from app.agents.state import AgentState
-from app.agents.tools.interface_tools import validate_ui_commands
+from app.agents.tools.interface_tools import UI_CAPABILITIES, validate_ui_commands
 from app.config import settings
+from app.constants.ui_commands import AGENT_UI_COMMANDS
 
 
 def controller_state() -> AgentState:
@@ -48,6 +49,41 @@ def test_known_opaque_resources_resolve_but_hallucinated_ids_and_coordinates_are
             "reason": "look there",
         },
     ]
+
+
+def test_camera_targets_and_reports_are_taken_from_completed_step_data() -> None:
+    state = controller_state()
+    state.pop("camera_targets")
+    state.pop("report_ids")
+    state["results"][0]["camera_targets"] = {"target-1": {"latitude": 19.0, "longitude": 73.0}}
+    state["results"][0]["report_ids"] = ["report-1"]
+    commands = validate_ui_commands(
+        [
+            {"name": "focus_camera_target", "args": {"camera_target_id": "target-1", "reason": "focus evidence"}},
+            {"name": "open_report", "args": {"report_id": "report-1", "reason": "open completed report"}},
+        ],
+        state=state,
+    )
+    assert commands[0]["params"] == {"latitude": 19.0, "longitude": 73.0}
+    assert commands[1]["params"] == {}
+    state["results"][0]["state"] = "failed"
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-1", "reason": "open report"}}], state=state
+    ) == []
+
+
+def test_registered_capabilities_are_agent_allowed_and_frontend_declared() -> None:
+    from pathlib import Path
+
+    frontend_root = Path(__file__).resolve().parents[3] / "frontend"
+    source = (frontend_root / "lib" / "constants" / "commands.ts").read_text(encoding="utf-8")
+    definitions = (frontend_root / "features" / "investigation" / "hooks" / "use-investigation-commands.ts").read_text(encoding="utf-8")
+    assert {capability.command_id for capability in UI_CAPABILITIES} == set(AGENT_UI_COMMANDS)
+    for capability in UI_CAPABILITIES:
+        assert capability.command_id.value in source
+    assert "paramsSchema: z.object({ evidenceId: z.string().min(1) }).optional()" in definitions
+    assert "paramsSchema: z.object({ reportId: z.string().min(1) }).optional()" in definitions
+    assert "paramsSchema: z.object({}).optional()" in definitions
 
 
 def test_interface_budget_and_reason_numeral_guard_are_enforced() -> None:

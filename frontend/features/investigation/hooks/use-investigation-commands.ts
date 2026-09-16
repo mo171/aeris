@@ -119,6 +119,18 @@ export function useInvestigationCommands({
       }
     };
 
+    /** Frames the exact evidence item selected by the evidence-bound interface controller. */
+    const focusEvidence = ({ evidenceId }: { evidenceId: string }) => {
+      const evidence = evidenceById[evidenceId];
+      if (!evidence) return;
+      stage()?.sceneLayers.setSpotlight(evidence.featureIds);
+      if (areaOfInterest) {
+        stage()?.camera.flyToBoundingBox(areaOfInterest, {
+          durationMs: INVESTIGATION_CAMERA.localFlightDurationSeconds * 1000,
+        });
+      }
+    };
+
     return [
       defineCommand({
         id: COMMAND_IDS.investigation.ask,
@@ -338,8 +350,8 @@ export function useInvestigationCommands({
         keywords: ["largest", "biggest", "most significant"],
         icon: Target,
         shortcut: ["shift", "b"],
-        paramsSchema: z.void(),
-        handler: focusStrongestEvidence,
+        paramsSchema: z.object({ evidenceId: z.string().min(1) }).optional(),
+        handler: (params) => params ? focusEvidence(params) : focusStrongestEvidence(),
       }),
 
       defineCommand({
@@ -636,7 +648,7 @@ export function useInvestigationCommands({
         keywords: ["pipeline", "provenance", "stages"],
         icon: ListTree,
         shortcut: ["shift", "t"],
-        paramsSchema: z.void(),
+        paramsSchema: z.object({}).optional(),
         handler: () => store().toggleTraceExpanded(),
       }),
 
@@ -648,7 +660,7 @@ export function useInvestigationCommands({
         group: "investigation",
         keywords: ["export", "pdf", "document"],
         icon: FileText,
-        paramsSchema: z.void(),
+        paramsSchema: z.object({ reportId: z.string().min(1) }).optional(),
         handler: () => store().setReportOpen(true),
       }),
 

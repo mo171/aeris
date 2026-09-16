@@ -28,6 +28,24 @@ from app.lib.exceptions import AerisError
 logger = logging.getLogger(__name__)
 
 
+def _camera_targets_from_layers(layers: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    """Derive focus targets from validated layer bounds; a model never supplies these coordinates."""
+    targets: dict[str, dict[str, float]] = {}
+    for layer in layers:
+        identifier = layer.get("id")
+        bounds = layer.get("bounds") or {}
+        if not identifier or not isinstance(bounds, dict):
+            continue
+        west = bounds.get("west", bounds.get("westDegrees"))
+        south = bounds.get("south", bounds.get("southDegrees"))
+        east = bounds.get("east", bounds.get("eastDegrees"))
+        north = bounds.get("north", bounds.get("northDegrees"))
+        if not all(isinstance(value, (int, float)) for value in (west, south, east, north)):
+            continue
+        targets[str(identifier)] = {"latitude": (south + north) / 2, "longitude": (west + east) / 2}
+    return targets
+
+
 async def run_graph_step(step: StepRecord, *, inputs: InputPaths) -> StepResult:
     """One plan step as one graph run: the routing table's graph, end to end, one run on disk."""
     from app.services.pipeline.runner import run_analysis
@@ -46,10 +64,12 @@ async def run_graph_step(step: StepRecord, *, inputs: InputPaths) -> StepResult:
         )
     evidence_ids = [item["id"] for item in outcome.values.get("evidence_items") or []]
     layer_ids = [layer["id"] for layer in outcome.values.get("layers") or []]
+    layers = list(outcome.values.get("layers") or [])
     return StepResult(
         state=TraceStepState.COMPLETED.value, detail=f"{len(outcome.claims)} claims from run {outcome.run_id} ({request.graph.value})",
         claims=outcome.claims, evidence_ids=evidence_ids, layer_ids=layer_ids, run_id=outcome.run_id, journal=str(outcome.journal),
         figures=[str(p) for p in outcome.figures], latency_ms=latency,
+        camera_targets=_camera_targets_from_layers(layers), report_ids=[outcome.run_id],
     )
 
 
@@ -71,6 +91,7 @@ async def recall_evidence_step(step: StepRecord, *, earlier: list[StepResult]) -
         state=TraceStepState.COMPLETED.value, detail=f"recalled {where}", claims=claims, provenance=provenance,
         evidence_ids=list(latest.get("evidence_ids") or []), layer_ids=list(latest.get("layer_ids") or []), run_id=latest.get("run_id"),
         figures=list(latest.get("figures") or []), latency_ms=0,
+        camera_targets=dict(latest.get("camera_targets") or {}), report_ids=list(latest.get("report_ids") or []),
     )
 
 

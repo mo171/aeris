@@ -73,12 +73,18 @@ def _resource_ids(state: Mapping[str, Any], kind: UiResourceKind) -> set[str]:
         },
         UiResourceKind.CAMERA_TARGET: set(), UiResourceKind.REPORT: set(), UiResourceKind.NONE: set(),
     }
-    sources[UiResourceKind.CAMERA_TARGET].update(identifier for identifier, target in _mapping_items(state.get("camera_targets")) if isinstance(target, Mapping))
+    camera_sources = list(_mapping_items(state.get("camera_targets")))
+    for result in current:
+        camera_sources.extend(_mapping_items(result.get("camera_targets")))
+    sources[UiResourceKind.CAMERA_TARGET].update(identifier for identifier, target in camera_sources if isinstance(target, Mapping))
     sources[UiResourceKind.REPORT].update(
         identifier for identifier, report in _mapping_items(state.get("reports"))
         if isinstance(report, Mapping) and report.get("status") in {"completed", "complete", "ready"}
     )
     sources[UiResourceKind.REPORT].update(str(identifier) for identifier in state.get("report_ids") or [] if identifier)
+    sources[UiResourceKind.REPORT].update(
+        str(identifier) for result in current for identifier in result.get("report_ids") or [] if identifier and result.get("state") in {"completed", "complete", "ready"}
+    )
     return sources[kind]
 
 
@@ -92,15 +98,23 @@ def _identity_resolver(parameter: str, kind: UiResourceKind) -> Resolver:
 def _camera_resolver(value: str | None, state: Mapping[str, Any]) -> dict[str, Any] | None:
     if not isinstance(value, str) or value not in _resource_ids(state, UiResourceKind.CAMERA_TARGET):
         return None
-    target = dict(dict(_mapping_items(state.get("camera_targets"))).get(value) or {})
+    targets = dict(_mapping_items(state.get("camera_targets")))
+    for result in state.get("results") or []:
+        targets.update(dict(_mapping_items(result.get("camera_targets"))))
+    target = dict(targets.get(value) or {})
     latitude, longitude = target.get("latitude"), target.get("longitude")
     altitude = target.get("altitudeMeters", target.get("altitude_meters"))
-    numbers = (latitude, longitude, altitude)
+    numbers = (latitude, longitude)
     if not all(isinstance(number, (int, float)) and math.isfinite(float(number)) for number in numbers):
         return None
-    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180 or altitude < 0:
+    if altitude is not None and (not isinstance(altitude, (int, float)) or not math.isfinite(float(altitude)) or altitude < 0):
         return None
-    return {"latitude": latitude, "longitude": longitude, "altitudeMeters": altitude}
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return None
+    params: dict[str, Any] = {"latitude": latitude, "longitude": longitude}
+    if altitude is not None:
+        params["altitudeMeters"] = altitude
+    return params
 
 
 def _empty_resolver(value: str | None, state: Mapping[str, Any]) -> dict[str, Any] | None:
