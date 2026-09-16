@@ -1,6 +1,7 @@
 """Tests for evidence-bound voice prose and the local Piper playback boundary."""
 
 import asyncio
+import threading
 from dataclasses import dataclass
 
 import pytest
@@ -13,7 +14,7 @@ from app.voice.speech import (
     author_progress_speech,
     author_provisional_speech,
 )
-from app.voice.synthesis import AudioChunk, PiperSynthesizer, SpeechPlaybackError, SpeechPlayer
+from app.voice.synthesis import AudioChunk, PiperSynthesizer, SpeechPlaybackError, SpeechPlayer, SpeechSynthesisError
 
 
 @dataclass
@@ -105,6 +106,16 @@ async def test_progress_speech_cannot_introduce_a_measurement() -> None:
     assert authored.provisional is False
 
 
+async def test_progress_prompt_json_serializes_structured_active_trace() -> None:
+    model = FakeModel("The evidence stage is being checked.")
+
+    await author_progress_speech({"detail": "Checking", "activeTrace": {"stage": "registration", "ready": True}}, model)
+
+    prompt = model.prompts[0]
+    assert '"activeTrace": {"ready": true, "stage": "registration"}' in str(prompt)
+    assert "'activeTrace'" not in str(prompt)
+
+
 async def test_provisional_speech_is_explicitly_ungrounded_and_supersedable() -> None:
     model = FakeModel("The run is still checking the evidence.")
 
@@ -134,6 +145,16 @@ async def test_progress_numbers_are_rejected_and_provider_failures_are_typed() -
 async def test_grounded_authored_speech_requires_claim_ids() -> None:
     with pytest.raises(ValueError, match="claim ids"):
         AuthoredSpeech(text="A result", kind="grounded")
+
+
+async def test_authored_utterance_id_is_the_only_event_identity() -> None:
+    speech = AuthoredSpeech(text="A result", claim_ids=("clm_1",), utterance_id="utt_1")
+
+    event = speech.to_event(run_id="run_1")
+
+    assert event.utterance_id == "utt_1"
+    with pytest.raises(TypeError):
+        speech.to_event(run_id="run_1", utterance_id="stale")
 
 
 async def test_unresolved_or_duplicate_placeholders_are_rejected_for_every_speech_kind() -> None:
@@ -173,16 +194,35 @@ class ProductionShapedAudio:
         self.channel_count = 1
 
 
+@pytest.mark.parametrize(
+    "sample_width,sample_channels,sample_rate",
+    [(4, 1, VOICE_OUTPUT_SAMPLE_RATE_HERTZ), (2, 2, VOICE_OUTPUT_SAMPLE_RATE_HERTZ), (2, 1, 16_000)],
+)
+async def test_piper_rejects_audio_outside_production_pcm_contract(
+    sample_width: int, sample_channels: int, sample_rate: int
+) -> None:
+    item = ProductionShapedAudio(b"aa", sample_rate)
+    item.sample_width = sample_width
+    item.sample_channels = sample_channels
+
+    with pytest.raises(SpeechSynthesisError, match="format"):
+        PiperSynthesizer._audio_chunk(item)
+
+
 class StreamingVoice:
     def __init__(self) -> None:
         self.started = asyncio.Event()
         self.finished = asyncio.Event()
+        self.closed = asyncio.Event()
 
     def synthesize(self, text: str, **kwargs: object):
         self.started.set()
-        yield ProductionShapedAudio(b"aa")
-        self.finished.set()
-        yield ProductionShapedAudio(b"bb")
+        try:
+            yield ProductionShapedAudio(b"aa")
+            self.finished.set()
+            yield ProductionShapedAudio(b"bb")
+        finally:
+            self.closed.set()
 
 
 class FakeOutput:
@@ -202,6 +242,22 @@ class FakeOutput:
 
     def close(self) -> None:
         self.closed = True
+
+
+class BlockingOutput(FakeOutput):
+    def __init__(self) -> None:
+        super().__init__()
+        self.write_started = threading.Event()
+        self.abort_called = threading.Event()
+        self.release = threading.Event()
+
+    def write(self, data: bytes) -> None:
+        self.write_started.set()
+        self.release.wait()
+        super().write(data)
+
+    def abort(self) -> None:
+        self.abort_called.set()
 
 
 async def test_piper_chunks_are_ordered_and_run_synthesis_off_loop() -> None:
@@ -235,29 +291,76 @@ async def test_closing_piper_stream_stops_requesting_more_generator_chunks() -> 
     await iterator.aclose()
 
     assert voice.finished.is_set() is False
+    assert voice.closed.is_set() is True
 
 
 async def test_player_interrupts_only_current_utterance_and_standby_suppresses_new_speech() -> None:
     output = FakeOutput()
     player = SpeechPlayer(output=output)
     first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    chunks_closed = False
 
     async def first_chunks():
-        yield AudioChunk(b"one!", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
-        first_started.set()
-        await asyncio.sleep(0)
-        yield AudioChunk(b"two!", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
+        nonlocal chunks_closed
+        try:
+            yield AudioChunk(b"one!", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
+            first_started.set()
+            await release_first.wait()
+            yield AudioChunk(b"two!", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
+        finally:
+            chunks_closed = True
 
     first = AuthoredSpeech(text="one", claim_ids=("clm_1",), utterance_id="one")
     task = asyncio.create_task(player.speak(first, first_chunks()))
     await asyncio.wait_for(first_started.wait(), 1)
     await player.interrupt("one")
+    release_first.set()
     await asyncio.wait_for(task, 1)
+    assert chunks_closed is True
 
     await player.standby()
     await player.speak(AuthoredSpeech(text="quiet", claim_ids=("clm_1",)), _chunks("quiet"))
     assert output.writes == [b"one!"]
     await player.resume()
+
+
+async def test_interrupted_one_shot_output_cannot_be_reused() -> None:
+    output = FakeOutput()
+    player = SpeechPlayer(output=output)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def chunks():
+        yield AudioChunk(b"aa", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
+        started.set()
+        await release.wait()
+
+    first = AuthoredSpeech(text="first", claim_ids=("clm_1",), utterance_id="utt_1")
+    task = asyncio.create_task(player.speak(first, chunks()))
+    await started.wait()
+    await player.interrupt("utt_1")
+    release.set()
+    await task
+
+    with pytest.raises(SpeechPlaybackError, match="one-shot"):
+        await player.speak(AuthoredSpeech(text="next", claim_ids=("clm_1",), utterance_id="utt_2"), _chunks("next"))
+
+
+async def test_interrupt_aborts_then_awaits_inflight_write_before_closing_output() -> None:
+    output = BlockingOutput()
+    player = SpeechPlayer(output=output)
+    utterance = AuthoredSpeech(text="first", claim_ids=("clm_1",), utterance_id="utt_1")
+    task = asyncio.create_task(player.speak(utterance, _chunks("first")))
+    await asyncio.to_thread(output.write_started.wait)
+
+    interrupt_task = asyncio.create_task(player.interrupt("utt_1"))
+    await asyncio.to_thread(output.abort_called.wait)
+    assert output.closed is False
+    output.release.set()
+    await interrupt_task
+    await task
+    assert output.closed is True
 
 
 async def test_refusal_ignores_interrupt_until_playback_finishes() -> None:

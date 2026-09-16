@@ -3,6 +3,11 @@
 Piper is intentionally loaded only at the real boundary. Unit tests inject a voice and an output object,
 while production requires the configured local ONNX model and its adjacent JSON configuration; no runtime
 download or hosted speech provider can be selected accidentally.
+
+Piper's synchronous ``next()`` runs in a Python worker thread and cannot be force-killed safely. Cancellation
+therefore aborts the output immediately, marks the utterance cancelled, drops a chunk that returns afterward,
+and closes the generator at the first safe boundary. This is a deliberate bounded library limitation; it does
+not justify a process-per-utterance subsystem.
 """
 
 import asyncio
@@ -42,13 +47,14 @@ class AudioChunk:
     samples: bytes
     sample_rate: int = VOICE_OUTPUT_SAMPLE_RATE_HERTZ
     channels: int = VOICE_OUTPUT_CHANNELS
+    sample_width: int = 2
 
     def __post_init__(self) -> None:
         if not isinstance(self.samples, bytes):
             raise TypeError("AudioChunk.samples must be PCM bytes")
         if len(self.samples) % 2:
             raise ValueError("PCM16 samples must contain an even number of bytes")
-        if self.sample_rate <= 0 or self.channels <= 0:
+        if self.sample_rate <= 0 or self.channels <= 0 or self.sample_width <= 0:
             raise ValueError("AudioChunk format must be positive")
 
     @property
@@ -150,6 +156,7 @@ class PiperSynthesizer:
                 if stop.is_set():
                     return
                 if isinstance(item, AudioChunk):
+                    self._validate_piper_format(item)
                     yield item
                     continue
                 yield self._audio_chunk(item)
@@ -173,11 +180,24 @@ class PiperSynthesizer:
         return synthesize(text, **self._piper_kwargs(synthesize))
 
     @staticmethod
-    def _next_blocking(generator: Iterable[Any]) -> tuple[bool, Any]:
+    def _next_blocking(generator: Iterable[Any], stop: threading.Event) -> tuple[bool, Any]:
         try:
             return True, next(generator)
         except StopIteration:
             return False, None
+        finally:
+            # If cancellation arrived while Piper was in its non-killable next() call, close on that same
+            # worker thread as soon as the call returns. Closing a live generator from the event loop races it.
+            if stop.is_set():
+                close = getattr(generator, "close", None)
+                if close is not None:
+                    close()
+
+    @staticmethod
+    def _close_blocking(generator: Iterable[Any]) -> None:
+        close = getattr(generator, "close", None)
+        if close is not None:
+            close()
 
     @staticmethod
     def _audio_chunk(item: Any) -> AudioChunk:
@@ -187,10 +207,26 @@ class PiperSynthesizer:
         if samples is None and hasattr(item, "tobytes"):
             samples = item.tobytes()
         rate = int(getattr(item, "sample_rate", VOICE_OUTPUT_SAMPLE_RATE_HERTZ))
-        channels = int(getattr(item, "channels", getattr(item, "channel_count", VOICE_OUTPUT_CHANNELS)))
+        channels = int(getattr(item, "sample_channels", getattr(item, "channels", getattr(item, "channel_count", VOICE_OUTPUT_CHANNELS))))
+        sample_width = int(getattr(item, "sample_width", 2))
         if not isinstance(samples, bytes):
             raise TypeError("Piper yielded a non-byte audio chunk")
-        return AudioChunk(samples, rate, channels)
+        chunk = AudioChunk(samples, rate, channels, sample_width)
+        PiperSynthesizer._validate_piper_format(chunk)
+        return chunk
+
+    @staticmethod
+    def _validate_piper_format(chunk: AudioChunk) -> None:
+        if chunk.sample_rate != VOICE_OUTPUT_SAMPLE_RATE_HERTZ or chunk.channels != VOICE_OUTPUT_CHANNELS or chunk.sample_width != 2:
+            raise SpeechSynthesisError(
+                "Piper emitted audio outside the configured mono PCM16 format.",
+                details={
+                    "upstream": "piper",
+                    "sampleRate": chunk.sample_rate,
+                    "sampleChannels": chunk.channels,
+                    "sampleWidth": chunk.sample_width,
+                },
+            )
 
     async def chunks(self, utterance: AuthoredSpeech | str) -> AsyncIterator[AudioChunk]:
         """Generate all model chunks off the event loop, yielding them in Piper order."""
@@ -198,10 +234,14 @@ class PiperSynthesizer:
         if not text:
             raise SpeechSynthesisError("Cannot synthesize empty speech.", details={"upstream": "piper"})
         stop = threading.Event()
+        generator: Iterable[Any] | None = None
+        next_task: asyncio.Task[tuple[bool, Any]] | None = None
         try:
             generator = await asyncio.to_thread(self._generator_blocking, text)
             while not stop.is_set():
-                has_value, item = await asyncio.to_thread(self._next_blocking, generator)
+                next_task = asyncio.create_task(asyncio.to_thread(self._next_blocking, generator, stop))
+                has_value, item = await asyncio.shield(next_task)
+                next_task = None
                 if not has_value or stop.is_set():
                     return
                 yield self._audio_chunk(item)
@@ -214,6 +254,12 @@ class PiperSynthesizer:
             ) from error
         finally:
             stop.set()
+            if generator is not None:
+                if next_task is not None and not next_task.done():
+                    # The worker owns a live generator until next() returns; its finally closes it safely.
+                    next_task.add_done_callback(lambda _: asyncio.create_task(asyncio.to_thread(self._close_blocking, generator)))
+                else:
+                    await asyncio.to_thread(self._close_blocking, generator)
 
 
 # The plan called this interface Kokoro before the accepted Piper ruling. Keep the name import-compatible
@@ -244,8 +290,19 @@ class SpeechPlayer:
         self._standby = False
         self._lock = asyncio.Lock()
         self._output_ready: asyncio.Event | None = None
+        self._write_task: asyncio.Task[None] | None = None
+        self._player_closed = False
+        self._supplied_output_closed = False
+        self._retiring_output: Any = None
 
     def _open_output(self) -> Any:
+        if self._player_closed:
+            raise SpeechPlaybackError("Voice playback has been closed.", details={"upstream": "sounddevice"})
+        if self._supplied_output_closed and self._output_factory is None:
+            raise SpeechPlaybackError(
+                "The supplied voice output is one-shot and cannot be reopened; provide output_factory for interruption-safe playback.",
+                details={"upstream": "sounddevice", "reason": "closed supplied output"},
+            )
         if self._output is not None:
             return self._output
         if self._output_factory is not None:
@@ -285,12 +342,14 @@ class SpeechPlayer:
             self._active = utterance
             self._interrupt_requested = False
             self._output_ready = asyncio.Event()
+            iterator = chunks.__aiter__()
+            output: Any = None
             try:
                 try:
                     output = await asyncio.to_thread(self._open_output)
                 finally:
                     self._output_ready.set()
-                async for chunk in chunks:
+                async for chunk in iterator:
                     if self._interrupt_requested and utterance.interruptible:
                         break
                     if chunk.sample_rate != self.sample_rate or chunk.channels != self.channels:
@@ -298,14 +357,27 @@ class SpeechPlayer:
                             "Piper audio format does not match the configured output device.",
                             details={"upstream": "sounddevice", "sampleRate": chunk.sample_rate, "channels": chunk.channels},
                         )
+                    if chunk.sample_width != 2:
+                        raise SpeechPlaybackError(
+                            "Voice audio is not 16-bit PCM.",
+                            details={"upstream": "sounddevice", "sampleWidth": chunk.sample_width},
+                        )
+                    self._write_task = asyncio.create_task(asyncio.to_thread(output.write, chunk.samples))
                     try:
-                        await asyncio.to_thread(output.write, chunk.samples)
+                        await self._write_task
                     except Exception as error:  # noqa: BLE001 - output failures are typed per utterance
                         raise SpeechPlaybackError(
                             "The speaker output device failed while playing an utterance.",
                             details={"upstream": "sounddevice", "reason": str(error)},
                         ) from error
+                    finally:
+                        self._write_task = None
             finally:
+                close_iterator = getattr(iterator, "aclose", None)
+                if close_iterator is not None:
+                    await close_iterator()
+                if self._interrupt_requested:
+                    await self._retire_output(output)
                 self._active = None
                 self._interrupt_requested = False
                 self._output_ready = None
@@ -325,14 +397,33 @@ class SpeechPlayer:
         abort = getattr(output, "abort", None)
         if abort is not None:
             await asyncio.to_thread(abort)
+        write_task = self._write_task
+        if write_task is not None and not write_task.done():
+            try:
+                await asyncio.shield(write_task)
+            except Exception:
+                # ``speak`` owns the typed playback failure; interrupt must still complete the safe abort order.
+                pass
         # PortAudio streams cannot be reliably written after abort. Close this exact stream before the lock
         # permits the next utterance; production recreates it lazily and tests can inject output_factory.
-        if self._active is active and self._output is output:
+        await self._retire_output(output)
+
+    async def _retire_output(self, output: Any) -> None:
+        """Close one exact output stream and make its reopen policy explicit."""
+        if output is None or self._output is not output or self._retiring_output is output:
+            return
+        self._retiring_output = output
+        try:
             close = getattr(output, "close", None)
             if close is not None:
                 await asyncio.to_thread(close)
             if self._output_factory is not None or self._provided_output is None:
                 self._output = None
+                self._supplied_output_closed = False
+            else:
+                self._supplied_output_closed = True
+        finally:
+            self._retiring_output = None
 
     async def standby(self) -> None:
         """Suppress future speech and interrupt the current interruptible utterance."""
@@ -345,9 +436,5 @@ class SpeechPlayer:
 
     async def close(self) -> None:
         """Close an opened sounddevice stream without affecting scientific run state."""
-        if self._output is None:
-            return
-        close = getattr(self._output, "close", None)
-        if close is not None:
-            await asyncio.to_thread(close)
-        self._output = None
+        self._player_closed = True
+        await self._retire_output(self._output)

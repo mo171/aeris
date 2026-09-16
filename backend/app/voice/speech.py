@@ -62,7 +62,8 @@ class SpeechRequest:
     run_id: str | None = None
     refusal: str | None = None
     supersedes_utterance_id: str | None = None
-    context: str | None = None
+    context: Any = None
+    utterance_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,12 +95,14 @@ class AuthoredSpeech:
         if self.provisional != expected_provisional:
             raise ValueError("provisional must match the speech kind")
 
-    def to_event(self, *, run_id: str, utterance_id: str, audio_url: str | None = None) -> SpeechEvent:
-        """Build the wire event only after an utterance identity has been assigned."""
+    def to_event(self, *, run_id: str, audio_url: str | None = None) -> SpeechEvent:
+        """Build the wire event using the utterance identity carried by this authored object."""
+        if not self.utterance_id:
+            raise ValueError("authored speech requires utterance_id before event serialization")
         return SpeechEvent(
             type=AnalysisEventType.SPEECH,
             run_id=run_id,
-            utterance_id=utterance_id,
+            utterance_id=self.utterance_id,
             kind=self.kind,
             text=self.text,
             audio_url=audio_url,
@@ -122,8 +125,24 @@ def _request(value: SpeechRequest | str | dict[str, Any]) -> SpeechRequest:
             refusal=value.get("refusal"),
             supersedes_utterance_id=value.get("supersedes_utterance_id", value.get("supersedesUtteranceId")),
             context=value.get("context", value.get("trace", value.get("active_trace"))),
+            utterance_id=value.get("utterance_id", value.get("utteranceId")),
         )
     raise TypeError("speech request must be SpeechRequest, text, or mapping")
+
+
+def _context_text(value: Any) -> str:
+    """Keep structured trace context JSON-shaped in the model prompt rather than Python repr prose."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    except (TypeError, ValueError) as error:
+        raise SpeechGenerationError(
+            "The active voice context could not be serialized.",
+            details={"upstream": "voice", "reason": str(error)},
+        ) from error
 
 
 def _content(reply: Any) -> str:
@@ -234,10 +253,16 @@ async def author_grounded_speech(
             "Grounded speech requires validated claim ids or a typed refusal.",
             details={"upstream": "evidence", "reason": "missing claim binding"},
         )
-    facts = facts_from_claims(valid_claims)
-    facts_text = "\n".join(f"{index}. {fact.statement}" for index, fact in enumerate(facts, 1)) or "(typed refusal only)"
-    refusal_rule = f"Preserve this refusal exactly in the spoken answer: {refusal}" if refusal else ""
-    prompt = VOICE_GROUNDED_PROMPT.format(question=context.question, facts=facts_text, refusal_rule=refusal_rule)
+    try:
+        facts = facts_from_claims(valid_claims)
+        facts_text = "\n".join(f"{index}. {fact.statement}" for index, fact in enumerate(facts, 1)) or "(typed refusal only)"
+        refusal_rule = f"Preserve this refusal exactly in the spoken answer: {refusal}" if refusal else ""
+        prompt = VOICE_GROUNDED_PROMPT.format(question=context.question, facts=facts_text, refusal_rule=refusal_rule)
+    except Exception as error:  # noqa: BLE001 - malformed evidence cannot escape as an untyped authoring error
+        raise SpeechGenerationError(
+            "Validated evidence could not be prepared for speech authoring.",
+            details={"upstream": "evidence", "reason": str(error)},
+        ) from error
     model = await _model_or_raise(model)
     draft, version = await _invoke(model, prompt)
     reason = _grounding_reason(draft, facts, refusal)
@@ -257,6 +282,7 @@ async def author_grounded_speech(
         interruptible=kind is not SpeechKind.REFUSAL,
         supersedes_utterance_id=context.supersedes_utterance_id,
         model_version=version,
+        utterance_id=context.utterance_id,
     )
 
 
@@ -272,7 +298,13 @@ def _trace_fact(trace_step: Any) -> str:
 
 async def author_progress_speech(trace_step: Any, model: Any = None) -> AuthoredSpeech | None:
     """Author a progress update from one trace fact; an empty trace has nothing honest to say."""
-    trace_text = _trace_fact(trace_step)
+    try:
+        trace_text = _trace_fact(trace_step)
+    except Exception as error:  # noqa: BLE001 - malformed active trace becomes a typed speech failure
+        raise SpeechGenerationError(
+            "The active trace could not be prepared for speech authoring.",
+            details={"upstream": "trace", "reason": str(error)},
+        ) from error
     if trace_text in {"{}", "null"}:
         return None
     prompt = VOICE_PROGRESS_PROMPT.format(trace_fact=trace_text)
@@ -295,7 +327,7 @@ async def author_provisional_speech(
 ) -> AuthoredSpeech:
     """Author a clearly labelled in-flight response with no claim binding or invented numerals."""
     context = _request(request)
-    operator_context = " ".join(part for part in (context.question, context.context or "") if part).strip()
+    operator_context = " ".join(part for part in (context.question, _context_text(context.context)) if part).strip()
     if not operator_context:
         raise SpeechGenerationError(
             "Provisional speech requires operator context.",
@@ -323,5 +355,6 @@ async def author_provisional_speech(
         kind=SpeechKind.PROVISIONAL,
         provisional=True,
         supersedes_utterance_id=context.supersedes_utterance_id,
+        utterance_id=context.utterance_id,
         model_version=version,
     )
