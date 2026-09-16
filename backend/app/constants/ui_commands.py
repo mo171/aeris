@@ -34,7 +34,6 @@ class UiCommand(StrEnum):
     IMAGERY_CLEAR_SELECTION = "imagery.clearSelection"
     IMAGERY_SEARCH = "imagery.search"
     MISSIONS_OPEN = "missions.open"
-    MISSIONS_CREATE = "missions.create"
     INVESTIGATION_CREATE = "investigation.create"
     INVESTIGATION_OPEN = "investigation.open"
     INVESTIGATION_ASK = "investigation.ask"
@@ -74,16 +73,6 @@ class UiCommand(StrEnum):
     INVESTIGATION_SAVE_AS_MISSION = "investigation.saveAsMission"
     INVESTIGATION_SAVE_CAMERA_VIEW = "investigation.saveCameraView"
     INVESTIGATION_RESET_VIEW = "investigation.resetView"
-    INVESTIGATION_TOGGLE_CANVAS = "investigation.toggleCanvas"
-    INVESTIGATION_SELECT_NODE = "investigation.selectNode"
-    INVESTIGATION_RERUN_STEP = "investigation.rerunStep"
-    INVESTIGATION_SAVE_VERSION = "investigation.saveVersion"
-    INVESTIGATION_COMPARE_VERSIONS = "investigation.compareVersions"
-    INVESTIGATION_RESTORE_VERSION = "investigation.restoreVersion"
-    INVESTIGATION_FOCUS_NODE = "investigation.focusNode"
-    INVESTIGATION_MOVE_TO_PROJECT = "investigation.moveToProject"
-    PROJECTS_OPEN = "projects.open"
-    PROJECTS_CREATE = "projects.create"
     ASSISTANT_ASK = "assistant.ask"
     ASSISTANT_CLEAR = "assistant.clear"
     ASSISTANT_STOP = "assistant.stop"
@@ -96,7 +85,4 @@ AGENT_UI_COMMANDS: Final[dict[UiCommand, str]] = {
     UiCommand.INVESTIGATION_FOCUS_EVIDENCE: "evidenceId",
     UiCommand.INVESTIGATION_TOGGLE_LAYER: "layerId",
     UiCommand.INVESTIGATION_TOGGLE_TRACE: "",
-    # The model receives these opaque handles; resolvers compose the frontend's actual params.
-    UiCommand.GLOBE_FLY_TO: "cameraTargetId",
-    UiCommand.INVESTIGATION_OPEN_REPORT: "reportId",
 }
