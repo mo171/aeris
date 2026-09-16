@@ -6,6 +6,23 @@ from datetime import datetime
 from app.constants.voice import VOICE_INPUT_SAMPLE_RATE_HERTZ
 
 
+class VoiceInputError(RuntimeError):
+    """Actionable input-device failure with the inventory seen at the time of failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        operation: str,
+        devices: tuple[str, ...] = (),
+        remediation: str,
+    ) -> None:
+        self.operation = operation
+        self.devices = devices
+        self.remediation = remediation
+        super().__init__(f"{message} ({operation}). {remediation}")
+
+
 @dataclass(frozen=True, slots=True)
 class CapturedTurn:
     """The PCM16 waveform for one explicitly activated microphone turn."""

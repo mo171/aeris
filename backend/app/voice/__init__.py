@@ -6,7 +6,7 @@ and playback belong to the later voice-loop stages, so an input adapter cannot a
 
 from app.voice.audio import MicrophoneCapture, SoundDeviceBlockSource
 from app.voice.transcription import WhisperTranscriber, normalize_transcript
-from app.voice.types import CapturedTurn, Transcript, TranscriptSegment
+from app.voice.types import CapturedTurn, Transcript, TranscriptSegment, VoiceInputError
 
 __all__ = [
     "CapturedTurn",
@@ -14,6 +14,7 @@ __all__ = [
     "SoundDeviceBlockSource",
     "Transcript",
     "TranscriptSegment",
+    "VoiceInputError",
     "WhisperTranscriber",
     "normalize_transcript",
 ]

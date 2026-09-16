@@ -12,13 +12,14 @@ from typing import Any
 
 import numpy as np
 
-from app.constants.voice import VOICE_INPUT_SAMPLE_RATE_HERTZ
-from app.voice.types import CapturedTurn
+from app.constants.voice import VOICE_INPUT_SAMPLE_RATE_HERTZ, VOICE_VAD_WINDOW_SAMPLES
+from app.voice.types import CapturedTurn, VoiceInputError
 
 PcmBlock = bytes | bytearray | memoryview | np.ndarray
 BlockSource = AsyncIterator[PcmBlock]
 BlockSourceFactory = Callable[[], BlockSource]
 VadFactory = Callable[[], Any]
+_STOP_REQUESTED = object()
 
 
 class SoundDeviceBlockSource:
@@ -28,13 +29,14 @@ class SoundDeviceBlockSource:
         self,
         *,
         sample_rate: int = VOICE_INPUT_SAMPLE_RATE_HERTZ,
-        block_size: int = 512,
+        block_size: int = VOICE_VAD_WINDOW_SAMPLES,
         device: int | str | None = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.block_size = block_size
         self.device = device
         self._stream: Any = None
+        self._read_task: asyncio.Task[Any] | None = None
 
     def __aiter__(self) -> SoundDeviceBlockSource:
         return self
@@ -42,33 +44,70 @@ class SoundDeviceBlockSource:
     async def __anext__(self) -> bytes:
         if self._stream is None:
             await self._open()
+        read_task = asyncio.create_task(asyncio.to_thread(self._stream.read, self.block_size))
+        self._read_task = read_task
         try:
-            data, _overflowed = await asyncio.to_thread(self._stream.read, self.block_size)
+            data, _overflowed = await asyncio.shield(read_task)
+        except asyncio.CancelledError:
+            # Cancellation cannot close PortAudio while its worker is still inside read(). Abort first,
+            # await the worker, and let capture's finally block perform the subsequent close.
+            await self._abort_read()
+            raise
         except (StopAsyncIteration, EOFError) as error:
-            await self.aclose()
+            await self._abort_read()
             raise StopAsyncIteration from error
+        except Exception as error:
+            await self._abort_read()
+            raise await self._input_error("read", error) from error
+        finally:
+            if self._read_task is read_task:
+                self._read_task = None
         return bytes(data)
 
     async def _open(self) -> None:
         """Construct and start the blocking PortAudio stream outside asyncio's event loop."""
-        import sounddevice
+        try:
+            import sounddevice
 
-        self._stream = await asyncio.to_thread(
-            sounddevice.RawInputStream,
-            samplerate=self.sample_rate,
-            blocksize=self.block_size,
-            channels=1,
-            dtype="int16",
-            device=self.device,
-        )
+            self._stream = await asyncio.to_thread(
+                sounddevice.RawInputStream,
+                samplerate=self.sample_rate,
+                blocksize=self.block_size,
+                channels=1,
+                dtype="int16",
+                device=self.device,
+            )
+        except Exception as error:
+            raise await self._input_error("open", error) from error
         try:
             await asyncio.to_thread(self._stream.start)
-        except Exception:
+        except Exception as error:
             await self.aclose()
-            raise
+            raise await self._input_error("start", error) from error
+
+    async def _abort_read(self) -> None:
+        read_task = self._read_task
+        stream = self._stream
+        if read_task is None or read_task.done() or stream is None:
+            if read_task is not None:
+                try:
+                    await asyncio.shield(read_task)
+                except Exception:
+                    pass
+            return
+        abort = getattr(stream, "abort", None) or getattr(stream, "stop", None)
+        if abort is not None:
+            await asyncio.to_thread(abort)
+        try:
+            await asyncio.shield(read_task)
+        except (StopAsyncIteration, EOFError, asyncio.CancelledError):
+            pass
+        except Exception:
+            pass
 
     async def aclose(self) -> None:
         """Stop and close the stream, even when capture ends at an endpoint."""
+        await self._abort_read()
         stream, self._stream = self._stream, None
         if stream is None:
             return
@@ -76,6 +115,26 @@ class SoundDeviceBlockSource:
             await asyncio.to_thread(stream.stop)
         finally:
             await asyncio.to_thread(stream.close)
+
+    async def _input_error(self, operation: str, cause: BaseException) -> VoiceInputError:
+        try:
+            import sounddevice
+
+            inventory = await asyncio.to_thread(sounddevice.query_devices)
+            devices = tuple(
+                str(item.get("name", item)) if isinstance(item, dict) else str(item) for item in inventory
+            )
+        except Exception:
+            devices = ()
+        return VoiceInputError(
+            str(cause) or type(cause).__name__,
+            operation=operation,
+            devices=devices,
+            remediation=(
+                "Connect an input microphone and set VOICE_INPUT_DEVICE to one of the listed device names "
+                "or indices, then retry"
+            ),
+        )
 
 
 class MicrophoneCapture:
@@ -87,7 +146,7 @@ class MicrophoneCapture:
         block_source: BlockSourceFactory | BlockSource | None = None,
         vad_factory: VadFactory | None = None,
         sample_rate: int = VOICE_INPUT_SAMPLE_RATE_HERTZ,
-        block_size: int = 512,
+        block_size: int = VOICE_VAD_WINDOW_SAMPLES,
         device: int | str | None = None,
         vad_threshold: float = 0.5,
         silence_duration_seconds: float | None = None,
@@ -95,23 +154,24 @@ class MicrophoneCapture:
         max_duration_seconds: float | None = None,
         settings: Any | None = None,
     ) -> None:
+        self._settings = settings
         if silence_duration_seconds is None or min_speech_duration_milliseconds is None or max_duration_seconds is None:
-            if settings is None:
+            if self._settings is None:
                 from app.config import settings as app_settings
 
-                settings = app_settings
+                self._settings = app_settings
             silence_duration_seconds = (
-                settings.voice_vad_silence_duration_seconds
+                self._settings.voice_vad_silence_duration_seconds
                 if silence_duration_seconds is None
                 else silence_duration_seconds
             )
             min_speech_duration_milliseconds = (
-                settings.voice_vad_min_speech_duration_milliseconds
+                self._settings.voice_vad_min_speech_duration_milliseconds
                 if min_speech_duration_milliseconds is None
                 else min_speech_duration_milliseconds
             )
             max_duration_seconds = (
-                settings.voice_capture_max_duration_seconds
+                self._settings.voice_capture_max_duration_seconds
                 if max_duration_seconds is None
                 else max_duration_seconds
             )
@@ -132,7 +192,8 @@ class MicrophoneCapture:
             raise ValueError("max_duration_seconds must be positive")
         self.sample_rate = sample_rate
         self.block_size = block_size
-        self.device = device
+        configured_device = getattr(self._settings, "voice_input_device", None)
+        self.device = configured_device if device is None else device
         self.vad_threshold = vad_threshold
         self.silence_duration_seconds = silence_duration_seconds
         self.min_speech_duration_milliseconds = min_speech_duration_milliseconds
@@ -154,12 +215,18 @@ class MicrophoneCapture:
             started_at = datetime.now(UTC)
             max_samples = max(1, round(self.max_duration_seconds * self.sample_rate))
             captured = bytearray()
+            pending_vad = bytearray()
             collected_samples = 0
+            vad_samples = 0
             speech_start: int | None = None
             endpoint_end: int | None = None
             try:
-                async for raw_block in source:
-                    if stop_requested.is_set():
+                while not stop_requested.is_set():
+                    try:
+                        raw_block = await _next_block_or_stop(source, stop_requested)
+                    except StopAsyncIteration:
+                        break
+                    if raw_block is _STOP_REQUESTED:
                         break
                     block = _as_pcm16_bytes(raw_block)
                     remaining = max_samples - collected_samples
@@ -168,26 +235,29 @@ class MicrophoneCapture:
                     block = block[: remaining * 2]
                     if not block:
                         continue
-                    block_start = collected_samples
                     captured.extend(block)
-                    block_samples = len(block) // 2
-                    collected_samples += block_samples
-                    event = await asyncio.to_thread(vad, _as_vad_samples(block))
-                    if event is None:
-                        continue
-                    if not isinstance(event, dict):
-                        raise TypeError("Silero VAD iterator must return a start/end event or None")
-                    if "start" in event and speech_start is None:
-                        speech_start = _event_sample(event["start"], block_start, collected_samples)
-                    if "end" in event and speech_start is not None:
-                        candidate_end = _event_sample(event["end"], block_start, collected_samples)
-                        if candidate_end - speech_start >= round(
-                            self.min_speech_duration_milliseconds * self.sample_rate / 1000
-                        ):
-                            endpoint_end = candidate_end
-                            break
-                        speech_start = None
-                    if collected_samples >= max_samples:
+                    collected_samples += len(block) // 2
+                    pending_vad.extend(block)
+                    while len(pending_vad) >= VOICE_VAD_WINDOW_SAMPLES * 2:
+                        vad_block = bytes(pending_vad[: VOICE_VAD_WINDOW_SAMPLES * 2])
+                        del pending_vad[: VOICE_VAD_WINDOW_SAMPLES * 2]
+                        event = await asyncio.to_thread(vad, _as_vad_samples(vad_block))
+                        vad_samples += VOICE_VAD_WINDOW_SAMPLES
+                        if event is None:
+                            continue
+                        if not isinstance(event, dict):
+                            raise TypeError("Silero VAD iterator must return a start/end event or None")
+                        if "start" in event and speech_start is None:
+                            speech_start = _event_sample(event["start"], vad_samples)
+                        if "end" in event and speech_start is not None:
+                            candidate_end = _event_sample(event["end"], vad_samples)
+                            if candidate_end - speech_start >= round(
+                                self.min_speech_duration_milliseconds * self.sample_rate / 1000
+                            ):
+                                endpoint_end = candidate_end
+                                break
+                            speech_start = None
+                    if endpoint_end is not None or collected_samples >= max_samples:
                         break
             finally:
                 await _close_source(source)
@@ -236,10 +306,14 @@ class MicrophoneCapture:
 
 def _as_pcm16_bytes(block: PcmBlock) -> bytes:
     if isinstance(block, bytes):
-        return block if len(block) % 2 == 0 else block[:-1]
+        if len(block) % 2:
+            raise ValueError("PCM16 blocks must contain an even number of bytes")
+        return block
     if isinstance(block, (bytearray, memoryview)):
         data = bytes(block)
-        return data if len(data) % 2 == 0 else data[:-1]
+        if len(data) % 2:
+            raise ValueError("PCM16 blocks must contain an even number of bytes")
+        return data
     array = np.asarray(block)
     if array.ndim != 1:
         raise ValueError("voice input blocks must be mono")
@@ -255,7 +329,7 @@ def _as_vad_samples(block: bytes) -> np.ndarray:
     return np.frombuffer(block, dtype="<i2").astype(np.float32) / 32768.0
 
 
-def _event_sample(value: object, block_start: int, collected_samples: int) -> int:
+def _event_sample(value: object, collected_samples: int) -> int:
     if not isinstance(value, (int, float)):
         raise TypeError("Silero VAD event positions must be numeric sample offsets")
     return min(max(0, round(value)), collected_samples)
@@ -267,3 +341,23 @@ async def _close_source(source: BlockSource) -> None:
         result = await asyncio.to_thread(close)
         if hasattr(result, "__await__"):
             await result
+
+
+async def _next_block_or_stop(source: BlockSource, stop_requested: asyncio.Event) -> PcmBlock | object:
+    """Race one device read against the second hotkey and finish the read before capture closes it."""
+    next_task = asyncio.create_task(anext(source))
+    stop_task = asyncio.create_task(stop_requested.wait())
+    try:
+        done, _ = await asyncio.wait((next_task, stop_task), return_when=asyncio.FIRST_COMPLETED)
+        if next_task in done:
+            return await next_task
+        next_task.cancel()
+        await asyncio.gather(next_task, return_exceptions=True)
+        return _STOP_REQUESTED
+    except asyncio.CancelledError:
+        next_task.cancel()
+        await asyncio.gather(next_task, return_exceptions=True)
+        raise
+    finally:
+        stop_task.cancel()
+        await asyncio.gather(stop_task, return_exceptions=True)

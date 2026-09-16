@@ -28,6 +28,7 @@ class WhisperTranscriber:
         compute_type: str | None = None,
         language: str | None = None,
         model_directory: Path | None = None,
+        settings: Any | None = None,
     ) -> None:
         if model is not None and model_factory is not None:
             raise ValueError("provide model or model_factory, not both")
@@ -38,6 +39,7 @@ class WhisperTranscriber:
         self.compute_type = compute_type
         self.language = language
         self.model_directory = model_directory
+        self._settings = settings
         self._model_lock = asyncio.Lock()
 
     async def transcribe(self, turn: CapturedTurn) -> Transcript:
@@ -46,10 +48,11 @@ class WhisperTranscriber:
             raise ValueError(f"voice input must be {VOICE_INPUT_SAMPLE_RATE_HERTZ} Hz")
         waveform = np.frombuffer(turn.samples, dtype="<i2").astype(np.float32) / 32768.0
         if not waveform.size:
-            return Transcript("", self.language)
+            return Transcript("", self.language or self._configured_language())
         model = await self._get_model()
+        language = self.language or self._configured_language()
         text, language, segments = await asyncio.to_thread(
-            self._transcribe_blocking, model, waveform, self.language
+            self._transcribe_blocking, model, waveform, language
         )
         return Transcript(normalize_transcript(text), language, tuple(segments))
 
@@ -69,7 +72,7 @@ class WhisperTranscriber:
     def _default_model_factory(self) -> Callable[[], Any]:
         from faster_whisper import WhisperModel
 
-        from app.config import settings
+        settings = self._configured_settings()
 
         name = self.model_name or settings.voice_whisper_model
         device = self.device or settings.voice_whisper_device
@@ -81,6 +84,22 @@ class WhisperTranscriber:
             compute_type=compute_type,
             download_root=str(directory),
         )
+
+    def _configured_settings(self) -> Any:
+        if self._settings is not None:
+            return self._settings
+        from app.config import settings
+
+        return settings
+
+    def _configured_language(self) -> str:
+        return self._settings.voice_whisper_language if self._settings is not None else self._default_language()
+
+    @staticmethod
+    def _default_language() -> str:
+        from app.config import settings
+
+        return settings.voice_whisper_language
 
     @staticmethod
     def _transcribe_blocking(

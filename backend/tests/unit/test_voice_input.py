@@ -6,15 +6,17 @@ returns model decisions, which keeps these tests about endpoint policy rather th
 """
 
 import asyncio
+import sys
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
 import pytest
 
-from app.voice.audio import MicrophoneCapture
+from app.voice.audio import MicrophoneCapture, SoundDeviceBlockSource
 from app.voice.transcription import WhisperTranscriber, normalize_transcript
-from app.voice.types import CapturedTurn, Transcript
+from app.voice.types import CapturedTurn, Transcript, VoiceInputError
 
 
 def pcm_block(value: int, samples: int = 512) -> bytes:
@@ -36,6 +38,15 @@ class ScriptedVad:
 
     def __call__(self, _samples: np.ndarray) -> dict[str, int] | None:
         return next(self.events, None)
+
+
+class ShapeRecordingVad:
+    def __init__(self) -> None:
+        self.shapes: list[int] = []
+
+    def __call__(self, samples: np.ndarray) -> dict[str, int] | None:
+        self.shapes.append(len(samples))
+        return {"start": 0} if len(self.shapes) == 1 else None
 
 
 @pytest.mark.asyncio
@@ -72,6 +83,63 @@ async def test_speech_followed_by_model_silence_returns_trimmed_turn() -> None:
     assert result.samples == pcm_block(100, 938)
     assert result.duration_ms == 59
     assert result.started_at.tzinfo is UTC
+
+
+@pytest.mark.asyncio
+async def test_vad_receives_only_fixed_512_sample_windows_and_no_partial_window() -> None:
+    vad = ShapeRecordingVad()
+    capture = MicrophoneCapture(
+        block_source=source_for(pcm_block(100, 300), pcm_block(100, 400)),
+        vad_factory=lambda: vad,
+        silence_duration_seconds=0.1,
+        min_speech_duration_milliseconds=1,
+        max_duration_seconds=1,
+    )
+
+    result = await capture.capture(asyncio.Event())
+
+    assert result is not None
+    assert vad.shapes == [512]
+
+
+@pytest.mark.asyncio
+async def test_default_capture_boundary_is_30_seconds_and_still_drops_partial_vad_window() -> None:
+    vad = ShapeRecordingVad()
+    settings = type(
+        "VoiceSettings",
+        (),
+        {
+            "voice_vad_silence_duration_seconds": 0.8,
+            "voice_vad_min_speech_duration_milliseconds": 250,
+            "voice_capture_max_duration_seconds": 30.0,
+        },
+    )()
+    capture = MicrophoneCapture(
+        block_source=source_for(np.zeros(480_256 + 256, dtype=np.int16)),
+        vad_factory=lambda: vad,
+        settings=settings,
+    )
+
+    result = await capture.capture(asyncio.Event())
+
+    assert result is not None
+    assert len(result.samples) == 480_000 * 2
+    assert len(vad.shapes) == 937
+    assert set(vad.shapes) == {512}
+
+
+@pytest.mark.asyncio
+async def test_odd_pcm16_block_is_rejected_instead_of_silently_truncated() -> None:
+    capture = MicrophoneCapture(
+        block_source=source_for(b"\x01"),
+        vad_factory=lambda: ScriptedVad([]),
+        silence_duration_seconds=0.1,
+        min_speech_duration_milliseconds=1,
+        max_duration_seconds=1,
+    )
+
+    with pytest.raises(ValueError, match="even number of bytes"):
+        await capture.capture(asyncio.Event())
 
 
 @pytest.mark.asyncio
@@ -118,7 +186,118 @@ async def test_explicit_stop_ends_an_active_turn_without_waiting_for_vad_silence
     result = await capture.capture(stop_requested)
 
     assert result is not None
-    assert len(result.samples) == 1_024
+    assert len(result.samples) == 2_048
+
+
+@pytest.mark.asyncio
+async def test_configured_input_device_is_used_by_the_no_arg_source() -> None:
+    class VoiceSettings:
+        voice_input_device = "Configured microphone"
+        voice_vad_silence_duration_seconds = 0.1
+        voice_vad_min_speech_duration_milliseconds = 1
+        voice_capture_max_duration_seconds = 1
+
+    capture = MicrophoneCapture(settings=VoiceSettings())
+    source = await capture._source()
+
+    assert isinstance(source, SoundDeviceBlockSource)
+    assert source.device == "Configured microphone"
+
+
+@pytest.mark.asyncio
+async def test_portaudio_abort_waits_for_read_worker_before_close() -> None:
+    release = threading.Event()
+    order: list[str] = []
+
+    class BlockingStream:
+        def read(self, _block_size: int) -> tuple[bytes, bool]:
+            release.wait(timeout=2)
+            order.append("read_done")
+            return b"", False
+
+        def abort(self) -> None:
+            order.append("abort")
+            release.set()
+
+        def stop(self) -> None:
+            order.append("stop")
+
+        def close(self) -> None:
+            order.append("close")
+
+    source = SoundDeviceBlockSource()
+    source._stream = BlockingStream()
+    read_task = asyncio.create_task(source.__anext__())
+    await asyncio.sleep(0)
+    read_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await read_task
+    await source.aclose()
+
+    assert order.index("abort") < order.index("read_done") < order.index("close")
+
+
+@pytest.mark.asyncio
+async def test_second_hotkey_aborts_portaudio_read_before_capture_closes_source() -> None:
+    release = threading.Event()
+    started = threading.Event()
+    order: list[str] = []
+
+    class BlockingStream:
+        def read(self, _block_size: int) -> tuple[bytes, bool]:
+            started.set()
+            release.wait(timeout=2)
+            order.append("read_done")
+            return b"", False
+
+        def abort(self) -> None:
+            order.append("abort")
+            release.set()
+
+        def stop(self) -> None:
+            order.append("stop")
+
+        def close(self) -> None:
+            order.append("close")
+
+    source = SoundDeviceBlockSource()
+    source._stream = BlockingStream()
+    capture = MicrophoneCapture(
+        block_source=source,
+        vad_factory=lambda: ScriptedVad([]),
+        silence_duration_seconds=0.1,
+        min_speech_duration_milliseconds=1,
+        max_duration_seconds=1,
+    )
+    stop_requested = asyncio.Event()
+    capture_task = asyncio.create_task(capture.capture(stop_requested))
+    await asyncio.to_thread(started.wait, 1)
+    stop_requested.set()
+
+    assert await capture_task is None
+    assert order.index("abort") < order.index("read_done") < order.index("close")
+
+
+@pytest.mark.asyncio
+async def test_device_open_error_contains_inventory_and_remediation(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSoundDevice:
+        @staticmethod
+        def RawInputStream(**_kwargs: Any):
+            raise RuntimeError("no input device")
+
+        @staticmethod
+        def query_devices():
+            return [{"name": "Built-in Mic"}, {"name": "USB Mic"}]
+
+    monkeypatch.setitem(sys.modules, "sounddevice", FakeSoundDevice)
+    source = SoundDeviceBlockSource(device="Missing Mic")
+
+    with pytest.raises(VoiceInputError) as raised:
+        await source.__anext__()
+
+    assert raised.value.devices == ("Built-in Mic", "USB Mic")
+    assert "VOICE_INPUT_DEVICE" in raised.value.remediation
 
 
 def test_transcript_normalization_is_case_and_whitespace_stable() -> None:
@@ -152,3 +331,23 @@ async def test_transcriber_uses_injected_model_and_normalizes_segments() -> None
     assert isinstance(result, Transcript)
     assert result.text == "where is the reservoir"
     assert result.language == "en"
+
+
+@pytest.mark.asyncio
+async def test_transcriber_uses_configured_language_when_language_is_omitted() -> None:
+    calls: list[str | None] = []
+
+    class FakeModel:
+        def transcribe(self, _audio: np.ndarray, **kwargs: Any):
+            calls.append(kwargs["language"])
+            return [], type("Info", (), {"language": "fr"})()
+
+    class VoiceSettings:
+        voice_whisper_language = "fr"
+
+    turn = CapturedTurn(b"\x00\x00" * 512, 16_000, datetime.now(UTC), 32)
+    transcriber = WhisperTranscriber(model=FakeModel(), settings=VoiceSettings())
+
+    await transcriber.transcribe(turn)
+
+    assert calls == ["fr"]

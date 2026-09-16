@@ -29,6 +29,9 @@ class VoiceSessionState(StrEnum):
 VOICE_INPUT_CHANNELS: Final[int] = 1
 VOICE_INPUT_SAMPLE_WIDTH_BYTES: Final[int] = 2
 VOICE_INPUT_SAMPLE_RATE_HERTZ: Final[int] = 16_000
+# Silero's 16 kHz streaming model accepts this exact window. Partial windows are retained for transcription,
+# but never sent to the model because shape-dependent inference is not endpointing.
+VOICE_VAD_WINDOW_SAMPLES: Final[int] = 512
 
 # Piper's explicitly configured Alba profile emits float samples at 22.05 kHz; the playback boundary
 # serialises them as mono PCM16.
