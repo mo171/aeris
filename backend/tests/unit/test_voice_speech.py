@@ -131,6 +131,32 @@ async def test_progress_numbers_are_rejected_and_provider_failures_are_typed() -
         await author_progress_speech({"detail": "Checking evidence"}, BrokenModel())
 
 
+async def test_grounded_authored_speech_requires_claim_ids() -> None:
+    with pytest.raises(ValueError, match="claim ids"):
+        AuthoredSpeech(text="A result", kind="grounded")
+
+
+async def test_unresolved_or_duplicate_placeholders_are_rejected_for_every_speech_kind() -> None:
+    for kind, _kwargs in (("progress", {}), ("provisional", {"provisional": True})):
+        model = FakeModel("The update is {m1}.", "The update is {m1}.")
+        with pytest.raises(SpeechGenerationError, match="placeholder"):
+            if kind == "progress":
+                await author_progress_speech({"detail": "Checking evidence"}, model)
+            else:
+                await author_provisional_speech({"question": "What is happening?"}, model)
+
+    model = FakeModel("The mapped area is {m1} {m1}.", "The mapped area is {m1} {m1}.")
+    with pytest.raises(SpeechGenerationError, match="placeholder"):
+        await author_grounded_speech("How much?", [claim()], model)
+
+
+async def test_spelled_out_cardinal_and_ordinal_numbers_are_guarded() -> None:
+    model = FakeModel("The mapped area is two hectares.", "The mapped area is second hectares.")
+
+    with pytest.raises(SpeechGenerationError, match="number"):
+        await author_grounded_speech("How much?", [claim()], model)
+
+
 class FakeVoice:
     def synthesize(self, text: str, **kwargs: object):
         assert text == "hello"
@@ -139,11 +165,32 @@ class FakeVoice:
         yield b"two!"
 
 
+class ProductionShapedAudio:
+    def __init__(self, payload: bytes, sample_rate: int = VOICE_OUTPUT_SAMPLE_RATE_HERTZ) -> None:
+        self.audio_int16_bytes = payload
+        self.sample_rate = sample_rate
+        self.sample_width = 2
+        self.channel_count = 1
+
+
+class StreamingVoice:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.finished = asyncio.Event()
+
+    def synthesize(self, text: str, **kwargs: object):
+        self.started.set()
+        yield ProductionShapedAudio(b"aa")
+        self.finished.set()
+        yield ProductionShapedAudio(b"bb")
+
+
 class FakeOutput:
     def __init__(self, *, fail: bool = False) -> None:
         self.writes: list[bytes] = []
         self.fail = fail
         self.aborts = 0
+        self.closed = False
 
     def write(self, data: bytes) -> None:
         if self.fail:
@@ -153,6 +200,9 @@ class FakeOutput:
     def abort(self) -> None:
         self.aborts += 1
 
+    def close(self) -> None:
+        self.closed = True
+
 
 async def test_piper_chunks_are_ordered_and_run_synthesis_off_loop() -> None:
     synthesizer = PiperSynthesizer(voice=FakeVoice(), speaker_id=0, length_scale=1.0)
@@ -161,6 +211,30 @@ async def test_piper_chunks_are_ordered_and_run_synthesis_off_loop() -> None:
 
     assert [chunk.samples for chunk in chunks] == [b"one!", b"two!"]
     assert all(chunk.sample_rate == VOICE_OUTPUT_SAMPLE_RATE_HERTZ for chunk in chunks)
+
+
+async def test_piper_yields_production_audio_chunks_before_generator_finishes() -> None:
+    voice = StreamingVoice()
+    synthesizer = PiperSynthesizer(voice=voice, speaker_id=0, length_scale=1.0)
+    iterator = synthesizer.chunks("hello").__aiter__()
+
+    first = await iterator.__anext__()
+
+    assert first.samples == b"aa"
+    assert voice.finished.is_set() is False
+    assert (await iterator.__anext__()).samples == b"bb"
+    assert voice.finished.is_set() is True
+
+
+async def test_closing_piper_stream_stops_requesting_more_generator_chunks() -> None:
+    voice = StreamingVoice()
+    synthesizer = PiperSynthesizer(voice=voice, speaker_id=0, length_scale=1.0)
+    iterator = synthesizer.chunks("hello").__aiter__()
+
+    assert (await iterator.__anext__()).samples == b"aa"
+    await iterator.aclose()
+
+    assert voice.finished.is_set() is False
 
 
 async def test_player_interrupts_only_current_utterance_and_standby_suppresses_new_speech() -> None:
@@ -174,10 +248,10 @@ async def test_player_interrupts_only_current_utterance_and_standby_suppresses_n
         await asyncio.sleep(0)
         yield AudioChunk(b"two!", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
 
-    first = AuthoredSpeech(text="one", claim_ids=("clm_1",))
+    first = AuthoredSpeech(text="one", claim_ids=("clm_1",), utterance_id="one")
     task = asyncio.create_task(player.speak(first, first_chunks()))
     await asyncio.wait_for(first_started.wait(), 1)
-    await player.interrupt()
+    await player.interrupt("one")
     await asyncio.wait_for(task, 1)
 
     await player.standby()
@@ -195,6 +269,35 @@ async def test_refusal_ignores_interrupt_until_playback_finishes() -> None:
     await player.interrupt()
 
     assert output.writes == [b"refusal!", b"boundary"]
+
+
+async def test_stale_interrupt_id_cannot_abort_a_new_utterance_and_abort_restarts_output() -> None:
+    output_instances = [FakeOutput(), FakeOutput()]
+    outputs = list(output_instances)
+    player = SpeechPlayer(output_factory=lambda: outputs.pop(0))
+    first = AuthoredSpeech(text="first", claim_ids=("clm_1",), utterance_id="utt_1")
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def first_chunks():
+        yield AudioChunk(b"aa", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
+        first_started.set()
+        await release_first.wait()
+        yield AudioChunk(b"bb", VOICE_OUTPUT_SAMPLE_RATE_HERTZ)
+
+    task = asyncio.create_task(player.speak(first, first_chunks()))
+    await asyncio.wait_for(first_started.wait(), 1)
+    await player.interrupt("utt_1")
+    release_first.set()
+    await task
+
+    second = AuthoredSpeech(text="next", claim_ids=("clm_1",), utterance_id="utt_2")
+    await player.interrupt("utt_1")
+    await player.speak(second, _chunks("next"))
+
+    assert output_instances[0].aborts == 1
+    assert output_instances[0].closed is True
+    assert output_instances[1].writes == [b"next"]
 
 
 async def test_output_failures_are_typed_and_do_not_become_provider_fallbacks() -> None:

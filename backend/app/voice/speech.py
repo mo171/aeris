@@ -25,6 +25,33 @@ from app.services.prompts.voice import (
 
 logger = logging.getLogger(__name__)
 _INTERNAL_IDENTIFIER = re.compile(r"\b(?:run|clm|stp|lyr|ev|fig|utt)_[A-Za-z0-9_-]+\b|\bS\d+[A-Za-z0-9_-]*\b", re.IGNORECASE)
+# Number words are a lexical representation of the same scientific invariant as NUMERAL_PATTERN.  Keeping
+# this small, closed parsing vocabulary here prevents a model from smuggling an unvalidated count as prose.
+_CARDINAL_WORDS = frozenset(
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+    "seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion".split()
+)
+_ORDINAL_WORDS = frozenset(
+    "zeroth first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth "
+    "fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth twentieth thirtieth fortieth fiftieth "
+    "sixtieth seventieth eightieth ninetieth hundredth thousandth millionth billionth".split()
+)
+_CARDINAL_VALUES = {
+    word: value
+    for value, word in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split()
+    )
+}
+_CARDINAL_VALUES.update(dict(zip("twenty thirty forty fifty sixty seventy eighty ninety".split(), range(20, 100, 10), strict=True)))
+_CARDINAL_VALUES.update({"hundred": 100, "thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000})
+_ORDINAL_VALUES = {
+    word: value
+    for value, word in enumerate(
+        "zeroth first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth".split()
+    )
+}
+_ORDINAL_VALUES.update(dict(zip("twentieth thirtieth fortieth fiftieth sixtieth seventieth eightieth ninetieth".split(), (20, 30, 40, 50, 60, 70, 80, 90), strict=True)))
+_ORDINAL_VALUES.update({"hundredth": 100, "thousandth": 1_000, "millionth": 1_000_000, "billionth": 1_000_000_000})
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +76,7 @@ class AuthoredSpeech:
     provisional: bool = False
     supersedes_utterance_id: str | None = None
     model_version: str | None = None
+    utterance_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", self.text.strip())
@@ -58,6 +86,8 @@ class AuthoredSpeech:
             raise ValueError("speech text cannot be empty")
         if self.kind is SpeechKind.PROVISIONAL and self.claim_ids:
             raise ValueError("provisional speech cannot carry claim ids")
+        if self.kind is SpeechKind.GROUNDED and not self.claim_ids:
+            raise ValueError("grounded speech requires claim ids")
         if self.kind is SpeechKind.REFUSAL and self.interruptible:
             object.__setattr__(self, "interruptible", False)
         expected_provisional = self.kind is SpeechKind.PROVISIONAL
@@ -137,6 +167,9 @@ def _grounding_reason(text: str, facts: list[Fact], refusal: str | None) -> str 
     # A typed refusal is itself validated evidence. Include it in the guard's permitted numeral vocabulary
     # without making it a claim or allowing the model to invent a second refusal.
     guard_facts = facts + ([Fact(refusal, {})] if refusal else [])
+    placeholders = PLACEHOLDER_PATTERN.findall(text)
+    if len(placeholders) != len(set(placeholders)):
+        return "duplicate placeholders in spoken prose"
     reason = verify_phrasing(text, guard_facts)
     if reason is not None:
         return reason
@@ -144,11 +177,48 @@ def _grounding_reason(text: str, facts: list[Fact], refusal: str | None) -> str 
         return "typed refusal was not preserved verbatim"
     if _INTERNAL_IDENTIFIER.search(text):
         return "internal identifier leaked into spoken prose"
+    if _unsupported_spelled_number(text, guard_facts):
+        return "unsupported spelled-out number in spoken prose"
     return None
 
 
 def _retry_prompt(prompt: str, reason: str) -> str:
     return f"{prompt}\n\nThe previous draft failed the evidence guard ({reason}). Rewrite the complete answer and satisfy every rule."
+
+
+def _number_words(text: str) -> set[str]:
+    """Return normalized number-word tokens; hyphenated words are treated as separate number words."""
+    return {token.lower() for token in re.findall(r"[A-Za-z]+", text) if token.lower() in _CARDINAL_WORDS | _ORDINAL_WORDS}
+
+
+def _numeric_tokens(text: str) -> set[str]:
+    tokens = {number.replace(",", "") for number in NUMERAL_PATTERN.findall(text)}
+    tokens.update(f"cardinal:{_CARDINAL_VALUES[word]}" for word in _number_words(text) if word in _CARDINAL_VALUES)
+    tokens.update(f"ordinal:{_ORDINAL_VALUES[word]}" for word in _number_words(text) if word in _ORDINAL_VALUES)
+    return tokens
+
+
+def _unsupported_spelled_number(text: str, facts: list[Fact]) -> bool:
+    source = " ".join(fact.statement for fact in facts)
+    permitted = _numeric_tokens(source)
+    spoken_words = _number_words(text)
+    spoken = {
+        f"cardinal:{_CARDINAL_VALUES[word]}" if word in _CARDINAL_VALUES else f"ordinal:{_ORDINAL_VALUES[word]}"
+        for word in spoken_words
+    }
+    return bool(spoken - permitted)
+
+
+def _draft_reason(text: str, *, allow_numbers_from: list[Fact] | None = None, progress: bool = False) -> str | None:
+    if PLACEHOLDER_PATTERN.search(text):
+        return "unresolved placeholder in spoken prose"
+    if NUMERAL_PATTERN.search(text):
+        return "progress narration introduced a numeral" if progress else "unsupported numeral in spoken prose"
+    if _INTERNAL_IDENTIFIER.search(text):
+        return "internal identifier leaked into spoken prose"
+    if _unsupported_spelled_number(text, allow_numbers_from or []):
+        return "unsupported spelled-out number in spoken prose"
+    return None
 
 
 async def author_grounded_speech(
@@ -208,22 +278,10 @@ async def author_progress_speech(trace_step: Any, model: Any = None) -> Authored
     prompt = VOICE_PROGRESS_PROMPT.format(trace_fact=trace_text)
     model = await _model_or_raise(model)
     draft, version = await _invoke(model, prompt)
-    reason = (
-        "progress narration introduced a numeral"
-        if NUMERAL_PATTERN.search(PLACEHOLDER_PATTERN.sub("", draft))
-        else "internal identifier leaked into spoken prose"
-        if _INTERNAL_IDENTIFIER.search(draft)
-        else None
-    )
+    reason = _draft_reason(draft, progress=True)
     if reason is not None:
         draft, version = await _invoke(model, _retry_prompt(prompt, reason))
-        reason = (
-            "progress narration introduced a numeral"
-            if NUMERAL_PATTERN.search(PLACEHOLDER_PATTERN.sub("", draft))
-            else "internal identifier leaked into spoken prose"
-            if _INTERNAL_IDENTIFIER.search(draft)
-            else None
-        )
+        reason = _draft_reason(draft, progress=True)
     if reason is not None:
         raise SpeechGenerationError(
             f"The language model produced progress speech that failed the evidence guard: {reason}.",
@@ -248,11 +306,7 @@ async def author_provisional_speech(
     draft, version = await _invoke(model, prompt)
 
     def reason_for(value: str) -> str | None:
-        if NUMERAL_PATTERN.search(PLACEHOLDER_PATTERN.sub("", value)):
-            return "provisional speech introduced a numeral"
-        if _INTERNAL_IDENTIFIER.search(value):
-            return "internal identifier leaked into spoken prose"
-        return None
+        return _draft_reason(value)
 
     reason = reason_for(draft)
     if reason is not None:

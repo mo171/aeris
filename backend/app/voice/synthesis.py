@@ -8,7 +8,8 @@ download or hosted speech provider can be selected accidentally.
 import asyncio
 import inspect
 import logging
-from collections.abc import AsyncIterator, Iterable
+import threading
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -138,32 +139,20 @@ class PiperSynthesizer:
             kwargs = {"speaker_id": self.speaker_id, "length_scale": self.length_scale}
         return {key: value for key, value in kwargs.items() if value is not None}
 
-    def _synthesise_blocking(self, text: str) -> list[AudioChunk]:
+    def _synthesise_iter_blocking(self, text: str, stop: threading.Event) -> Iterable[AudioChunk]:
         voice = self._load_voice()
         synthesize = getattr(voice, "synthesize", None)
         if synthesize is None:
             raise SpeechSynthesisError("The Piper voice does not expose a synthesize method.", details={"upstream": "piper"})
         try:
             generated: Iterable[Any] = synthesize(text, **self._piper_kwargs(synthesize))
-            chunks: list[AudioChunk] = []
             for item in generated:
+                if stop.is_set():
+                    return
                 if isinstance(item, AudioChunk):
-                    chunks.append(item)
+                    yield item
                     continue
-                if isinstance(item, bytes):
-                    samples = item
-                    rate = VOICE_OUTPUT_SAMPLE_RATE_HERTZ
-                    channels = VOICE_OUTPUT_CHANNELS
-                else:
-                    samples = getattr(item, "audio_int16_bytes", getattr(item, "audio_bytes", None))
-                    if samples is None and hasattr(item, "tobytes"):
-                        samples = item.tobytes()
-                    rate = int(getattr(item, "sample_rate", VOICE_OUTPUT_SAMPLE_RATE_HERTZ))
-                    channels = int(getattr(item, "channels", VOICE_OUTPUT_CHANNELS))
-                if not isinstance(samples, bytes):
-                    raise TypeError("Piper yielded a non-byte audio chunk")
-                chunks.append(AudioChunk(samples, rate, channels))
-            return chunks
+                yield self._audio_chunk(item)
         except SpeechSynthesisError:
             raise
         except Exception as error:  # noqa: BLE001 - one typed failure at the synthesis boundary
@@ -172,13 +161,59 @@ class PiperSynthesizer:
                 details={"upstream": "piper", "reason": str(error)},
             ) from error
 
+    def _synthesise_blocking(self, text: str) -> list[AudioChunk]:
+        """Materialize the stream for callers that explicitly need all audio at once."""
+        return list(self._synthesise_iter_blocking(text, threading.Event()))
+
+    def _generator_blocking(self, text: str) -> Iterable[Any]:
+        voice = self._load_voice()
+        synthesize = getattr(voice, "synthesize", None)
+        if synthesize is None:
+            raise SpeechSynthesisError("The Piper voice does not expose a synthesize method.", details={"upstream": "piper"})
+        return synthesize(text, **self._piper_kwargs(synthesize))
+
+    @staticmethod
+    def _next_blocking(generator: Iterable[Any]) -> tuple[bool, Any]:
+        try:
+            return True, next(generator)
+        except StopIteration:
+            return False, None
+
+    @staticmethod
+    def _audio_chunk(item: Any) -> AudioChunk:
+        if isinstance(item, bytes):
+            return AudioChunk(item)
+        samples = getattr(item, "audio_int16_bytes", getattr(item, "audio_bytes", None))
+        if samples is None and hasattr(item, "tobytes"):
+            samples = item.tobytes()
+        rate = int(getattr(item, "sample_rate", VOICE_OUTPUT_SAMPLE_RATE_HERTZ))
+        channels = int(getattr(item, "channels", getattr(item, "channel_count", VOICE_OUTPUT_CHANNELS)))
+        if not isinstance(samples, bytes):
+            raise TypeError("Piper yielded a non-byte audio chunk")
+        return AudioChunk(samples, rate, channels)
+
     async def chunks(self, utterance: AuthoredSpeech | str) -> AsyncIterator[AudioChunk]:
         """Generate all model chunks off the event loop, yielding them in Piper order."""
         text = utterance.text if isinstance(utterance, AuthoredSpeech) else str(utterance).strip()
         if not text:
             raise SpeechSynthesisError("Cannot synthesize empty speech.", details={"upstream": "piper"})
-        for chunk in await asyncio.to_thread(self._synthesise_blocking, text):
-            yield chunk
+        stop = threading.Event()
+        try:
+            generator = await asyncio.to_thread(self._generator_blocking, text)
+            while not stop.is_set():
+                has_value, item = await asyncio.to_thread(self._next_blocking, generator)
+                if not has_value or stop.is_set():
+                    return
+                yield self._audio_chunk(item)
+        except SpeechSynthesisError:
+            raise
+        except Exception as error:  # noqa: BLE001 - one typed failure at the synthesis boundary
+            raise SpeechSynthesisError(
+                "Piper failed while synthesizing an utterance.",
+                details={"upstream": "piper", "reason": str(error)},
+            ) from error
+        finally:
+            stop.set()
 
 
 # The plan called this interface Kokoro before the accepted Piper ruling. Keep the name import-compatible
@@ -196,19 +231,35 @@ class SpeechPlayer:
         sample_rate: int = VOICE_OUTPUT_SAMPLE_RATE_HERTZ,
         channels: int = VOICE_OUTPUT_CHANNELS,
         device: int | str | None = None,
+        output_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.channels = channels
         self.device = device
         self._output = output
+        self._output_factory = output_factory
+        self._provided_output = output
         self._active: AuthoredSpeech | None = None
         self._interrupt_requested = False
         self._standby = False
         self._lock = asyncio.Lock()
+        self._output_ready: asyncio.Event | None = None
 
     def _open_output(self) -> Any:
         if self._output is not None:
             return self._output
+        if self._output_factory is not None:
+            try:
+                self._output = self._output_factory()
+                start = getattr(self._output, "start", None)
+                if start is not None:
+                    start()
+                return self._output
+            except Exception as error:  # noqa: BLE001 - injected and production factories share this boundary
+                raise SpeechPlaybackError(
+                    "The configured voice output device could not be opened.",
+                    details={"upstream": "sounddevice", "reason": str(error)},
+                ) from error
         try:
             import sounddevice as sd
 
@@ -233,8 +284,12 @@ class SpeechPlayer:
                 return
             self._active = utterance
             self._interrupt_requested = False
+            self._output_ready = asyncio.Event()
             try:
-                output = await asyncio.to_thread(self._open_output)
+                try:
+                    output = await asyncio.to_thread(self._open_output)
+                finally:
+                    self._output_ready.set()
                 async for chunk in chunks:
                     if self._interrupt_requested and utterance.interruptible:
                         break
@@ -253,15 +308,31 @@ class SpeechPlayer:
             finally:
                 self._active = None
                 self._interrupt_requested = False
+                self._output_ready = None
 
-    async def interrupt(self) -> None:
+    async def interrupt(self, utterance_id: str | None = None) -> None:
         """Request cancellation of the active interruptible utterance only."""
-        if self._active is None or not self._active.interruptible:
+        active = self._active
+        if active is None or (utterance_id is not None and active.utterance_id != utterance_id) or not active.interruptible:
             return
         self._interrupt_requested = True
-        abort = getattr(self._output, "abort", None)
+        ready = self._output_ready
+        if ready is not None and self._output is None:
+            await ready.wait()
+            if self._active is not active:
+                return
+        output = self._output
+        abort = getattr(output, "abort", None)
         if abort is not None:
             await asyncio.to_thread(abort)
+        # PortAudio streams cannot be reliably written after abort. Close this exact stream before the lock
+        # permits the next utterance; production recreates it lazily and tests can inject output_factory.
+        if self._active is active and self._output is output:
+            close = getattr(output, "close", None)
+            if close is not None:
+                await asyncio.to_thread(close)
+            if self._output_factory is not None or self._provided_output is None:
+                self._output = None
 
     async def standby(self) -> None:
         """Suppress future speech and interrupt the current interruptible utterance."""
