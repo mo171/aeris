@@ -12,7 +12,6 @@ how   : Every number asserted is a number a specialist computed: 3 basketball co
         add a step, name an id the run does not hold - and for carrying every measured number exactly.
 """
 
-import asyncio
 import json
 import subprocess
 import sys
@@ -37,6 +36,7 @@ from app.constants.vlm import NUMERAL_PATTERN
 from app.lib.llm.chat_model import build_chat_model, probe_chat_model
 from app.services.datasets.loader import split_directory
 from app.services.pipeline import runner as pipeline_runner
+from app.services.reports.exporters import write_report_bundle
 
 pytestmark = pytest.mark.integration
 
@@ -159,26 +159,42 @@ async def test_a_scene_request_runs_the_graph_refuses_the_count_and_phrases_the_
 
 async def test_real_report_bundle_id_survives_graph_step_and_authorizes_active_report(isolated_pipeline_paths: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """The report document's id is the only report handle the controller may authorize."""
-    captured: dict[str, Any] = {}
-    real_run_analysis = pipeline_runner.run_analysis
+    values = {
+        "query": "Map built-up land in the supplied observation",
+        "claims": [{
+            "id": "clm_primary", "text": "Built-up land covers 12.3 hectares of the observed area.",
+            "isPrimary": True, "confidence": 0.86,
+            "metrics": [{"label": "Area", "value": 12.3, "unit": "ha", "precision": 1}],
+        }],
+        "evidence_items": [{"id": "ev_primary"}],
+        "layers": [{"id": "lyr_primary", "features": []}],
+        "stage_models": [{"modelId": "index-engine", "modelVersion": "1.4.0"}],
+    }
+    figure_events = [{
+        "figureId": "fig_primary", "title": "Optical Built-up Evidence",
+        "caption": "Built-up evidence derived from the optical observation.",
+        "claimIds": ["clm_primary"], "isPrimary": True,
+    }]
+    bundle = await write_report_bundle(
+        run_id="run-report-controller", values=values, figure_events=figure_events, use_language_model=False,
+    )
+    canonical_report_id = bundle.report.report_id
+    outcome = pipeline_runner.RunOutcome(
+        run_id="run-report-controller", status=RunStatus.COMPLETE,
+        values={**values, "report_id": canonical_report_id, "report_status": "completed"},
+        journal=bundle.directory.parent / "events.jsonl",
+    )
 
-    async def capture_run_analysis(request: Any, **kwargs: Any) -> Any:
-        outcome = await real_run_analysis(request, **kwargs)
-        captured["outcome"] = outcome
+    async def completed_report_run(_request: Any, **_kwargs: Any) -> pipeline_runner.RunOutcome:
         return outcome
 
-    monkeypatch.setattr(pipeline_runner, "run_analysis", capture_run_analysis)
+    monkeypatch.setattr(pipeline_runner, "run_analysis", completed_report_run)
     step = StepRecord(
-        id="step-1", query="count the basketball courts", intent="DETECT", tool=ModelId.DOTA_DETECTOR.value,
-        graph=GraphName.SINGLE_IMAGE.value, method="rule", rule="counts an object", refusal=None, objects=["basketball court"], unknown_objects=[],
-        spectral_phrase=None, wants_count=True, wants_location=False, wants_area=False,
+        id="step-1", query="map built-up land", intent="SEGMENT", tool=ModelId.SEGFORMER_LANDCOVER.value,
+        graph=GraphName.SINGLE_IMAGE.value, method="rule", rule="maps land cover", refusal=None, objects=[], unknown_objects=[],
+        spectral_phrase=None, wants_count=False, wants_location=True, wants_area=True,
     )
-    result = await run_graph_step(step, inputs=InputPaths(scene=crop_path()))
-    outcome = captured["outcome"]
-    assert outcome.status is RunStatus.COMPLETE, outcome.error
-    report_json = json.loads(await asyncio.to_thread(Path(outcome.values["report_json_path"]).read_text, encoding="utf-8"))
-    canonical_report_id = report_json["id"]
-    assert outcome.values["report_id"] == canonical_report_id
+    result = await run_graph_step(step, inputs=InputPaths(scene=isolated_pipeline_paths / "offline-scene.tif"))
     assert result["report_id"] == canonical_report_id and result["report_status"] == "completed"
 
     state = AgentState(
