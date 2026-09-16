@@ -78,10 +78,6 @@ def _resource_ids(state: Mapping[str, Any], kind: UiResourceKind) -> set[str]:
         camera_sources.extend(_mapping_items(result.get("camera_targets")))
     sources[UiResourceKind.CAMERA_TARGET].update(identifier for identifier, target in camera_sources if isinstance(target, Mapping))
     sources[UiResourceKind.REPORT].update(
-        identifier for identifier, report in _mapping_items(state.get("reports"))
-        if isinstance(report, Mapping) and report.get("status") in {"completed", "complete", "ready"}
-    )
-    sources[UiResourceKind.REPORT].update(
         str(result["report_id"])
         for result in current
         if result.get("report_id") and result.get("report_status") == "completed" and result.get("state") == "completed"
@@ -123,8 +119,8 @@ def _empty_resolver(value: str | None, state: Mapping[str, Any]) -> dict[str, An
 
 
 def _report_resolver(value: str | None, state: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Validate and pass the canonical opaque report handle to the frontend."""
-    return {"reportId": value} if isinstance(value, str) and value in _resource_ids(state, UiResourceKind.REPORT) else None
+    """Authorize the canonical report handle, while the UI opens the active investigation's one drawer."""
+    return {} if isinstance(value, str) and value in _resource_ids(state, UiResourceKind.REPORT) else None
 
 
 UI_CAPABILITIES: tuple[UiCapability, ...] = (
@@ -132,7 +128,7 @@ UI_CAPABILITIES: tuple[UiCapability, ...] = (
     UiCapability(UiCommand.INVESTIGATION_FOCUS_EVIDENCE, "focus_evidence", "Pan to validated evidence", UiResourceKind.EVIDENCE, "evidence_id", _identity_resolver("evidenceId", UiResourceKind.EVIDENCE)),
     UiCapability(UiCommand.INVESTIGATION_TOGGLE_LAYER, "toggle_layer", "Show or hide a validated evidence layer", UiResourceKind.LAYER, "layer_id", _identity_resolver("layerId", UiResourceKind.LAYER)),
     UiCapability(UiCommand.GLOBE_FLY_TO, "focus_camera_target", "Focus a known evidence camera target", UiResourceKind.CAMERA_TARGET, "camera_target_id", _camera_resolver),
-    UiCapability(UiCommand.INVESTIGATION_OPEN_REPORT, "open_report", "Open a completed report", UiResourceKind.REPORT, "report_id", _report_resolver),
+    UiCapability(UiCommand.INVESTIGATION_OPEN_REPORT, "open_report", "Open the active investigation report; the handle authorizes it but does not select another report", UiResourceKind.REPORT, "report_id", _report_resolver),
     UiCapability(UiCommand.INVESTIGATION_TOGGLE_TRACE, "toggle_trace", "Expose the execution trace when it explains progress", UiResourceKind.NONE, None, _empty_resolver),
 )
 # Descriptive alias for callers that treat this as the interface-control registry.

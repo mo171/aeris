@@ -39,7 +39,7 @@ describe("dispatchUiCommandEvent", () => {
       title: "Open report",
       description: "Open one completed report",
       group: "investigation",
-      paramsSchema: z.object({ reportId: z.string().min(1) }),
+      paramsSchema: z.object({}),
       handler: () => undefined,
     });
     register({
@@ -100,7 +100,7 @@ describe("dispatchUiCommandEvent", () => {
     await expect(
       dispatchUiCommandEvent({
         commandId: "investigation.openReport",
-        params: { reportId: "report-1" },
+        params: {},
         reason: "Open the completed report",
       }),
     ).resolves.toMatchObject({ status: "completed" });

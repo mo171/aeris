@@ -23,10 +23,11 @@ def controller_state() -> AgentState:
                 "layer_ids": ["layer-1"],
                 "state": "completed",
                 "run_id": "run-graph-1",
+                "report_id": "report-1",
+                "report_status": "completed",
             }
         ],
         camera_targets={"target-1": {"latitude": 19.0, "longitude": 73.0, "altitudeMeters": 1000.0}},
-        reports={"report-1": {"status": "completed"}},
     )
 
 
@@ -54,7 +55,6 @@ def test_known_opaque_resources_resolve_but_hallucinated_ids_and_coordinates_are
 def test_camera_targets_and_reports_are_taken_from_completed_step_data() -> None:
     state = controller_state()
     state.pop("camera_targets")
-    state.pop("reports")
     state["results"][0]["camera_targets"] = {"target-1": {"latitude": 19.0, "longitude": 73.0}}
     state["results"][0]["report_id"] = "report-1"
     state["results"][0]["report_status"] = "completed"
@@ -66,11 +66,18 @@ def test_camera_targets_and_reports_are_taken_from_completed_step_data() -> None
         state=state,
     )
     assert commands[0]["params"] == {"latitude": 19.0, "longitude": 73.0}
-    assert commands[1]["params"] == {"reportId": "report-1"}
+    assert commands[1]["params"] == {}
     state["results"][0]["state"] = "failed"
     assert validate_ui_commands(
         [{"name": "open_report", "args": {"report_id": "report-1", "reason": "open report"}}], state=state
     ) == []
+    state["results"][0]["report_id"] = "report-arbitrary"
+    state["results"][0]["report_status"] = "completed"
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-arbitrary", "reason": "open report"}}], state=state
+    ) == []
+    state["results"][0]["state"] = "completed"
+    state["results"][0].pop("report_id")
     state["report_id"] = "report-arbitrary"
     assert validate_ui_commands(
         [{"name": "open_report", "args": {"report_id": "report-arbitrary", "reason": "open report"}}], state=state
@@ -87,7 +94,7 @@ def test_registered_capabilities_are_agent_allowed_and_frontend_declared() -> No
     for capability in UI_CAPABILITIES:
         assert capability.command_id.value in source
     assert "paramsSchema: z.object({ evidenceId: z.string().min(1) }).optional()" in definitions
-    assert "paramsSchema: z.object({ reportId: z.string().min(1) }).optional()" in definitions
+    assert "paramsSchema: z.object({}).optional()" in definitions
     assert "paramsSchema: z.object({}).optional()" in definitions
     assert "id: COMMAND_IDS.globe.flyTo" in definitions
     assert "latitude: z.number().min(-90).max(90)" in definitions

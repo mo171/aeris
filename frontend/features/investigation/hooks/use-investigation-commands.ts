@@ -672,11 +672,11 @@ export function useInvestigationCommands({
         id: COMMAND_IDS.investigation.openReport,
         title: "Generate an intelligence report",
         description:
-          "Assemble the investigation into a report with its trace id embedded, exportable as PDF, JSON or GeoJSON.",
+          "Open the one report drawer for the active investigation; the optional report handle authorizes the completed report but never selects another report.",
         group: "investigation",
         keywords: ["export", "pdf", "document"],
         icon: FileText,
-        paramsSchema: z.object({ reportId: z.string().min(1) }).optional(),
+        paramsSchema: z.object({}).optional(),
         handler: () => store().setReportOpen(true),
       }),
 
