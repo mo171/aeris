@@ -146,6 +146,8 @@ async def run_analysis(request: AnalysisRequest, *, console: Console | None = No
                     run_id=handle.run_id, values=values, figure_paths=tuple(figures.written), figure_events=figure_events,
                 )
                 values.update({
+                    "report_id": bundle.report.report_id,
+                    "report_status": "completed",
                     "chat_markdown": bundle.markdown_path.read_text(encoding="utf-8"),
                     "voice_narration": bundle.voice_path.read_text(encoding="utf-8"),
                     "report_pdf_path": str(bundle.pdf_path), "report_json_path": str(bundle.json_path),

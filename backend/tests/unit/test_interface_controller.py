@@ -26,7 +26,7 @@ def controller_state() -> AgentState:
             }
         ],
         camera_targets={"target-1": {"latitude": 19.0, "longitude": 73.0, "altitudeMeters": 1000.0}},
-        report_ids=["report-1"],
+        reports={"report-1": {"status": "completed"}},
     )
 
 
@@ -54,9 +54,10 @@ def test_known_opaque_resources_resolve_but_hallucinated_ids_and_coordinates_are
 def test_camera_targets_and_reports_are_taken_from_completed_step_data() -> None:
     state = controller_state()
     state.pop("camera_targets")
-    state.pop("report_ids")
+    state.pop("reports")
     state["results"][0]["camera_targets"] = {"target-1": {"latitude": 19.0, "longitude": 73.0}}
-    state["results"][0]["report_ids"] = ["report-1"]
+    state["results"][0]["report_id"] = "report-1"
+    state["results"][0]["report_status"] = "completed"
     commands = validate_ui_commands(
         [
             {"name": "focus_camera_target", "args": {"camera_target_id": "target-1", "reason": "focus evidence"}},
@@ -65,10 +66,14 @@ def test_camera_targets_and_reports_are_taken_from_completed_step_data() -> None
         state=state,
     )
     assert commands[0]["params"] == {"latitude": 19.0, "longitude": 73.0}
-    assert commands[1]["params"] == {}
+    assert commands[1]["params"] == {"reportId": "report-1"}
     state["results"][0]["state"] = "failed"
     assert validate_ui_commands(
         [{"name": "open_report", "args": {"report_id": "report-1", "reason": "open report"}}], state=state
+    ) == []
+    state["report_id"] = "report-arbitrary"
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-arbitrary", "reason": "open report"}}], state=state
     ) == []
 
 
@@ -84,6 +89,8 @@ def test_registered_capabilities_are_agent_allowed_and_frontend_declared() -> No
     assert "paramsSchema: z.object({ evidenceId: z.string().min(1) }).optional()" in definitions
     assert "paramsSchema: z.object({ reportId: z.string().min(1) }).optional()" in definitions
     assert "paramsSchema: z.object({}).optional()" in definitions
+    assert "id: COMMAND_IDS.globe.flyTo" in definitions
+    assert "latitude: z.number().min(-90).max(90)" in definitions
 
 
 def test_interface_budget_and_reason_numeral_guard_are_enforced() -> None:
@@ -109,6 +116,30 @@ async def test_model_failure_emits_no_fallback_command(monkeypatch: pytest.Monke
     result = await graph.control_interface(controller_state())
     assert result["ui_commands"] == []
     assert "failed" in result["trace"][0]["state"]
+
+
+@pytest.mark.asyncio
+async def test_controller_prompt_keeps_claim_relationships_and_validated_associations(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    captured: list[Any] = []
+
+    class CaptureModel:
+        def bind_tools(self, tools: list[Any]) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any) -> Any:
+            captured.extend(messages)
+            return type("Reply", (), {"tool_calls": []})()
+
+    state = controller_state()
+    state["results"][0]["claims"][0]["text"] = "Water was mapped in the validated scene."
+    state["results"][0]["claims"][0]["evidenceIds"] = ["ev-1"]
+    state["results"][0]["evidence_resources"] = {"ev-1": {"layerId": "layer-1"}}
+    monkeypatch.setattr(graph, "build_chat_model", lambda: CaptureModel())
+    await graph.control_interface(state)
+    prompt = str(captured[-1][1])
+    assert "Water was mapped" in prompt and "evidenceIds" in prompt and "evidenceAssociations" in prompt
+    assert "layer-1" in prompt and "target-1" in prompt
 
 
 @pytest.mark.asyncio

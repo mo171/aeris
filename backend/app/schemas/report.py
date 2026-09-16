@@ -109,6 +109,11 @@ class ReportDocument(CamelCaseModel):
     is_evidence_limited: bool = False
     sections: list[ReportSectionDocument] = Field(default_factory=list)
 
+    @property
+    def report_id(self) -> str:
+        """Canonical report handle used by interface-control; the wire field remains ``id``."""
+        return self.id
+
     def reader_text(self) -> str:
         """Return only presentation prose, intentionally excluding internal reference fields."""
         parts = [self.title, self.subtitle, self.question, self.objective, self.executive_summary]

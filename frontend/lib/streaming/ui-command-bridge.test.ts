@@ -50,6 +50,45 @@ describe("dispatchUiCommandEvent", () => {
       paramsSchema: z.object({}),
       handler: () => undefined,
     });
+    register({
+      id: "investigation.spotlightClaim",
+      title: "Spotlight claim",
+      description: "Spotlight one claim",
+      group: "investigation",
+      paramsSchema: z.object({ claimId: z.string().min(1) }),
+      handler: () => undefined,
+    });
+    register({
+      id: "investigation.toggleLayer",
+      title: "Toggle layer",
+      description: "Toggle one layer",
+      group: "investigation",
+      paramsSchema: z.object({ layerId: z.string().min(1) }),
+      handler: () => undefined,
+    });
+    register({
+      id: "globe.flyTo",
+      title: "Fly to target",
+      description: "Focus a known target",
+      group: "globe",
+      paramsSchema: z.object({
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        altitudeMeters: z.number().positive().optional(),
+      }),
+      handler: () => undefined,
+    });
+
+    const payloads = [
+      ["investigation.spotlightClaim", { claimId: "clm-1" }],
+      ["investigation.toggleLayer", { layerId: "layer-1" }],
+      ["globe.flyTo", { latitude: 19, longitude: 73 }],
+    ] as const;
+    for (const [commandId, params] of payloads) {
+      await expect(
+        dispatchUiCommandEvent({ commandId, params, reason: "Present validated context" }),
+      ).resolves.toMatchObject({ status: "completed" });
+    }
 
     await expect(
       dispatchUiCommandEvent({

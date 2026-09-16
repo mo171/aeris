@@ -63,13 +63,23 @@ async def run_graph_step(step: StepRecord, *, inputs: InputPaths) -> StepResult:
             run_id=outcome.run_id, journal=str(outcome.journal), figures=[str(p) for p in outcome.figures], latency_ms=latency,
         )
     evidence_ids = [item["id"] for item in outcome.values.get("evidence_items") or []]
+    evidence_resources = {
+        str(item["id"]): {
+            "layerId": item.get("layerId", item.get("layer_id")),
+            "featureIds": list(item.get("featureIds", item.get("feature_ids")) or []),
+        }
+        for item in outcome.values.get("evidence_items") or []
+        if item.get("id")
+    }
     layer_ids = [layer["id"] for layer in outcome.values.get("layers") or []]
     layers = list(outcome.values.get("layers") or [])
     return StepResult(
         state=TraceStepState.COMPLETED.value, detail=f"{len(outcome.claims)} claims from run {outcome.run_id} ({request.graph.value})",
-        claims=outcome.claims, evidence_ids=evidence_ids, layer_ids=layer_ids, run_id=outcome.run_id, journal=str(outcome.journal),
+        claims=outcome.claims, evidence_ids=evidence_ids, evidence_resources=evidence_resources, layer_ids=layer_ids,
+        run_id=outcome.run_id, journal=str(outcome.journal),
         figures=[str(p) for p in outcome.figures], latency_ms=latency,
-        camera_targets=_camera_targets_from_layers(layers), report_ids=[outcome.run_id],
+        camera_targets=_camera_targets_from_layers(layers), report_id=outcome.values.get("report_id"),
+        report_status=outcome.values.get("report_status"),
     )
 
 
@@ -91,7 +101,9 @@ async def recall_evidence_step(step: StepRecord, *, earlier: list[StepResult]) -
         state=TraceStepState.COMPLETED.value, detail=f"recalled {where}", claims=claims, provenance=provenance,
         evidence_ids=list(latest.get("evidence_ids") or []), layer_ids=list(latest.get("layer_ids") or []), run_id=latest.get("run_id"),
         figures=list(latest.get("figures") or []), latency_ms=0,
-        camera_targets=dict(latest.get("camera_targets") or {}), report_ids=list(latest.get("report_ids") or []),
+        camera_targets=dict(latest.get("camera_targets") or {}), report_id=latest.get("report_id"),
+        report_status=latest.get("report_status"),
+        evidence_resources=dict(latest.get("evidence_resources") or {}),
     )
 
 

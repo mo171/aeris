@@ -225,19 +225,37 @@ def _interface_resources(state: AgentState) -> str:
     results = state.get("results") or []
     request_id = state.get("request_id")
     current = [result for result in results if not request_id or not result.get("request_id") or result.get("request_id") == request_id]
-    claims = [str(claim["id"]) for result in current for claim in result.get("claims") or [] if claim.get("id")]
+    claims = [
+        f"{claim['id']}: {claim.get('text', '')} (evidenceIds={claim.get('evidenceIds') or claim.get('evidence_ids') or []})"
+        for result in current
+        for claim in result.get("claims") or []
+        if claim.get("id")
+    ]
     evidence = [str(identifier) for result in current for identifier in result.get("evidence_ids") or []]
-    evidence.extend(str(identifier) for result in current for claim in result.get("claims") or [] for identifier in claim.get("evidenceIds") or claim.get("evidence_ids") or [])
+    evidence.extend(
+        str(identifier)
+        for result in current
+        for claim in result.get("claims") or []
+        for identifier in claim.get("evidenceIds") or claim.get("evidence_ids") or []
+    )
     layers = [str(identifier) for result in current for identifier in result.get("layer_ids") or result.get("layerIds") or []]
     target_sources: list[str] = []
     if isinstance(state.get("camera_targets"), dict):
-        target_sources.extend(str(identifier) for identifier in state["camera_targets"])
+        target_sources.extend(f"{identifier} (layerId={identifier})" for identifier in state["camera_targets"])
     for result in current:
-        target_sources.extend(str(identifier) for identifier in (result.get("camera_targets") or {}))
+        target_sources.extend(f"{identifier} (layerId={identifier})" for identifier in (result.get("camera_targets") or {}))
     targets = target_sources
-    reports = [str(identifier) for identifier in state.get("report_ids") or []]
-    reports.extend(str(identifier) for result in current if result.get("state") in {"completed", "complete", "ready"} for identifier in result.get("report_ids") or [])
-    return f"claims={claims}; evidence={evidence}; layers={layers}; cameraTargetIds={targets}; completedReportIds={reports}"
+    reports = [
+        str(result["report_id"])
+        for result in current
+        if result.get("report_id") and result.get("report_status") == "completed" and result.get("state") == "completed"
+    ]
+    associations = [
+        f"{identifier}: {resource}"
+        for result in current
+        for identifier, resource in (result.get("evidence_resources") or {}).items()
+    ]
+    return f"claims={claims}; evidence={evidence}; evidenceAssociations={associations}; layers={layers}; cameraTargetIds={targets}; completedReportIds={reports}"
 
 
 async def control_interface(state: AgentState) -> dict[str, Any]:

@@ -81,9 +81,10 @@ def _resource_ids(state: Mapping[str, Any], kind: UiResourceKind) -> set[str]:
         identifier for identifier, report in _mapping_items(state.get("reports"))
         if isinstance(report, Mapping) and report.get("status") in {"completed", "complete", "ready"}
     )
-    sources[UiResourceKind.REPORT].update(str(identifier) for identifier in state.get("report_ids") or [] if identifier)
     sources[UiResourceKind.REPORT].update(
-        str(identifier) for result in current for identifier in result.get("report_ids") or [] if identifier and result.get("state") in {"completed", "complete", "ready"}
+        str(result["report_id"])
+        for result in current
+        if result.get("report_id") and result.get("report_status") == "completed" and result.get("state") == "completed"
     )
     return sources[kind]
 
@@ -122,8 +123,8 @@ def _empty_resolver(value: str | None, state: Mapping[str, Any]) -> dict[str, An
 
 
 def _report_resolver(value: str | None, state: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Validate the opaque report handle even though the frontend command needs no parameter."""
-    return {} if isinstance(value, str) and value in _resource_ids(state, UiResourceKind.REPORT) else None
+    """Validate and pass the canonical opaque report handle to the frontend."""
+    return {"reportId": value} if isinstance(value, str) and value in _resource_ids(state, UiResourceKind.REPORT) else None
 
 
 UI_CAPABILITIES: tuple[UiCapability, ...] = (
