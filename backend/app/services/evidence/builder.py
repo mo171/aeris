@@ -545,6 +545,9 @@ async def build_detection_evidence(
                 area_hectares=None,
                 value=float(box.confidence),
                 class_id=name,
+                model_id=model_id.value,
+                model_version=model_version,
+                trace_step_id=trace_step_id,
             )
             features.append(feature)
             feature_ids_by_class.setdefault(name, []).append(feature.id)

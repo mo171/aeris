@@ -54,7 +54,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, ParamSpec
 
 from app.constants.model_ids import ModelId
@@ -80,6 +80,13 @@ class _StepContext:
     step_id: str
     detail: str | None = None
     artefact_layer_id: str | None = None
+    artefact_uri: str | None = None
+    inputs: list[TraceNodeRef] = field(default_factory=list)
+    parameters: dict[str, Any] = field(default_factory=dict)
+    outputs: list[TraceNodeRef] = field(default_factory=list)
+    rationale: str | None = None
+    depends_on: list[str] = field(default_factory=list)
+    operation_id: str | None = None
 
 
 _CURRENT_STEP: ContextVar[_StepContext] = ContextVar("aeris_current_trace_step")
@@ -113,12 +120,54 @@ def attach_artefact_layer(layer_id: str) -> None:
         raise RuntimeError("attach_artefact_layer() called outside a @pipeline_node body.") from error
 
 
+def attach_artefact_uri(uri: str) -> None:
+    """Record the URI where this stage's artefact is stored."""
+    try:
+        _CURRENT_STEP.get().artefact_uri = uri
+    except LookupError as error:
+        raise RuntimeError("attach_artefact_uri() called outside a @pipeline_node body.") from error
+
+
+def record_step_inputs(inputs: list[TraceNodeRef]) -> None:
+    """Record input resources (scenes, regions, upstream layers) for this step."""
+    try:
+        _CURRENT_STEP.get().inputs.extend(inputs)
+    except LookupError as error:
+        raise RuntimeError("record_step_inputs() called outside a @pipeline_node body.") from error
+
+
+def record_step_outputs(outputs: list[TraceNodeRef]) -> None:
+    """Record output resources (layers, figures, claims) for this step."""
+    try:
+        _CURRENT_STEP.get().outputs.extend(outputs)
+    except LookupError as error:
+        raise RuntimeError("record_step_outputs() called outside a @pipeline_node body.") from error
+
+
+def record_step_parameters(parameters: dict[str, Any]) -> None:
+    """Record resolved parameters used during the execution of this step."""
+    try:
+        _CURRENT_STEP.get().parameters.update(parameters)
+    except LookupError as error:
+        raise RuntimeError("record_step_parameters() called outside a @pipeline_node body.") from error
+
+
+def record_step_rationale(rationale: str) -> None:
+    """Record why this step ran or why this model was chosen."""
+    try:
+        _CURRENT_STEP.get().rationale = rationale
+    except LookupError as error:
+        raise RuntimeError("record_step_rationale() called outside a @pipeline_node body.") from error
+
+
 def pipeline_node(
     stage: PipelineStage,
     *,
     detail: str | None = None,
     model_id: ModelId | None = None,
     model_version: str | None = None,
+    operation_id: str | None = None,
+    depends_on: tuple[str, ...] = (),
 ) -> Callable[[Callable[Parameters, Awaitable[NodeUpdate]]], Callable[Parameters, Awaitable[NodeUpdate]]]:
     """Wrap one stage function so it traces itself and stops when asked.
 
@@ -141,14 +190,41 @@ def pipeline_node(
             run_id = state["run_id"]
             step_id = new_identifier(IdentifierPrefix.TRACE_STEP)
             started_at = time.perf_counter()
-            context = _StepContext(step_id)
+
+            # Resolve initial parameters from state parameter_overrides if present
+            overrides = state.get("parameter_overrides") or {}
+            initial_params: dict[str, Any] = {}
+            if operation_id and operation_id in overrides and isinstance(overrides[operation_id], dict):
+                initial_params.update(overrides[operation_id])
+            if stage.value in overrides and isinstance(overrides[stage.value], dict):
+                initial_params.update(overrides[stage.value])
+
+            context = _StepContext(
+                step_id=step_id,
+                operation_id=operation_id,
+                depends_on=list(depends_on),
+                parameters=initial_params,
+            )
             token = _CURRENT_STEP.set(context)
 
             def emit_step(step_state: TraceStepState, *, text: str | None, duration_ms: int | None) -> None:
                 _emit_step(
-                    run_id, step_id, stage, step_state,
-                    detail=text, duration_ms=duration_ms, model_id=model_id, model_version=model_version,
+                    run_id,
+                    step_id,
+                    stage,
+                    step_state,
+                    detail=text,
+                    duration_ms=duration_ms,
+                    model_id=model_id,
+                    model_version=model_version,
                     artefact_layer_id=context.artefact_layer_id,
+                    artefact_uri=context.artefact_uri,
+                    operation_id=context.operation_id,
+                    inputs=list(context.inputs),
+                    parameters=dict(context.parameters),
+                    outputs=list(context.outputs),
+                    depends_on=list(context.depends_on),
+                    rationale=context.rationale,
                 )
 
             emit_step(TraceStepState.RUNNING, text=detail, duration_ms=None)
@@ -235,28 +311,41 @@ def _emit_step(
     model_id: ModelId | None,
     model_version: str | None,
     artefact_layer_id: str | None,
+    artefact_uri: str | None = None,
+    operation_id: str | None = None,
+    inputs: list[TraceNodeRef] | None = None,
+    parameters: dict[str, Any] | None = None,
+    outputs: list[TraceNodeRef] | None = None,
+    depends_on: list[str] | None = None,
+    rationale: str | None = None,
 ) -> None:
     """One trace-step emission. Private because a node emits through the decorator, never directly."""
+    resolved_outputs = list(outputs or [])
+    if artefact_layer_id is not None and not any(o.kind == "layer" and o.id == artefact_layer_id for o in resolved_outputs):
+        resolved_outputs.append(TraceNodeRef(kind="layer", id=artefact_layer_id))
+
     emit(
         TraceStepEvent(
             run_id=run_id,
             step=AnalysisTraceStep(
                 id=step_id,
+                operation_id=operation_id,
                 stage_code=stage,
-                state=state,
-                detail=detail,
-                duration_ms=duration_ms,
+                inputs=inputs or [],
+                parameters=parameters or {},
+                outputs=resolved_outputs,
                 model=(
                     TraceModelRef(id=model_id.value, version=model_version)
                     if model_id is not None and model_version is not None
                     else None
                 ),
-                outputs=(
-                    [TraceNodeRef(kind="layer", id=artefact_layer_id)]
-                    if artefact_layer_id is not None
-                    else []
-                ),
+                rationale=rationale,
+                depends_on=depends_on or [],
+                state=state,
+                detail=detail,
+                duration_ms=duration_ms,
                 artefact_layer_id=artefact_layer_id,
+                artefact_uri=artefact_uri,
             ),
         )
     )
