@@ -12,6 +12,7 @@ how   : Transcribed from `features/investigation/schemas/analysis.schema.ts` and
 """
 
 from typing import Literal
+from pydantic import Field
 
 from app.constants.stages import PipelineStage
 from app.constants.statuses import TraceStepState
@@ -20,10 +21,16 @@ from app.lib.responses import CamelCaseModel
 
 class AnalysisPlanStep(CamelCaseModel):
     id: str
+    operation_id: str | None = None
+    stage_code: PipelineStage
+    inputs: list[dict] = Field(default_factory=list)
+    parameters: dict = Field(default_factory=dict)
+    outputs: list[dict] = Field(default_factory=list)
+    model: dict | None = None
+    rationale: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
     title: str
     description: str
-    model_id: str
-    stage_code: PipelineStage
     is_enabled: bool = True
 
 

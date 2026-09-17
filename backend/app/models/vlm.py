@@ -148,8 +148,13 @@ async def adapter_path(repository: str, revision: str) -> Path:
     """A Hub repository, or a directory on this machine holding `adapter_model.safetensors` - a demo laptop
     with no network, or an adapter pulled from Kaggle before it is published, loads the same way."""
     local = Path(repository)
-    if await asyncio.to_thread(lambda: (local / "adapter_model.safetensors").exists()):
+    is_local_path = local.is_dir() or local.is_absolute() or repository.count("/") > 1 or repository.startswith(("data/", "./", "../"))
+
+    if is_local_path:
+        if not await asyncio.to_thread(lambda: (local / "adapter_model.safetensors").exists()):
+            raise FileNotFoundError(f"Local adapter not found at {local}/adapter_model.safetensors")
         return local
+
     return await fetch_repository(WeightsSource(repository, None, revision))
 
 

@@ -29,6 +29,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { z } from "zod";
 
+import { audioLocationSchema, speechEventSchema } from "../lib/schemas/stream-events.schema";
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = resolve(scriptDirectory, "..");
 const contractsDirectory = resolve(frontendRoot, "..", "backend", "bcontext", "contracts");
@@ -38,6 +40,264 @@ const outputPath = join(contractsDirectory, "schemas.json");
 const SCHEMA_ROOTS = [join(frontendRoot, "features"), join(frontendRoot, "lib", "schemas")];
 
 type SchemaDocument = Record<string, Record<string, unknown>>;
+
+function verifyAudioLocationRuntimeContract(): void {
+  const cases: Array<{ name: string; value: string; normalised: string | null }> = [
+    {
+      name: "absolute HTTP URL",
+      value: "https://aeris.example/api/v1/speech/utt_audio.opus",
+      normalised: "https://aeris.example/api/v1/speech/utt_audio.opus",
+    },
+    {
+      name: "root-relative path",
+      value: "/api/v1/speech/utt_audio.opus",
+      normalised: "/api/v1/speech/utt_audio.opus",
+    },
+    {
+      name: "whitespace-wrapped absolute URL",
+      value: "  https://aeris.example/api/v1/speech/utt_audio.opus  ",
+      normalised: "https://aeris.example/api/v1/speech/utt_audio.opus",
+    },
+    {
+      name: "whitespace-wrapped root-relative path",
+      value: "  /api/v1/speech/utt_audio.opus  ",
+      normalised: "/api/v1/speech/utt_audio.opus",
+    },
+    {
+      name: "malformed absolute URL port",
+      value: "https://aeris.example:not-a-port/utt_audio.opus",
+      normalised: null,
+    },
+    { name: "unsupported scheme", value: "ftp://aeris.example/utt_audio.opus", normalised: null },
+    {
+      name: "protocol-relative path",
+      value: "//different-origin.example/utt_audio.opus",
+      normalised: null,
+    },
+    { name: "empty path", value: "", normalised: null },
+  ];
+
+  for (const contractCase of cases) {
+    const result = audioLocationSchema.safeParse(contractCase.value);
+    const accepted = result.success;
+    if (accepted !== (contractCase.normalised !== null)) {
+      throw new Error(
+        `Audio location runtime case "${contractCase.name}" expected accepted=${contractCase.normalised !== null}, got ${accepted}.`,
+      );
+    }
+    if (result.success && result.data !== contractCase.normalised) {
+      throw new Error(
+        `Audio location runtime case "${contractCase.name}" expected audioUrl=${contractCase.normalised}, got ${result.data}.`,
+      );
+    }
+  }
+}
+
+function verifySpeechRuntimeContract(): void {
+  const common = {
+    type: "speech",
+    runId: "run_contract",
+    utteranceId: "utt_contract",
+    text: "Contract fixture.",
+    supersedesUtteranceId: null,
+  };
+  const cases: Array<{
+    name: string;
+    accepted: boolean;
+    payload: Record<string, unknown>;
+    normalisedAudioUrl?: string | null;
+  }> = [
+    {
+      name: "grounded absolute URL",
+      accepted: true,
+      payload: {
+        ...common,
+        kind: "grounded",
+        audioUrl: "  https://aeris.example/api/v1/speech/utt_contract.opus  ",
+        claimIds: ["clm_contract"],
+        interruptible: true,
+        provisional: false,
+      },
+      normalisedAudioUrl: "https://aeris.example/api/v1/speech/utt_contract.opus",
+    },
+    {
+      name: "provisional local audio",
+      accepted: true,
+      payload: {
+        ...common,
+        kind: "provisional",
+        audioUrl: null,
+        claimIds: [],
+        interruptible: true,
+        provisional: true,
+      },
+    },
+    {
+      name: "progress relative URL",
+      accepted: true,
+      payload: {
+        ...common,
+        kind: "progress",
+        audioUrl: "  /api/v1/speech/utt_contract.opus  ",
+        claimIds: [],
+        interruptible: true,
+        provisional: false,
+      },
+      normalisedAudioUrl: "/api/v1/speech/utt_contract.opus",
+    },
+    {
+      name: "non-interruptible refusal",
+      accepted: true,
+      payload: {
+        ...common,
+        kind: "refusal",
+        audioUrl: null,
+        claimIds: [],
+        interruptible: false,
+        provisional: false,
+      },
+    },
+    {
+      name: "unbound grounded result",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "grounded",
+        audioUrl: null,
+        claimIds: [],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+    {
+      name: "contradictory provisional flag",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "progress",
+        audioUrl: null,
+        claimIds: [],
+        interruptible: true,
+        provisional: true,
+      },
+    },
+    {
+      name: "provisional speech with claims",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "provisional",
+        audioUrl: null,
+        claimIds: ["clm_contract"],
+        interruptible: true,
+        provisional: true,
+      },
+    },
+    {
+      name: "provisional kind without label",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "provisional",
+        audioUrl: null,
+        claimIds: [],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+    {
+      name: "interruptible refusal",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "refusal",
+        audioUrl: null,
+        claimIds: [],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+    {
+      name: "non-root relative audio path",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "grounded",
+        audioUrl: "audio/utt_contract.opus",
+        claimIds: ["clm_contract"],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+    {
+      name: "protocol-relative audio path",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "grounded",
+        audioUrl: "//different-origin.example/utt_contract.opus",
+        claimIds: ["clm_contract"],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+    {
+      name: "non-HTTP absolute audio URL",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "grounded",
+        audioUrl: "ftp://aeris.example/utt_contract.opus",
+        claimIds: ["clm_contract"],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+    {
+      name: "malformed absolute URL port",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "grounded",
+        audioUrl: "https://aeris.example:not-a-port/utt_contract.opus",
+        claimIds: ["clm_contract"],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+    {
+      name: "empty audio path",
+      accepted: false,
+      payload: {
+        ...common,
+        kind: "grounded",
+        audioUrl: "",
+        claimIds: ["clm_contract"],
+        interruptible: true,
+        provisional: false,
+      },
+    },
+  ];
+
+  for (const contractCase of cases) {
+    const result = speechEventSchema.safeParse(contractCase.payload);
+    const accepted = result.success;
+    if (accepted !== contractCase.accepted) {
+      throw new Error(
+        `Speech runtime contract case "${contractCase.name}" expected accepted=${contractCase.accepted}, got ${accepted}.`,
+      );
+    }
+    if (
+      result.success &&
+      "normalisedAudioUrl" in contractCase &&
+      result.data.audioUrl !== contractCase.normalisedAudioUrl
+    ) {
+      throw new Error(
+        `Speech runtime contract case "${contractCase.name}" expected audioUrl=${contractCase.normalisedAudioUrl}, got ${result.data.audioUrl}.`,
+      );
+    }
+  }
+}
 
 function findSchemaModules(): string[] {
   const found: string[] = [];
@@ -108,6 +368,8 @@ async function buildDocument(): Promise<SchemaDocument> {
 }
 
 async function main(): Promise<void> {
+  verifyAudioLocationRuntimeContract();
+  verifySpeechRuntimeContract();
   const isCheck = process.argv.includes("--check");
   const document = await buildDocument();
   const serialised = `${JSON.stringify(document, null, 2)}\n`;

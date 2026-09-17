@@ -18,12 +18,13 @@
 
 import { z } from "zod";
 
-import { isoTimestampSchema } from "@/lib/schemas/geo.schema";
+import { parameterValueSchema } from "@/lib/constants/parameters";
 import { PIPELINE_STAGE_CODES } from "@/lib/constants/pipeline-stages";
+import { isoTimestampSchema } from "@/lib/schemas/geo.schema";
+import { speechEventSchema, uiCommandEventSchema } from "@/lib/schemas/stream-events.schema";
 
 import { claimSchema, evidenceItemSchema, insufficientEvidenceSchema } from "./evidence.schema";
-import { evidenceLayerSchema } from "./layer.schema";
-import { parameterValueSchema } from "@/lib/constants/parameters";
+import { colorRampIdSchema, evidenceLayerSchema } from "./layer.schema";
 
 export const pipelineStageCodeSchema = z.enum(PIPELINE_STAGE_CODES);
 
@@ -121,6 +122,48 @@ export const analysisPlanSchema = z.object({
   steps: z.array(analysisPlanStepSchema),
 });
 
+export const figureReadyEventSchema = z.object({
+  type: z.literal("figure-ready"),
+  runId: z.string().min(1),
+  figureId: z.string().min(1),
+  kind: z.enum([
+    "rgb-composite",
+    "index-map",
+    "mask-overlay",
+    "detection-overlay",
+    "comparison",
+    "histogram",
+    "sar-backscatter",
+  ]),
+  title: z.string().min(1),
+  caption: z.string().nullable(),
+  imageUrl: z.string().min(1),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  traceStepId: z.string().min(1),
+  claimIds: z.array(z.string().min(1)),
+  legend: z.object({
+    kind: z.enum(["continuous", "categorical", "binary"]),
+    label: z.string().min(1),
+    colorRamp: colorRampIdSchema,
+    domain: z.array(z.number()).length(2).nullable(),
+    entries: z
+      .array(z.object({ color: z.string().regex(/^#[0-9a-fA-F]{6}$/), label: z.string().min(1) }))
+      .nullable(),
+  }),
+  renderSpec: z.object({
+    sceneIds: z.array(z.string()),
+    bands: z.array(z.string()),
+    stretch: z.record(z.string(), z.union([z.number(), z.string()])),
+    colorRamp: colorRampIdSchema,
+    resampling: z.string().min(1),
+    crs: z.string().nullable(),
+    decimation: z.number().int().positive(),
+    maskApplied: z.boolean(),
+  }),
+  isPrimary: z.boolean(),
+});
+
 export const analysisStreamEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("run-start"),
@@ -162,53 +205,9 @@ export const analysisStreamEventSchema = z.discriminatedUnion("type", [
     runId: z.string().min(1),
     message: z.string().min(1),
   }),
-  z.object({
-    type: z.literal("ui-command"),
-    runId: z.string().min(1),
-    commandId: z.string().min(1),
-    params: z.record(z.string(), z.any()),
-    reason: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("speech"),
-    runId: z.string().min(1),
-    claimIds: z.array(z.string()),
-    audioUrl: z.string().url(),
-    interruptible: z.boolean(),
-    provisional: z.boolean().optional(),
-  }),
-  z.object({
-    type: z.literal("figure-ready"),
-    runId: z.string().min(1),
-    figureId: z.string().min(1),
-    isPrimary: z.boolean().optional(),
-    /** Typed legend describing the visual encoding of this figure. */
-    legend: z.object({
-      title: z.string().min(1),
-      entries: z.array(
-        z.object({
-          label: z.string().min(1),
-          color: z.string().min(1),
-          /** Value range this entry covers, when the legend is continuous rather than categorical. */
-          valueRange: z
-            .object({ min: z.number(), max: z.number() })
-            .nullable()
-            .optional(),
-        }),
-      ),
-      unit: z.string().nullable().optional(),
-    }),
-    /** Typed render specification telling the canvas renderer how to draw this figure. */
-    renderSpec: z.object({
-      chartType: z.enum(["bar", "pie", "line", "scatter", "heatmap", "histogram", "area"]),
-      xAxis: z.object({ label: z.string(), field: z.string() }).nullable().optional(),
-      yAxis: z.object({ label: z.string(), field: z.string() }).nullable().optional(),
-      data: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))),
-      palette: z.array(z.string()).optional(),
-      width: z.number().int().positive().optional(),
-      height: z.number().int().positive().optional(),
-    }),
-  }),
+  uiCommandEventSchema,
+  speechEventSchema,
+  figureReadyEventSchema,
 ]);
 
 export const regionSuggestionSchema = z.object({

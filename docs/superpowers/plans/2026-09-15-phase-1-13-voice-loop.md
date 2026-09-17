@@ -221,9 +221,15 @@ git commit -m "feat: capture and transcribe voice turns"
 
 **Interfaces:**
 - Produces: `author_grounded_speech(request, claims, model) -> AuthoredSpeech`.
-- Produces: `author_progress_speech(trace_step, model) -> AuthoredSpeech | None`.
-- Produces: `KokoroSynthesizer.chunks(utterance) -> AsyncIterator[AudioChunk]`.
-- Produces: `SpeechPlayer.speak(utterance, chunks)`, `interrupt()`, `standby()`, and `resume()`.
+- Produces: `author_progress_speech(request, trace_step, model) -> AuthoredSpeech | None`.
+- Produces: `author_provisional_speech(request, model=None) -> AuthoredSpeech` for in-flight answers.
+- Produces: `PiperSynthesizer.chunks(utterance) -> AsyncIterator[AudioChunk]` (exported as
+  `KokoroSynthesizer` for the phase's stable adapter name).
+- Produces: `SpeechPlayer(output_factory=..., sample_rate=..., channels=..., device=...)`. The factory is
+  required and must return a fresh output stream after interruption or playback failure; a one-shot stream
+  instance must not be passed directly. `speak(utterance, chunks)`, `interrupt(utterance_id=None)`,
+  `standby()`, `resume()`, and terminal `close()` preserve the authored utterance's `run_id`, `utterance_id`,
+  `claim_ids`, and optional `supersedes_utterance_id` lineage.
 
 - [ ] **Step 1: Write failing truth/lifecycle tests**
 

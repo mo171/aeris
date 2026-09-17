@@ -33,8 +33,15 @@ class ReportBundle:
     voice_path: Path
 
 
-async def write_report_bundle(*, run_id: str, values: dict[str, Any], figure_paths: tuple[Path, ...] = (), figure_events: list[dict[str, Any]] | None = None, generated_at: datetime | None = None) -> ReportBundle:
-    report = await build_report(run_id=run_id, values=values, figure_events=figure_events or [], generated_at=generated_at)
+async def write_report_bundle(
+    *, run_id: str, values: dict[str, Any], figure_paths: tuple[Path, ...] = (),
+    figure_events: list[dict[str, Any]] | None = None, generated_at: datetime | None = None,
+    use_language_model: bool = True,
+) -> ReportBundle:
+    report = await build_report(
+        run_id=run_id, values=values, figure_events=figure_events or [], generated_at=generated_at,
+        use_language_model=use_language_model,
+    )
     directory = settings.journal_directory / run_id / "reports"
     await asyncio.to_thread(directory.mkdir, parents=True, exist_ok=True)
     paths = {

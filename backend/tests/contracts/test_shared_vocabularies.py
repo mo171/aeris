@@ -174,15 +174,15 @@ async def test_every_frontend_vocabulary_is_classified() -> None:
     )
 
 
-async def test_the_twelve_model_ids_are_exactly_the_twelve() -> None:
+async def test_the_thirteen_model_ids_are_exactly_the_thirteen() -> None:
     """Called out by name because `api-contract.md` §7 does, and because it has been got wrong before.
 
-    Twelve is asserted as a number as well as a set: a thirteenth model added on one side only would still
-    satisfy a subset check, and the count is what makes "the twelve model ids" a phrase either side can use.
+    Thirteen is asserted as a number as well as a set: a fourteenth model added on one side only would still
+    satisfy a subset check, and the count is what makes "the thirteen model ids" a phrase either side can use.
     """
     frontend_values = set(CONTRACTS["features/missionCommand/schemas/model.schema.ts"]["modelIdSchema"]["enum"])
 
-    assert len(frontend_values) == 12
+    assert len(frontend_values) == 13
     assert {member.value for member in BACKEND_ENUMS["model_ids.ModelId"]} == frontend_values
     assert "changeformer" in frontend_values
     # The exact mistake api-contract.md §7 records as already made once: a prefixed id on one side only.

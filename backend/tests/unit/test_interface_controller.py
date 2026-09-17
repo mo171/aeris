@@ -1,0 +1,199 @@
+"""Tests for evidence-bound, presentation-only interface control."""
+
+from typing import Any
+
+import pytest
+
+from app.agents import graph
+from app.agents.state import AgentState
+from app.agents.tools.interface_tools import UI_CAPABILITIES, validate_ui_commands
+from app.config import settings
+from app.constants.ui_commands import AGENT_UI_COMMANDS
+
+
+def controller_state() -> AgentState:
+    return AgentState(
+        request_id="run-1",
+        request="show the measured result",
+        results=[
+            {
+                "request_id": "run-1",
+                "claims": [{"id": "clm-1", "text": "Water was mapped."}],
+                "evidence_ids": ["ev-1"],
+                "layer_ids": ["layer-1"],
+                "state": "completed",
+                "run_id": "run-graph-1",
+                "report_id": "report-1",
+                "report_status": "completed",
+            }
+        ],
+        camera_targets={"target-1": {"latitude": 19.0, "longitude": 73.0, "altitudeMeters": 1000.0}},
+    )
+
+
+def test_known_opaque_resources_resolve_but_hallucinated_ids_and_coordinates_are_dropped() -> None:
+    calls = [
+        {"name": "spotlight_claim", "args": {"claim_id": "clm-1", "reason": "the measured finding"}},
+        {"name": "focus_camera_target", "args": {"camera_target_id": "target-made-up", "reason": "look there"}},
+        {"name": "focus_camera_target", "args": {"camera_target_id": "target-1", "latitude": 99, "reason": "look there"}},
+    ]
+    commands = validate_ui_commands(calls, state=controller_state(), budget=10)
+    assert commands == [
+        {
+            "commandId": "investigation.spotlightClaim",
+            "params": {"claimId": "clm-1"},
+            "reason": "the measured finding",
+        },
+        {
+            "commandId": "globe.flyTo",
+            "params": {"latitude": 19.0, "longitude": 73.0, "altitudeMeters": 1000.0},
+            "reason": "look there",
+        },
+    ]
+
+
+def test_camera_targets_and_reports_are_taken_from_completed_step_data() -> None:
+    state = controller_state()
+    state.pop("camera_targets")
+    state["results"][0]["camera_targets"] = {"target-1": {"latitude": 19.0, "longitude": 73.0}}
+    state["results"][0]["report_id"] = "report-1"
+    state["results"][0]["report_status"] = "completed"
+    commands = validate_ui_commands(
+        [
+            {"name": "focus_camera_target", "args": {"camera_target_id": "target-1", "reason": "focus evidence"}},
+            {"name": "open_report", "args": {"report_id": "report-1", "reason": "open completed report"}},
+        ],
+        state=state,
+    )
+    assert commands[0]["params"] == {"latitude": 19.0, "longitude": 73.0}
+    assert commands[1]["params"] == {}
+    state["results"][0]["state"] = "failed"
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-1", "reason": "open report"}}], state=state
+    ) == []
+    state["results"][0]["report_id"] = "report-arbitrary"
+    state["results"][0]["report_status"] = "completed"
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-arbitrary", "reason": "open report"}}], state=state
+    ) == []
+    state["results"][0]["state"] = "completed"
+    state["results"][0].pop("report_id")
+    state["report_id"] = "report-arbitrary"
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-arbitrary", "reason": "open report"}}], state=state
+    ) == []
+
+
+def test_active_report_collapses_multiple_completed_steps_to_the_latest_current_report() -> None:
+    state = controller_state()
+    state["results"] = [
+        {
+            "request_id": "run-1",
+            "state": "completed",
+            "report_id": "report-first",
+            "report_status": "completed",
+        },
+        {
+            "request_id": "other-request",
+            "state": "completed",
+            "report_id": "report-other-request",
+            "report_status": "completed",
+        },
+        {
+            "request_id": "run-1",
+            "state": "completed",
+            "report_id": "report-latest",
+            "report_status": "completed",
+        },
+    ]
+
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-first", "reason": "open the earlier report"}}], state=state
+    ) == []
+    assert validate_ui_commands(
+        [{"name": "open_report", "args": {"report_id": "report-latest", "reason": "open the latest report"}}], state=state
+    ) == [{
+        "commandId": "investigation.openReport",
+        "params": {},
+        "reason": "open the latest report",
+    }]
+    prompt_resources = graph._interface_resources(state)
+    assert "activeReportId=report-latest" in prompt_resources
+    assert "report-first" not in prompt_resources and "report-other-request" not in prompt_resources
+
+
+def test_registered_capabilities_are_agent_allowed_and_frontend_declared() -> None:
+    from pathlib import Path
+
+    frontend_root = Path(__file__).resolve().parents[3] / "frontend"
+    source = (frontend_root / "lib" / "constants" / "commands.ts").read_text(encoding="utf-8")
+    definitions = (frontend_root / "features" / "investigation" / "hooks" / "use-investigation-commands.ts").read_text(encoding="utf-8")
+    assert {capability.command_id for capability in UI_CAPABILITIES} == set(AGENT_UI_COMMANDS)
+    for capability in UI_CAPABILITIES:
+        assert capability.command_id.value in source
+    assert "paramsSchema: z.object({ evidenceId: z.string().min(1) }).optional()" in definitions
+    assert "paramsSchema: z.object({}).optional()" in definitions
+    assert "paramsSchema: z.object({}).optional()" in definitions
+    assert "id: COMMAND_IDS.globe.flyTo" in definitions
+    assert "latitude: z.number().min(-90).max(90)" in definitions
+
+
+def test_interface_budget_and_reason_numeral_guard_are_enforced() -> None:
+    calls = [
+        {"name": "toggle_trace", "args": {"reason": "show the trace"}},
+        {"name": "open_report", "args": {"report_id": "report-1", "reason": "open report 2"}},
+        {"name": "focus_evidence", "args": {"evidence_id": "ev-1", "reason": "show evidence"}},
+    ]
+    commands = validate_ui_commands(calls, state=controller_state(), budget=2)
+    assert [command["commandId"] for command in commands] == ["investigation.toggleTrace", "investigation.focusEvidence"]
+    assert all("2" not in command["reason"] for command in commands)
+
+
+@pytest.mark.asyncio
+async def test_model_failure_emits_no_fallback_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+
+    class BrokenModel:
+        def bind_tools(self, tools: list[Any]) -> Any:
+            raise AssertionError("bind_tools should be reached before invocation")
+
+    monkeypatch.setattr(graph, "build_chat_model", lambda: BrokenModel())
+    result = await graph.control_interface(controller_state())
+    assert result["ui_commands"] == []
+    assert "failed" in result["trace"][0]["state"]
+
+
+@pytest.mark.asyncio
+async def test_controller_prompt_keeps_claim_relationships_and_validated_associations(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    captured: list[Any] = []
+
+    class CaptureModel:
+        def bind_tools(self, tools: list[Any]) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any) -> Any:
+            captured.extend(messages)
+            return type("Reply", (), {"tool_calls": []})()
+
+    state = controller_state()
+    state["results"][0]["claims"][0]["text"] = "Water was mapped in the validated scene."
+    state["results"][0]["claims"][0]["evidenceIds"] = ["ev-1"]
+    state["results"][0]["evidence_resources"] = {"ev-1": {"layerId": "layer-1"}}
+    monkeypatch.setattr(graph, "build_chat_model", lambda: CaptureModel())
+    await graph.control_interface(state)
+    prompt = str(captured[-1][1])
+    assert "Water was mapped" in prompt and "evidenceIds" in prompt and "evidenceAssociations" in prompt
+    assert "layer-1" in prompt and "target-1" in prompt
+
+
+@pytest.mark.asyncio
+async def test_ai_disabled_path_requires_an_explicit_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "llm_provider", "none")
+    state = controller_state()
+    result = await graph.control_interface(state)
+    assert result["ui_commands"] == []
+    state["ui_command_fixture"] = [{"name": "toggle_trace", "args": {"reason": "test fixture"}}]
+    result = await graph.control_interface(state)
+    assert result["ui_commands"][0]["commandId"] == "investigation.toggleTrace"
+    assert "fixture" in result["trace"][0]["detail"]

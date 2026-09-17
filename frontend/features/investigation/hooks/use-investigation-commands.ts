@@ -119,7 +119,35 @@ export function useInvestigationCommands({
       }
     };
 
+    /** Frames the exact evidence item selected by the evidence-bound interface controller. */
+    const focusEvidence = ({ evidenceId }: { evidenceId: string }) => {
+      const evidence = evidenceById[evidenceId];
+      if (!evidence) return;
+      stage()?.sceneLayers.setSpotlight(evidence.featureIds);
+      if (areaOfInterest) {
+        stage()?.camera.flyToBoundingBox(areaOfInterest, {
+          durationMs: INVESTIGATION_CAMERA.localFlightDurationSeconds * 1000,
+        });
+      }
+    };
+
     return [
+      defineCommand({
+        id: COMMAND_IDS.globe.flyTo,
+        title: "Fly to coordinates",
+        description:
+          "Move the 3D Earth camera to a geographic position. Latitude is -90 to 90, longitude is -180 to 180. altitudeMeters is optional and is the camera height above the ground in metres.",
+        group: "globe",
+        isPaletteVisible: false,
+        paramsSchema: z.object({
+          latitude: z.number().min(-90).max(90),
+          longitude: z.number().min(-180).max(180),
+          altitudeMeters: z.number().positive().optional(),
+          durationMs: z.number().int().nonnegative().optional(),
+        }),
+        handler: (target) => stage()?.camera.flyTo(target),
+      }),
+
       defineCommand({
         id: COMMAND_IDS.investigation.ask,
         title: "Ask AERIS about this scene",
@@ -338,8 +366,8 @@ export function useInvestigationCommands({
         keywords: ["largest", "biggest", "most significant"],
         icon: Target,
         shortcut: ["shift", "b"],
-        paramsSchema: z.void(),
-        handler: focusStrongestEvidence,
+        paramsSchema: z.object({ evidenceId: z.string().min(1) }).optional(),
+        handler: (params) => params ? focusEvidence(params) : focusStrongestEvidence(),
       }),
 
       defineCommand({
@@ -636,7 +664,7 @@ export function useInvestigationCommands({
         keywords: ["pipeline", "provenance", "stages"],
         icon: ListTree,
         shortcut: ["shift", "t"],
-        paramsSchema: z.void(),
+        paramsSchema: z.object({}).optional(),
         handler: () => store().toggleTraceExpanded(),
       }),
 
@@ -644,11 +672,11 @@ export function useInvestigationCommands({
         id: COMMAND_IDS.investigation.openReport,
         title: "Generate an intelligence report",
         description:
-          "Assemble the investigation into a report with its trace id embedded, exportable as PDF, JSON or GeoJSON.",
+          "Open the one report drawer for the active investigation; the optional report handle authorizes the completed report but never selects another report.",
         group: "investigation",
         keywords: ["export", "pdf", "document"],
         icon: FileText,
-        paramsSchema: z.void(),
+        paramsSchema: z.object({}).optional(),
         handler: () => store().setReportOpen(true),
       }),
 

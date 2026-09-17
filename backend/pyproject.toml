@@ -87,6 +87,16 @@ dependencies = [
     "langchain-openai>=1.0",
     # Phase 1.12 - deterministic researcher and summary PDF exports.
     "reportlab>=4.4",
+    # Phase 1.13 - an offline terminal voice loop. Audio drivers and model assets remain host-provisioned
+    # and are intentionally exercised by the later real-device gate.
+    "faster-whisper>=1.2.1",
+    "silero-vad>=6.2.0",
+    # Piper 1.8.0 is an offline CPython 3.9+ ABI3 runtime with a Windows wheel. It is GPL-3.0-or-later;
+    # selected voice assets retain their own licences and must be recorded when provisioned in Task 8.
+    "piper-tts==1.8.0",
+    "sounddevice>=0.5.3",
+    "soundfile>=0.13.1",
+    "prompt-toolkit>=3.0.52",
 ]
 
 [tool.uv.sources]

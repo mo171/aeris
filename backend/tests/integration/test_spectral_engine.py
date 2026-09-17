@@ -32,7 +32,7 @@ from app.constants.intents import Intent
 from app.constants.model_ids import ModelId
 from app.constants.preprocessing import MASK_CLOUD, MASK_SHADOW, MASK_UNOBSERVED
 from app.constants.raster import REFLECTANCE_OFFSET, REFLECTANCE_SCALE, BandRole, ProcessingLevel
-from app.constants.spectral import SpectralIndex
+from app.constants.spectral import GEOSPATIAL_ENGINE_VERSION, INDEX_ENGINE_VERSION, SpectralIndex
 from app.constants.stages import PipelineStage
 from app.constants.statuses import RunStatus, TraceStepState
 from app.lib.exceptions import ConflictError, InvalidRequestError
@@ -373,8 +373,14 @@ async def test_the_gate_the_graph_measures_the_sparse_region_and_says_so(
 
     by_stage = {s.step.stage_code: s.step for s in recorder.steps(TraceStepState.COMPLETED)}
     assert "SCL mask" in (by_stage[PipelineStage.S7].detail or "")
-    assert by_stage[PipelineStage.S12].model_id == ModelId.INDEX_ENGINE.value
-    assert by_stage[PipelineStage.S15].model_id == ModelId.GEOSPATIAL_ENGINE.value
+    assert by_stage[PipelineStage.S12].model is not None
+    assert by_stage[PipelineStage.S12].model.id == ModelId.INDEX_ENGINE.value
+    assert by_stage[PipelineStage.S12].model.version == INDEX_ENGINE_VERSION
+    assert by_stage[PipelineStage.S12].outputs[0].id == by_stage[PipelineStage.S12].artefact_layer_id
+    assert by_stage[PipelineStage.S15].model is not None
+    assert by_stage[PipelineStage.S15].model.id == ModelId.GEOSPATIAL_ENGINE.value
+    assert by_stage[PipelineStage.S15].model.version == GEOSPATIAL_ENGINE_VERSION
+    assert by_stage[PipelineStage.S15].outputs[0].id == by_stage[PipelineStage.S15].artefact_layer_id
     assert "mask applied" in (by_stage[PipelineStage.S12].detail or "")
 
     measurement = snapshot.values["measurement"]

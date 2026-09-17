@@ -88,6 +88,7 @@ journals**, which is what makes Phase 2 a transport swap rather than a rewrite.
 ### 3.1 Assistant stream — `POST /assistant/stream`
 
 `message-start` · `trace-step` · `token` · `message-complete` · `stream-error`
+plus `figure-ready` (§6) · `ui-command` (§4) · `speech` (§5)
 
 **Emit every trace step twice** — once `running`, then again `completed` with `durationMs`. That transition
 *is* the execution-trace UI, and it is the product's credibility signal. Tokens in word-sized chunks.
@@ -96,6 +97,12 @@ journals**, which is what makes Phase 2 a transport swap rather than a rewrite.
 
 `run-start` · `trace-step` · `layer-ready` · `claim` · `answer-token` · `run-complete` · `run-error`
 plus **NEW** `figure-ready` (§6) · `ui-command` (§4) · `speech` (§5)
+
+An analysis `trace-step.step` carries the same execution context as `analysisStepSchema`: `operationId`,
+`inputs`, `parameters`, `outputs`, `model`, `rationale`, and `dependsOn`, followed by its live state,
+detail, duration, and `artefactLayerId`. `model` is atomic — either `{ "id", "version" }` or null — so a
+consumer never joins two independently nullable fields into a model identity that did not exist. Context
+the pipeline producer cannot establish is explicitly null or empty; it is never inferred from display copy.
 
 **`layer-ready` is its own event and must stay that way.** The viewer draws a layer the moment it exists,
 rather than waiting for the run to finish. The frontend's own note calls this "the single most important
@@ -121,14 +128,15 @@ never batched to the end of the run.
 
 ## 4. NEW · `ui-command` — the agent drives the interface
 
-**Agreed 2026-08-30. Not yet implemented on the frontend.**
+**Agreed 2026-08-30. Typed backend and frontend stream contracts implemented in Phase 1.13.** Frontend
+dispatch remains a separate adapter over the command bus; parsing this event never bypasses the registry.
 
 Emitted on both the assistant and analysis streams.
 
 ```jsonc
 {
   "type": "ui-command",
-  "runId": "run_01J...",          // or messageId on the assistant stream
+  "runId": "run_01J...",          // the evidence-bearing run, on either stream
   "commandId": "investigation.focusEvidence",   // from lib/constants/commands.ts
   "params": { "evidenceId": "ev_01J..." },
   "reason": "Raising the largest change region."  // one line, spoken or shown; never null
@@ -157,17 +165,21 @@ eleven times in one answer is a bug, not a feature.
 
 ## 5. NEW · `speech` — what AERIS says out loud
 
-**Agreed 2026-08-30. Not yet implemented on the frontend.**
+**Agreed 2026-08-30. Typed backend and frontend stream contracts implemented in Phase 1.13.** Phase 1 audio
+plays locally; browser playback remains Phase 2.7.
 
 ```jsonc
 {
   "type": "speech",
   "runId": "run_01J...",
   "utteranceId": "utt_01J...",
+  "kind": "grounded",
   "text": "Built-up area increased about eighteen percent. Fourteen hectares, mostly north-east.",
-  "audioUrl": "/api/v1/speech/utt_01J....opus",   // null while synthesis streams over the socket
+  "audioUrl": "/api/v1/speech/utt_01J....opus",   // root-relative or absolute HTTP(S); null during local streaming
   "claimIds": ["clm_01J..."],                      // what this utterance is grounded in; never empty
-  "interruptible": true
+  "interruptible": true,
+  "provisional": false,
+  "supersedesUtteranceId": null
 }
 ```
 
@@ -175,11 +187,24 @@ eleven times in one answer is a bug, not a feature.
 written answer aloud produces a screen reader: the written answer is precise, cites figures and is meant to
 be re-read, while speech must be short and must never voice a number no specialist produced.
 
-Hence `claimIds`. **An utterance with no claim behind it is not emitted** — the same evidence-first rule the
-rest of the system runs on, applied to a second surface. Spoken numbers are rounded for the ear ("about
-eighteen percent") while the written claim keeps its declared `precision`; the underlying value is identical.
+Hence `claimIds`. The `kind` discriminator makes the truth source explicit and owns the corresponding
+grounding/interruption rules:
 
-`interruptible: false` marks a refusal or a safety statement that should finish before barge-in silences it.
+| `kind` | `claimIds` | `provisional` | interruption |
+|---|---|---|---|
+| `grounded` | one or more validated claim ids | `false` | may be interruptible |
+| `provisional` | empty | `true` | may be interruptible |
+| `progress` | may be empty; any ids present must already be validated | `false` | may be interruptible |
+| `refusal` | may be empty | `false` | **must be non-interruptible** |
+
+The boolean is retained because existing clients use it directly to mark provisional output, but it must
+agree exactly with `kind`: it is true only for `kind: "provisional"`. Spoken numbers are rounded for the ear
+("about eighteen percent") while the written claim keeps its declared `precision`; the underlying value is
+identical.
+
+`audioUrl` is null while Phase 1 streams PCM locally. When present it is either a same-origin root-relative
+path beginning with one `/`, such as the example above, or an absolute HTTP(S) URL. Protocol-relative,
+non-root-relative, and non-HTTP locations are invalid.
 
 **Barge-in cancels the utterance, not the run.** *(Corrected 2026-08-31; the earlier text here said it
 cancels both, and that was wrong — `product-truth.md` §1.3.)* Speech detected during playback stops synthesis
@@ -196,17 +221,18 @@ Three signals, three effects:
 | Abandon (explicit "stop this run") | The run stops at the next node boundary and emits `run-error` with a cancellation reason. **The only thing that uses the Phase 1.0 cancellation.** |
 
 **Provisional utterances.** A question asked mid-run that the analysis has not answered yet is answered from
-model knowledge, and that is the one case where `claimIds` is empty. It **must** then carry
-`"provisional": true`, and the client must mark it unsourced. An unlabelled empty-`claimIds` utterance is a
-contract violation, not a degraded case — it is a fluent number with nothing behind it. The grounded
-utterance that later supersedes it carries `supersedesUtteranceId`.
+model knowledge with `kind: "provisional"`, empty `claimIds`, and `"provisional": true`; the client marks it
+unsourced. Empty ids are also honest for explicitly labelled progress and refusals, which assert no result.
+An unlabelled category or a contradictory category/boolean pair is a contract violation, not a degraded
+case. The grounded utterance that later supersedes provisional speech carries `supersedesUtteranceId`.
 
 ---
 
 ## 6. NEW · `figure-ready` — the images the backend renders
 
-**Agreed 2026-08-30. Not yet implemented on the frontend.** The requirement is `product-truth.md` §1.5; the
-decision and its rejected alternatives are **ADR-004**.
+**Agreed 2026-08-30. Typed backend and frontend stream contracts implemented by Phase 1.13.** The reference
+surface remains Phase 2.3. The requirement is `product-truth.md` §1.5; the decision and its rejected
+alternatives are **ADR-004**.
 
 The backend renders finished images from the data it reasoned over — a colourised index map with a colourbar,
 a mask over the true-colour scene, detections with boxes drawn, T1 and T2 side by side with the change mask.

@@ -164,6 +164,147 @@ async def test_database_password_is_masked_for_reporting(
     assert "aeris@localhost" in masked or "***" in masked
 
 
+async def test_voice_configuration_rejects_an_unsupported_input_sample_rate(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Silero and Whisper receive PCM16 at one declared rate, never a silently resampled stream."""
+    monkeypatch.setenv("VOICE_INPUT_SAMPLE_RATE_HERTZ", "44100")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_input_sample_rate_hertz" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_an_unsupported_output_sample_rate(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Playback must honour the sample rate emitted by the configured Kokoro pipeline."""
+    monkeypatch.setenv("VOICE_OUTPUT_SAMPLE_RATE_HERTZ", "48000")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_output_sample_rate_hertz" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_a_silence_window_outside_the_vad_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """A negative endpoint window would let capture run without a valid VAD policy."""
+    monkeypatch.setenv("VOICE_VAD_SILENCE_DURATION_SECONDS", "-0.1")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_vad_silence_duration_seconds" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_an_unbounded_capture_duration(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Capture is a hotkey turn, not an accidental always-listening microphone."""
+    monkeypatch.setenv("VOICE_CAPTURE_MAX_DURATION_SECONDS", "0")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_capture_max_duration_seconds" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_an_invalid_synthesis_length_scale(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """Piper needs a positive, intelligible length scale before local synthesis starts."""
+    monkeypatch.setenv("VOICE_SYNTHESIS_LENGTH_SCALE", "0")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_synthesis_length_scale" in str(raised.value)
+
+
+async def test_voice_configuration_rejects_cpu_half_precision_whisper(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """CTranslate2 cannot execute Whisper's float16 compute profile on a CPU device."""
+    monkeypatch.setenv("VOICE_WHISPER_DEVICE", "cpu")
+    monkeypatch.setenv("VOICE_WHISPER_COMPUTE_TYPE", "float16")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_whisper_compute_type" in str(raised.value)
+
+
+async def test_voice_configuration_accepts_ctranslate_cpu_mixed_int8_float32(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """The provider-reported CPU profile is valid even though it was absent from the first static list."""
+    monkeypatch.setenv("VOICE_WHISPER_DEVICE", "cpu")
+    monkeypatch.setenv("VOICE_WHISPER_COMPUTE_TYPE", "int8_float32")
+
+    assert Settings(_env_file=None).voice_whisper_compute_type == "int8_float32"
+
+
+async def test_voice_configuration_requires_capture_to_fit_vad_endpointing(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """A hotkey turn must have time for minimum speech and its following silence window."""
+    monkeypatch.setenv("VOICE_CAPTURE_MAX_DURATION_SECONDS", "1")
+    monkeypatch.setenv("VOICE_VAD_SILENCE_DURATION_SECONDS", "0.8")
+    monkeypatch.setenv("VOICE_VAD_MIN_SPEECH_DURATION_MILLISECONDS", "250")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_vad_min_speech_duration_milliseconds" in str(raised.value)
+
+
+async def test_voice_configuration_uses_explicit_local_synthesis_asset_paths(
+    mandatory_environment: None,
+) -> None:
+    """The Piper runtime receives files, not a model alias that could trigger a download."""
+    configured = Settings(_env_file=None)
+
+    assert configured.voice_synthesis_model_path.suffix == ".onnx"
+    assert configured.voice_synthesis_config_path.suffixes == [".onnx", ".json"]
+    assert "voice_kokoro_model" not in Settings.model_fields
+
+
+async def test_voice_configuration_rejects_an_unpinned_synthesis_asset_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """A moving asset branch would make an offline release impossible to reproduce."""
+    monkeypatch.setenv("VOICE_SYNTHESIS_ASSET_REVISION", "main")
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(_env_file=None)
+
+    assert "voice_synthesis_asset_revision" in str(raised.value)
+
+
+async def test_settings_representation_masks_voice_model_download_token(
+    monkeypatch: pytest.MonkeyPatch,
+    mandatory_environment: None,
+) -> None:
+    """A private model-cache token remains secret when the whole settings object is reported."""
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "voice-model-download-token")
+
+    configured = Settings(_env_file=None)
+
+    assert "voice-model-download-token" not in repr(configured)
+
+
 # --- Recorded run ----------------------------------------------------------------------------------------
 #
 # $ uv run pytest tests/unit/test_config.py -q                               2026-08-31

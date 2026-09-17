@@ -50,7 +50,12 @@ class StepResult(TypedDict, total=False):
     # Where recalled claims came from - the record, not the answer: run id, claim and evidence counts.
     provenance: dict[str, Any]
     evidence_ids: list[str]
+    evidence_resources: dict[str, dict[str, Any]]
     layer_ids: list[str]
+    # Coordinates derived from validated georeferenced layer bounds; never supplied by the model.
+    camera_targets: dict[str, dict[str, Any]]
+    report_id: str | None
+    report_status: str | None
     run_id: str | None
     journal: str | None
     figures: list[str]
@@ -85,6 +90,10 @@ class AgentState(TypedDict, total=False):
     answer: str
     answer_source: str
     ui_commands: list[dict[str, Any]]
+    # Validated presentation resources exposed to the interface controller. Coordinates remain server-owned.
+    camera_targets: dict[str, dict[str, Any]]
+    # Explicitly injected only by tests/development when AI is intentionally disabled.
+    ui_command_fixture: list[dict[str, Any]]
     # the assistant stream's trace, `executionTraceStepSchema` in wire form
     trace: Annotated[list[dict[str, Any]], add]
 

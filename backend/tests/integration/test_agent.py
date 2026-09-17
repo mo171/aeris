@@ -20,15 +20,23 @@ from typing import Any
 
 import pytest
 
+from app.agents import graph as agent_graph
 from app.agents.planner import build_plan
+from app.agents.requests import InputPaths
 from app.agents.run import converse
-from app.agents.state import StepRecord
+from app.agents.state import AgentState, StepRecord
+from app.agents.tools.analysis_tools import run_graph_step
 from app.config import settings
 from app.constants.datasets import DatasetId, DatasetSplit
+from app.constants.model_ids import ModelId
+from app.constants.pipeline import GraphName
 from app.constants.raster import ProcessingLevel
+from app.constants.statuses import RunStatus
 from app.constants.vlm import NUMERAL_PATTERN
 from app.lib.llm.chat_model import build_chat_model, probe_chat_model
 from app.services.datasets.loader import split_directory
+from app.services.pipeline import runner as pipeline_runner
+from app.services.reports.exporters import write_report_bundle
 
 pytestmark = pytest.mark.integration
 
@@ -147,6 +155,69 @@ async def test_a_scene_request_runs_the_graph_refuses_the_count_and_phrases_the_
     assert commands[0]["params"]["claimId"] in {c["id"] for c in water["claims"]}
     # The record on disk for the operator.
     assert _exists(str(Path(water["journal"]).parent / water["run_id"] / "provenance.json"))
+
+
+async def test_real_report_bundle_id_survives_graph_step_and_authorizes_active_report(isolated_pipeline_paths: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The report document's id is the only report handle the controller may authorize."""
+    values = {
+        "query": "Map built-up land in the supplied observation",
+        "claims": [{
+            "id": "clm_primary", "text": "Built-up land covers 12.3 hectares of the observed area.",
+            "isPrimary": True, "confidence": 0.86,
+            "metrics": [{"label": "Area", "value": 12.3, "unit": "ha", "precision": 1}],
+        }],
+        "evidence_items": [{"id": "ev_primary"}],
+        "layers": [{"id": "lyr_primary", "features": []}],
+        "stage_models": [{"modelId": "index-engine", "modelVersion": "1.4.0"}],
+    }
+    figure_events = [{
+        "figureId": "fig_primary", "title": "Optical Built-up Evidence",
+        "caption": "Built-up evidence derived from the optical observation.",
+        "claimIds": ["clm_primary"], "isPrimary": True,
+    }]
+    bundle = await write_report_bundle(
+        run_id="run-report-controller", values=values, figure_events=figure_events, use_language_model=False,
+    )
+    canonical_report_id = bundle.report.report_id
+    outcome = pipeline_runner.RunOutcome(
+        run_id="run-report-controller", status=RunStatus.COMPLETE,
+        values={**values, "report_id": canonical_report_id, "report_status": "completed"},
+        journal=bundle.directory.parent / "events.jsonl",
+    )
+
+    async def completed_report_run(_request: Any, **_kwargs: Any) -> pipeline_runner.RunOutcome:
+        return outcome
+
+    monkeypatch.setattr(pipeline_runner, "run_analysis", completed_report_run)
+    step = StepRecord(
+        id="step-1", query="map built-up land", intent="SEGMENT", tool=ModelId.SEGFORMER_LANDCOVER.value,
+        graph=GraphName.SINGLE_IMAGE.value, method="rule", rule="maps land cover", refusal=None, objects=[], unknown_objects=[],
+        spectral_phrase=None, wants_count=False, wants_location=True, wants_area=True,
+    )
+    result = await run_graph_step(step, inputs=InputPaths(scene=isolated_pipeline_paths / "offline-scene.tif"))
+    assert result["report_id"] == canonical_report_id and result["report_status"] == "completed"
+
+    state = AgentState(
+        request_id="request-real-report",
+        request="open the completed report",
+        results=[dict(result, request_id="request-real-report", step_id=step["id"], intent=step["intent"], query=step["query"])],
+    )
+
+    class ReportModel:
+        def bind_tools(self, tools: list[Any]) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any) -> Any:
+            return type("Reply", (), {"tool_calls": [{
+                "name": "open_report", "args": {"report_id": canonical_report_id, "reason": "open the completed report"},
+            }]})()
+
+    monkeypatch.setattr(agent_graph, "build_chat_model", lambda: ReportModel())
+    controlled = await agent_graph.control_interface(state)
+    assert controlled["ui_commands"] == [{
+        "commandId": "investigation.openReport", "params": {}, "reason": "open the completed report",
+    }]
+    assert f"activeReportId={canonical_report_id}" in agent_graph._interface_resources(state)
 
 
 async def test_evidence_is_recalled_across_requests_on_a_thread_without_a_model_run(isolated_pipeline_paths: Any, monkeypatch: pytest.MonkeyPatch) -> None:

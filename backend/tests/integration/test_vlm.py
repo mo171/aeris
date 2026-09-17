@@ -45,7 +45,7 @@ async def test_the_gate_a_question_about_one_picture_is_answered_in_the_cli_path
     assert pair.image_count == 2 and pair.text
 
 
-async def test_the_gate_a_seeded_number_comes_out_of_the_model_exactly_or_not_at_all(manager: ModelManager) -> None:
+async def test_the_gate_a_seeded_number_comes_out_of_the_model_exactly_or_not_at_all(manager: ModelManager, monkeypatch: pytest.MonkeyPatch) -> None:
     """The constrained generator on the real model: either the phrasing carries 2,471.0 and 20.7%
     verbatim, or it was rejected and the template did. Never a third number."""
     claims = [
@@ -59,6 +59,7 @@ async def test_the_gate_a_seeded_number_comes_out_of_the_model_exactly_or_not_at
         },
         {"text": "The largest region lies in the north-east of the scene.", "isPrimary": False, "metrics": []},
     ]
+    monkeypatch.setattr(settings, "vlm_adapter_repository", None)
     answer = await phrase_claims("How much unhealthy vegetation is there?", claims, manager=manager)
     assert "2,471.0" in answer.text and "20.7%" in answer.text
     assert "{m" not in answer.text

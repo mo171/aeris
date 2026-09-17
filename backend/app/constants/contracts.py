@@ -84,6 +84,7 @@ SHARED_VOCABULARIES: Final[dict[str, tuple[str, str]]] = {
         "imageryProcessingStateSchema",
     ),
     "statuses.TraceStepState": ("features/investigation/schemas/analysis.schema.ts", "traceStepStateSchema"),
+    "voice.SpeechKind": ("lib/schemas/stream-events.schema.ts", "speechKindSchema"),
 }
 
 # The same vocabulary under a second frontend name. Checked as well, so a divergence between two frontend
@@ -188,6 +189,7 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     ),
     "storage.Bucket": "Internal. A bucket role never crosses the boundary; the frontend sees signed URLs.",
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",
+    "voice.VoiceSessionState": "Internal. A terminal session state machine; the frontend sees discrete speech/command events.",
 }
 
 # Frontend vocabularies the backend has not met yet, each with the sub-phase that will meet it. This is a

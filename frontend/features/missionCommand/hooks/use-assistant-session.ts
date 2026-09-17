@@ -21,6 +21,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useReducer, useRef, useState } from "react";
 
 import { QUERY_KEYS } from "@/lib/constants/query-keys";
+import {
+  dispatchUiCommandEvent,
+  type UiCommandDispatchObserver,
+} from "@/lib/streaming/ui-command-bridge";
 
 import {
   fetchAssistantSuggestions,
@@ -172,6 +176,12 @@ export function useAssistantSession(): AssistantSessionResult {
     }
   }, []);
 
+  const observeUiCommandDispatch = useCallback<UiCommandDispatchObserver>((result) => {
+    if (result.status !== "completed") {
+      console.warn("[AERIS] Assistant UI command was not dispatched.", result);
+    }
+  }, []);
+
   const handleStreamEvent = useCallback(
     (event: AssistantStreamEvent) => {
       switch (event.type) {
@@ -211,9 +221,13 @@ export function useAssistantSession(): AssistantSessionResult {
           flushPendingText();
           dispatch({ type: "fail-message", messageId: event.messageId, reason: event.message });
           break;
+
+        case "ui-command":
+          void dispatchUiCommandEvent(event, observeUiCommandDispatch);
+          break;
       }
     },
-    [flushPendingText],
+    [flushPendingText, observeUiCommandDispatch],
   );
 
   const ask = useCallback(

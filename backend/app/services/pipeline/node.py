@@ -62,7 +62,7 @@ from app.constants.stages import PipelineStage
 from app.constants.statuses import TraceStepState
 from app.db.identifiers import IdentifierPrefix, new_identifier
 from app.lib.exceptions import RunCancelledError
-from app.schemas.events.trace import AnalysisTraceStep, TraceStepEvent
+from app.schemas.events.trace import AnalysisTraceStep, TraceModelRef, TraceNodeRef, TraceStepEvent
 from app.services.pipeline.cancellation import raise_if_abandoned
 from app.services.pipeline.state import PipelineState
 from app.services.pipeline.stream import emit
@@ -246,8 +246,16 @@ def _emit_step(
                 state=state,
                 detail=detail,
                 duration_ms=duration_ms,
-                model_id=model_id.value if model_id is not None else None,
-                model_version=model_version,
+                model=(
+                    TraceModelRef(id=model_id.value, version=model_version)
+                    if model_id is not None and model_version is not None
+                    else None
+                ),
+                outputs=(
+                    [TraceNodeRef(kind="layer", id=artefact_layer_id)]
+                    if artefact_layer_id is not None
+                    else []
+                ),
                 artefact_layer_id=artefact_layer_id,
             ),
         )
