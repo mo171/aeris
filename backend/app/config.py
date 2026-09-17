@@ -19,10 +19,18 @@ how   : Instantiating `Settings()` at the bottom of this file means a missing or
         deliberately absent - an unread setting is a claim about the system that nothing verifies.
 """
 
+import os
+import warnings
 from pathlib import Path
 from typing import Final, Literal
 
 import ctranslate2
+
+# Suppress Hugging Face symlink warnings for free models downloaded to Windows
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+# Suppress PyTorch 3.14 deprecation warnings 
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.jit._serialization")
 from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn, SecretStr, ValidationInfo, field_validator
 from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
