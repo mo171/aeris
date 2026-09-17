@@ -158,7 +158,7 @@ async def execute_voice(
     else:
         # Welcome message for open session
         from app.voice.speech import AuthoredSpeech
-        from app.lib.identifiers import new_identifier, IdentifierPrefix
+        from app.db.identifiers import new_identifier, IdentifierPrefix
         welcome_speech = AuthoredSpeech(
             text="AERIS voice mode initialized and ready.",
             run_id="sys_session",
