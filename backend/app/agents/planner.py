@@ -51,13 +51,17 @@ def template_description(step: StepRecord) -> str:
 
 
 def template_plan(steps: list[StepRecord]) -> AnalysisPlan:
-    plan_steps = [
-        AnalysisPlanStep(
-            id=step["id"], title=template_title(step), description=template_description(step), model_id=step.get("tool") or NO_MODEL,
-            stage_code=PLAN_STAGES[step["intent"]], is_enabled=not step.get("refusal"),
+    from app.constants.fleet import FLEET
+    plan_steps = []
+    for step in steps:
+        tool = step.get("tool")
+        model_val = {"id": tool, "version": FLEET[tool].version} if tool and tool in FLEET else None
+        plan_steps.append(
+            AnalysisPlanStep(
+                id=step["id"], title=template_title(step), description=template_description(step), model=model_val,
+                stage_code=PLAN_STAGES[step["intent"]], is_enabled=not step.get("refusal"),
+            )
         )
-        for step in steps
-    ]
     summary = f"{len(plan_steps)} step{'s' if len(plan_steps) != 1 else ''}: " + " -> ".join(step.title for step in plan_steps)
     return AnalysisPlan(id=new_identifier(IdentifierPrefix.PLAN), summary=summary, steps=plan_steps)
 

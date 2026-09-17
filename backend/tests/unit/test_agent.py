@@ -46,7 +46,7 @@ def test_the_template_plan_is_the_routers_steps_with_refused_ones_off_and_valida
     plan = template_plan(steps())
     assert [step.id for step in plan.steps] == ["step-1", "step-2", "step-3"]
     assert [step.is_enabled for step in plan.steps] == [True, False, True]
-    assert plan.steps[0].model_id == "dota-detector" and plan.steps[0].stage_code.value == "S13" and plan.steps[2].stage_code.value == "S14"
+    assert plan.steps[0].model["id"] == "dota-detector" and plan.steps[0].stage_code.value == "S13" and plan.steps[2].stage_code.value == "S14"
     validator("features/investigation/schemas/analysis.schema.ts", "analysisPlanSchema").validate(plan.to_wire())
 
 

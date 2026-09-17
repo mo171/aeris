@@ -18,13 +18,7 @@ from app.schemas.events.base import StreamEvent
 HTTP_URL_ADAPTER: TypeAdapter[HttpUrl] = TypeAdapter(HttpUrl)
 
 
-class SpeechKind(StrEnum):
-    """The evidence source and presentation policy of one utterance."""
-
-    GROUNDED = "grounded"
-    PROVISIONAL = "provisional"
-    PROGRESS = "progress"
-    REFUSAL = "refusal"
+from app.constants.voice import SpeechKind
 
 
 class SpeechEvent(StreamEvent):

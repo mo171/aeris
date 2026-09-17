@@ -25,6 +25,15 @@ class VoiceSessionState(StrEnum):
     CLOSED = "closed"
 
 
+class SpeechKind(StrEnum):
+    """The evidence source and presentation policy of one utterance."""
+
+    GROUNDED = "grounded"
+    PROVISIONAL = "provisional"
+    PROGRESS = "progress"
+    REFUSAL = "refusal"
+
+
 # Mono PCM16 is the model and `Raw*Stream` boundary. Channel count and sample width must not vary by host.
 VOICE_INPUT_CHANNELS: Final[int] = 1
 VOICE_INPUT_SAMPLE_WIDTH_BYTES: Final[int] = 2

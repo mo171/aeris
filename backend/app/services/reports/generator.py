@@ -223,14 +223,14 @@ async def apply_editorial_draft(report: ReportDocument, draft: EditorialReportDr
 
     evidence_by_index = {item.figure_index: item for item in draft.evidence_narratives}
     narratives = [EvidenceNarrative(figure_id=figure.id, **evidence_by_index[index].model_dump(exclude={"figure_index"})) for index, figure in enumerate(report.figures)]
-    questions_and_answers = report.questions_and_answers if report.is_evidence_limited else [
+    questions_and_answers = [
         QuestionAnswer(question=_sentence(item.question, question=True), answer=item.answer)
         for item in draft.questions_and_answers
     ]
-    executive_summary = report.executive_summary if report.is_evidence_limited else draft.executive_summary
-    title = report.title if report.is_evidence_limited and "joint" in draft.title.lower() else draft.title
-    subtitle = report.subtitle if report.is_evidence_limited else draft.subtitle
-    objective = report.objective if report.is_evidence_limited else draft.objective
+    executive_summary = draft.executive_summary
+    title = draft.title
+    subtitle = draft.subtitle
+    objective = draft.objective
     updated = report.model_copy(update={
         "title": title, "subtitle": subtitle, "objective": objective,
         "executive_summary": executive_summary, "questions_and_answers": questions_and_answers,
@@ -256,6 +256,11 @@ def _editorial_rejection_reason(report: ReportDocument, draft: EditorialReportDr
     return None
 
 
+class ReportEditorialUnavailable(Exception):
+    """Raised when the requested language model is unavailable or fails."""
+    pass
+
+
 async def build_report(*, run_id: str, values: dict[str, Any], figure_events: list[dict[str, Any]], generated_at: datetime | None = None, use_language_model: bool = True) -> ReportDocument:
     report = _fallback_document(run_id=run_id, values=values, figure_events=figure_events, generated_at=generated_at or datetime.now(UTC))
     if not use_language_model:
@@ -263,13 +268,22 @@ async def build_report(*, run_id: str, values: dict[str, Any], figure_events: li
     from app.lib.llm.chat_model import build_chat_model
     model = build_chat_model()
     if model is None:
-        return report
+        raise ReportEditorialUnavailable("The configured language model is not available.")
     prompt = REPORT_EDITORIAL_PROMPT.format(dossier=json.dumps(_editorial_source(report), ensure_ascii=False, indent=2))
-    try:
-        draft = await model.with_structured_output(EditorialReportDraft).ainvoke(prompt)
-    except Exception as error:  # noqa: BLE001 - deterministic reader-ready prose is the safe fallback
-        logger.warning("report editorial pass unavailable", extra={"reason": str(error)})
-        return report
+
+    draft = None
+    last_error = None
+    for _ in range(2):
+        try:
+            draft = await model.with_structured_output(EditorialReportDraft).ainvoke(prompt)
+            break
+        except Exception as error:
+            last_error = error
+
+    if draft is None:
+        logger.warning("report editorial pass unavailable after retry", extra={"reason": str(last_error)})
+        raise ReportEditorialUnavailable(f"Editorial pass failed: {last_error}") from last_error
+
     edited = await apply_editorial_draft(report, draft)
     if edited == report:
         reason = _editorial_rejection_reason(report, draft, json.dumps(draft.model_dump(), ensure_ascii=False))
@@ -280,6 +294,8 @@ async def build_report(*, run_id: str, values: dict[str, Any], figure_events: li
         try:
             corrected = await model.with_structured_output(EditorialReportDraft).ainvoke(corrective_prompt)
             edited = await apply_editorial_draft(report, corrected)
-        except Exception as error:  # noqa: BLE001 - the deterministic narrative remains usable
+        except Exception as error:
             logger.warning("corrective report editorial pass unavailable", extra={"reason": str(error)})
+            raise ReportEditorialUnavailable(f"Corrective editorial pass failed: {error}") from error
+
     return edited.model_copy(update={"sections": _sections(edited, values)})

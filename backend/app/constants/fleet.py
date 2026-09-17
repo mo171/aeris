@@ -129,6 +129,9 @@ FLEET: Final[dict[ModelId, FleetRecord]] = {
     ModelId.S2CLOUDLESS: FleetRecord(
         ModelId.S2CLOUDLESS, "1.7.3", ModelCapability.PREPROCESSING, (PipelineStage.S7,), None, 0, None
     ),
+    ModelId.SEN2COR_SCL: FleetRecord(
+        ModelId.SEN2COR_SCL, "1.0.0", ModelCapability.PREPROCESSING, (PipelineStage.S7,), None, 0, None
+    ),
     ModelId.CO_REGISTRATION: FleetRecord(
         ModelId.CO_REGISTRATION, "1.3.0", ModelCapability.PREPROCESSING, (PipelineStage.S9,), None, 0, None
     ),

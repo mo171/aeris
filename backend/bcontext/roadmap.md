@@ -1172,8 +1172,6 @@ speech cancellation, narration, `ui-command` events and claim references are tes
 rapid turn-taking, model delay and failed synthesis. No voice response may invent a measurement or erase a
 refusal.
 
-**Status**: **done** — Implemented `VoiceSession` coordinator, `VoiceTurnDecision` LLM-structured routing, prompt-toolkit hotkey integration (`Ctrl+P`), barge-in playback interruption, provisional speech for mid-run questions, offline integration tests with Piper/faster-whisper verifying < 0.8 WER round-trip without API keys.
-
 ## 1.14 — Mature AERIS orchestration hardening
 
 This is the final Phase 1 orchestration milestone. It is a new layer **above** the scientific graphs built

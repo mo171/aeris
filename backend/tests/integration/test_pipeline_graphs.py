@@ -295,7 +295,7 @@ async def test_a_pair_the_gate_cannot_measure_is_refused_with_every_number_and_t
     events = journal_events(outcome.run_id)
     assert completed_stages(events) == ["S1"]
     s9 = next(e["step"] for e in events if e["type"] == "trace-step" and e["step"]["stageCode"] == "S9" and e["step"]["state"] != "running")
-    assert s9["state"] == "failed" and s9["modelId"] == ModelId.CO_REGISTRATION.value
+    assert s9["state"] == "failed" and s9["model"]["id"] == ModelId.CO_REGISTRATION.value
 
 
 async def test_a_declared_pair_is_compared_measured_drawn_and_scores_against_its_label(isolated_pipeline_paths: Path) -> None:
