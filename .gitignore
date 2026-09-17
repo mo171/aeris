@@ -1,8 +1,14 @@
 .env
 __pychache__
 .claude
+.agent/
+.gemini/
+.gitnexus/
+adapters/
 AGENTS.md
 CLAUDE.md
+PROJECT_RULES.md
+SUPERPOWER-STYLE.md
 .next
 .vscode
 .worktrees/

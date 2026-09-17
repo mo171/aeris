@@ -71,6 +71,7 @@ class AnalysisTraceStep(StreamEvent):
     # `api-contract.md` §1 rule 10: an operator can click it, so a missing URI is a dead end in the
     # interface rather than a silent omission.
     artefact_layer_id: str | None = None
+    artefact_uri: str | None = None
 
 
 class TraceStepEvent(StreamEvent):
@@ -79,3 +80,4 @@ class TraceStepEvent(StreamEvent):
     type: Literal[AnalysisEventType.TRACE_STEP] = AnalysisEventType.TRACE_STEP
     run_id: str
     step: AnalysisTraceStep
+

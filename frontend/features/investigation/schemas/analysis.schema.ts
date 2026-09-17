@@ -67,6 +67,7 @@ export const analysisTraceStepSchema = analysisStepSchema.extend({
    * residual, the index map. This is what turns the trace from a progress bar into an instrument.
    */
   artefactLayerId: z.string().nullable(),
+  artefactUri: z.string().nullable().optional(),
 });
 
 export const analysisIntentSchema = z.enum([

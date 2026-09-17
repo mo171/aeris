@@ -66,6 +66,7 @@ from app.schemas.events import (
     RunStartEvent,
     SpeechEvent,
     TraceModelRef,
+    TraceNodeRef,
     TraceStepEvent,
     UiCommandEvent,
     ValueDomain,
@@ -144,6 +145,9 @@ MODELLED_EVENTS = {
                     area_hectares=112.1,
                     value=0.31,
                     class_id=None,
+                    model_id=ModelId.GEOSPATIAL_ENGINE.value,
+                    model_version="1.4.0",
+                    trace_step_id=STEP_ID,
                 )
             ],
             provenance=LayerProvenance(
@@ -593,6 +597,46 @@ async def test_an_unknown_event_type_is_rejected_rather_than_ignored() -> None:
     """
     with pytest.raises(ValidationError):
         ANALYSIS_STREAM_EVENT_ADAPTER.validate_python({"type": "layer-ready", "runId": RUN_ID})
+
+async def test_analysis_trace_step_full_graph_shape() -> None:
+    """A trace-step carrying operationId, inputs, parameters, outputs, and dependsOn validates and round-trips."""
+    event = TraceStepEvent(
+        run_id=RUN_ID,
+        step=AnalysisTraceStep(
+            id=STEP_ID,
+            operation_id="change-detection",
+            stage_code=PipelineStage.S13,
+            state=TraceStepState.COMPLETED,
+            detail="ChangeFormer over the co-registered pair",
+            duration_ms=1200,
+            model=TraceModelRef(id="changeformer", version="1.0.0"),
+            rationale="Optical bi-temporal pair with NIR and SWIR coverage",
+            inputs=[TraceNodeRef(kind="scene", id="scene_t0"), TraceNodeRef(kind="scene", id="scene_t1")],
+            parameters={"threshold": 0.45, "method": "changeformer"},
+            outputs=[TraceNodeRef(kind="layer", id="lyr_change_01"), TraceNodeRef(kind="figure", id="fig_change_01")],
+            depends_on=["stp_coregister_s9"],
+            artefact_layer_id="lyr_change_01",
+            artefact_uri="s3://artefacts/run_123/S13/change-probability.tif",
+        ),
+    )
+    wire = serialise_event(event)
+    assert wire["step"]["operationId"] == "change-detection"
+    assert wire["step"]["dependsOn"] == ["stp_coregister_s9"]
+    assert wire["step"]["parameters"] == {"threshold": 0.45, "method": "changeformer"}
+    assert wire["step"]["inputs"] == [{"kind": "scene", "id": "scene_t0"}, {"kind": "scene", "id": "scene_t1"}]
+    assert wire["step"]["outputs"] == [{"kind": "layer", "id": "lyr_change_01"}, {"kind": "figure", "id": "fig_change_01"}]
+    assert wire["step"]["rationale"] == "Optical bi-temporal pair with NIR and SWIR coverage"
+    assert wire["step"]["artefactUri"] == "s3://artefacts/run_123/S13/change-probability.tif"
+
+    # Validate against JSON schema validator for trace-step
+    validator = Draft202012Validator(ANALYSIS_MEMBERS[AnalysisEventType.TRACE_STEP])
+    assert validator.is_valid(wire)
+
+    # And round-trip back
+    restored = parse_event(wire)
+    assert isinstance(restored, TraceStepEvent)
+    assert restored.step.operation_id == "change-detection"
+    assert restored.step.parameters["threshold"] == 0.45
 
 
 # --- Recorded run ----------------------------------------------------------------------------------------
