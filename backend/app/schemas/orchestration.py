@@ -19,3 +19,4 @@ class Refusal(BaseModel):
     reason: str
     gsd: float | None = None
     required_max_gsd: float | None = None
+    fatal: bool = False

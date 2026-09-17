@@ -42,6 +42,18 @@ its own registry schema before dispatch. **The model's arguments are never trust
 
 This is the line that separates an agentic system from a conversational one.
 
+### 1.1.1 How the Agent Harness feels to us (Phase 1.14)
+
+AERIS is an autonomous scientific operator, not just an LLM router. The distinction is in the **ReAct loop** interacting with the **scientific firewall**.
+
+**What it is NOT**: A static "Plan-and-Execute" script where the LLM guesses a workflow, Python runs it blindly, and the LLM apologizes if it breaks. It is also NOT an unbound web-agent that endlessly guesses tools until something works.
+
+**What it IS**: A structured *Thought → Action → Observation → Thought* loop constrained by Earth Observation physics. 
+When the operator asks for something impossible (e.g., detecting cars on 10m GSD), the Feasibility Engine (the firewall) throws a hard scientific refusal. The Agent *observes* this failure, pauses, realizes it cannot bypass physics, and transparently explains the limitation.
+When the operator asks for something ambiguous (e.g., detecting trees), the firewall rejects the rigid ontology but offers a hint. The Agent *observes* this, dynamically reasons about alternatives, and explicitly pivots to using the VLM for qualitative presence instead—all without operator intervention.
+
+The resulting experience feels like working with a seasoned remote-sensing analyst. It tries its best, understands the physical limits of its sensors, adapts when appropriate, and clearly explains *why* it did what it did using grounded evidence. It has **autonomy over strategy, but no authority over science.**
+
 ### 1.2 The spoken line is generated from the validated claim, never from the answer text
 
 Reading the written answer aloud produces a screen reader. The written answer is precise, cites figures and

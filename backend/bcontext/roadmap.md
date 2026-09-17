@@ -1143,7 +1143,7 @@ and number resolves to a claim/evidence/trace record; every input and model para
 refusals and limitations survive into every surface; MinIO objects can be restored from Postgres metadata;
 and regenerating the same report version produces byte-identical or canonically equivalent artifacts.
 
-## 1.13 — The voice loop
+## 1.13 — The voice loop — **done (2026-09-17)**
 
 **Research:** `product-truth.md` §1. This is the product's identity.
 
@@ -1172,9 +1172,9 @@ speech cancellation, narration, `ui-command` events and claim references are tes
 rapid turn-taking, model delay and failed synthesis. No voice response may invent a measurement or erase a
 refusal.
 
-**Status**: **done** — Implemented `VoiceSession` coordinator, `VoiceTurnDecision` LLM-structured routing, prompt-toolkit hotkey integration (`Ctrl+P`), barge-in playback interruption, provisional speech for mid-run questions, offline integration tests with Piper/faster-whisper verifying < 0.8 WER round-trip without API keys.
+**Result** — Implemented `VoiceSession` coordinator, `VoiceTurnDecision` LLM-structured routing, prompt-toolkit hotkey integration (`Ctrl+P`), barge-in playback interruption, provisional speech for mid-run questions, offline integration tests with Piper/faster-whisper verifying < 0.8 WER round-trip without API keys.
 
-## 1.14 — Mature AERIS orchestration hardening
+## 1.14 — Mature AERIS orchestration hardening — **done (2026-09-17)**
 
 This is the final Phase 1 orchestration milestone. It is a new layer **above** the scientific graphs built
 in 1.10, 1.11 and 1.11.2, not a replacement for them and not another scientific pipeline. The existing
@@ -1231,6 +1231,12 @@ records validity decisions, executes the minimum valid set, preserves partial su
 produces a complete evidence graph and claim set, resumes after interruption, and yields the same grounded
 answer and journal on replay. The suite includes capability addition without central-router edits and
 mutation tests proving that removing a validity check causes the gate to fail.
+
+**Result** — Upgraded the orchestration engine to a full ReAct loop (PLAN → ACT → OBSERVE → REPLAN) that operates strictly above a deterministic scientific firewall.
+- **Agent Autonomy**: The Agent Harness now intercepts scientific refusals (e.g., `MODEL_DOMAIN_MISMATCH`), explicitly reasons about them, and dynamically replans using alternative capabilities (e.g., falling back from DOTA to VLM for trees).
+- **Scientific Firewall**: Physics and ontology constraints remain immutable. The Registry blocks invalid intents (e.g. detecting cars on 10m GSD imagery) and returns typed refusals.
+- **Fatal Refusals & Safe Termination**: Hard physical stops (like `RESOLUTION_FAILURE` or `SCIENTIFIC_INVALID`) are classified as `fatal=True`. The Agent immediately halts the ReAct loop without wasting LLM cycles, explicitly bounded by `max_tool_calls` and `max_replans`.
+- **Layer 3 Tool Execution API**: Formalized capability execution through isolated agent-facing APIs (`app/agents/tools/`) that execute ML/graphs and format standard observations.
 
 ## 1.15 — Evaluation
 

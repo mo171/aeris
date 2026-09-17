@@ -13,17 +13,22 @@ logger = logging.getLogger(__name__)
 class PlanResponse(BaseModel):
     tasks: list[TaskSpec] = Field(..., description="The planned execution tasks.")
 
-async def plan_request(request: str, model: BaseChatModel, available_inputs: list[str]) -> list[TaskSpec]:
+async def plan_request(request: str, model: BaseChatModel, available_inputs: list[str], feedback: str = "") -> list[TaskSpec]:
     """Decompose a request into an inspectable array of TaskSpecs."""
+    
+    user_prompt = "Available inputs: {inputs}\n\nRequest: {request}"
+    if feedback:
+        user_prompt += "\n\nPrevious attempt failed. Feedback:\n{feedback}\n\nPlease generate a NEW plan that resolves this issue (e.g. use VQA if object detection failed due to resolution)."
+        
     prompt = ChatPromptTemplate.from_messages([
         ("system", PLANNER_SYSTEM),
-        ("human", "Available inputs: {inputs}\n\nRequest: {request}")
+        ("human", user_prompt)
     ])
     
     try:
         # Enforce budget/limits on output length via LLM configuration or max tasks validation
         chain = prompt | model.with_structured_output(PlanResponse)
-        response = await chain.ainvoke({"request": request, "inputs": ", ".join(available_inputs)})
+        response = await chain.ainvoke({"request": request, "inputs": ", ".join(available_inputs), "feedback": feedback})
         
         # Hard execution budget check
         if len(response.tasks) > 10:

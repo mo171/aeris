@@ -54,9 +54,8 @@ class DotaDetectorCapability:
                 refusal=Refusal(
                     code=FailureCode.MODEL_DOMAIN_MISMATCH,
                     target=target,
-                    reason=f"No detector in the fleet precisely detects '{target}'. Supported: {', '.join(DOTA_CLASS_NAMES)}."
-                ),
-                fallback_intent=Intent.SCENE_VQA
+                    reason=f"No detector in the fleet precisely detects '{target}'. Supported: {', '.join(DOTA_CLASS_NAMES)}. Hint: Consider using Intent.SCENE_VQA (VLM) for qualitative presence."
+                )
             )
             
         # Validate resolution
@@ -72,7 +71,8 @@ class DotaDetectorCapability:
                         target=target,
                         reason=f"A {target} spans fewer than {MIN_OBJECT_PIXELS} pixels at {facts.ground_sample_distance:g} m per pixel; detecting one needs {needed:.2g} m or finer.",
                         gsd=facts.ground_sample_distance,
-                        required_max_gsd=needed
+                        required_max_gsd=needed,
+                        fatal=True
                     )
                 )
 
@@ -119,7 +119,8 @@ class VLMCapability:
                 refusal=Refusal(
                     code=FailureCode.SCIENTIFIC_INVALID,
                     target=task.target,
-                    reason="The VLM can say whether it is present, but its counts are not measurements."
+                    reason="The VLM can say whether it is present, but its counts are not measurements.",
+                    fatal=True
                 )
             )
             
@@ -290,15 +291,11 @@ class CapabilityRegistry:
                         best_refusal = Refusal(
                             code=FailureCode.SCIENTIFIC_INVALID,
                             target=task.target,
-                            reason=f"Capability {cap.id} does not support outputs: {', '.join(unsupported)}."
+                            reason=f"Capability {cap.id} does not support outputs: {', '.join(unsupported)}.",
+                            fatal=True
                         )
                         continue
                     return cap, None
-                elif eval_result.fallback_intent:
-                    # Deterministic downgrade/fallback handling
-                    # E.g. DOTA failed on ontology, suggests VQA fallback
-                    task_copy = task.model_copy(update={"intent": eval_result.fallback_intent})
-                    return self.check_feasibility(task_copy, facts)
                 elif eval_result.refusal:
                     best_refusal = eval_result.refusal
 

@@ -87,21 +87,6 @@ async def test_comparison():
             new_answer = await run_harness(case['query'], facts=new_facts, model=llm)
             new_time = time.time() - t0
             new_status = "COMPLETED"
-            # Mock execution: if no refusals, generate mock claims based on intent
-            if not refusals:
-                for task in state.tasks:
-                    if task.intent.value == "DETECT":
-                        state.observations.append(AgentObservation(
-                            task_id=task.task_id,
-                            claim={"type": "count", "value": 14, "target": task.target},
-                            refusal=None
-                        ))
-                    elif task.intent.value == "SEGMENT":
-                        state.observations.append(AgentObservation(
-                            task_id=task.task_id,
-                            claim={"type": "area", "value": "1.2 sq km", "target": task.target},
-                            refusal=None
-                        ))
             new_details = new_answer
         except Exception as e:
             new_time = time.time() - t0

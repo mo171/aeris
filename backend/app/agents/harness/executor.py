@@ -10,35 +10,32 @@ from app.services.prompts.vlm import SAR_IMAGE_NOTE
 
 from app.services.query.ontology import canonicalize_target
 
+from app.agents.tools.detect import execute_detect
+from app.agents.tools.vqa import execute_vqa
+from app.agents.tools.change import execute_change
+from app.agents.tools.segment import execute_segment
+from app.agents.tools.cross_modal import execute_cross_modal
+from app.agents.tools.area import execute_area
+
 async def execute_task_locally(task: TaskSpec, tool_id: str, pictures: list[np.ndarray], sar: list[bool], manager: ModelManager) -> dict[str, Any]:
-    """Execute a task immediately (bypassing MinIO graphs) to get real observations for Synthesis."""
+    """Execute a task using the Layer 3 tools API."""
     if tool_id == ModelId.DOTA_DETECTOR:
-        result = await detect_objects(pictures[0], manager=manager)
-        
-        # Format the result as a claim
-        target = canonicalize_target(task.target)
-        count = result.count(target) if target else len(result.boxes)
-        
-        return {
-            "type": "count",
-            "target": target or "objects",
-            "value": count,
-            "latency_ms": result.latency_ms
-        }
+        return await execute_detect(task, pictures, manager)
         
     elif tool_id == "vlm":
-        if len(pictures) == 2:
-            notes = tuple(SAR_IMAGE_NOTE if flag else None for flag in sar)
-            reading = await read_pair(pictures[0], pictures[1], task.question or "Compare these.", manager=manager, notes=notes) # type: ignore
-        else:
-            reading = await answer_question(pictures[0], task.question or "What is in this image?", manager=manager, is_sar=sar[0])
-            
-        return {
-            "type": "qualitative_presence",
-            "target": task.target or "scene",
-            "value": reading.text,
-            "latency_ms": reading.latency_ms
-        }
+        return await execute_vqa(task, pictures, sar, manager)
+        
+    elif tool_id == "changeformer":
+        return await execute_change(task)
+        
+    elif tool_id == "segformer":
+        return await execute_segment(task)
+        
+    elif tool_id == "optical-sar-fusion":
+        return await execute_cross_modal(task)
+        
+    elif tool_id == "evidence_recall":
+        return await execute_area(task)
         
     else:
         return {
