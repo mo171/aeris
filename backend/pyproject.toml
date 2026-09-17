@@ -97,6 +97,8 @@ dependencies = [
     "sounddevice>=0.5.3",
     "soundfile>=0.13.1",
     "prompt-toolkit>=3.0.52",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [tool.uv.sources]
@@ -130,6 +132,7 @@ dev = [
     "lmdb>=2.3.0",
     "kaggle>=2.2.4",
     "pypdf>=6.0",
+    "httpx>=0.28.0",
 ]
 
 # The `aeris` command. Phase 1 is a CLI application, so this is the product's entry point, not a convenience
