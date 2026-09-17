@@ -155,6 +155,16 @@ async def execute_voice(
                 thread=thread,
             )
         )
+    else:
+        # Welcome message for open session
+        from app.voice.speech import AuthoredSpeech
+        from app.lib.identifiers import new_identifier, IdentifierPrefix
+        welcome_speech = AuthoredSpeech(
+            text="AERIS voice mode initialized and ready.",
+            run_id="sys_session",
+            utterance_id=new_identifier(IdentifierPrefix.UTTERANCE),
+        )
+        asyncio.create_task(session._speak(welcome_speech))
 
     try:
         await session.run(hotkey_source=hotkey_event)
