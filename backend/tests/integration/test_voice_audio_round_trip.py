@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 
 # Skip the entire module if Piper model files are not available
-_MODEL_PATH = Path("data/models/piper/en_GB-alba-medium.onnx")
-_CONFIG_PATH = Path("data/models/piper/en_GB-alba-medium.onnx.json")
+_MODEL_PATH = Path("data/models/piper/en_GB-alan-medium.onnx")
+_CONFIG_PATH = Path("data/models/piper/en_GB-alan-medium.onnx.json")
 
 _skip_reason = ""
 if not _MODEL_PATH.is_file():

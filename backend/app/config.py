@@ -237,8 +237,8 @@ class Settings(BaseSettings):
     voice_vad_min_speech_duration_milliseconds: int = Field(default=250, ge=32, le=5_000)
     # Explicit local Piper assets make provisioning observable and prevent a runtime download on a turn.
     # These are provisional Task 8 candidates, not a performance claim or a model identifier shortcut.
-    voice_synthesis_model_path: Path = Path("data/models/piper/en_GB-alba-medium.onnx")
-    voice_synthesis_config_path: Path = Path("data/models/piper/en_GB-alba-medium.onnx.json")
+    voice_synthesis_model_path: Path = Path("data/models/piper/en_GB-alan-medium.onnx")
+    voice_synthesis_config_path: Path = Path("data/models/piper/en_GB-alan-medium.onnx.json")
     voice_synthesis_asset_repository: str = Field(
         default="rhasspy/piper-voices", pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
     )
