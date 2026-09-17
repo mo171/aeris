@@ -163,6 +163,7 @@ async def execute_voice(
             text="AERIS voice mode initialized and ready.",
             run_id="sys_session",
             utterance_id=new_identifier(IdentifierPrefix.UTTERANCE),
+            kind="progress"
         )
         asyncio.create_task(session._speak(welcome_speech))
 
