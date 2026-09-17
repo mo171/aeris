@@ -89,7 +89,7 @@ async def test_the_model_phrases_the_plan_without_adding_steps_or_numbers() -> N
     ]
     plan, source = await build_plan("count the ships in the harbour and tell me if the port is busy", steps, model=build_chat_model())
     assert source == "llm", "the model's prose was rejected or failed; see the log"
-    assert [step.id for step in plan.steps] == ["step-1", "step-2"] and [step.model_id for step in plan.steps] == ["dota-detector", "rs-vlm"]
+    assert [step.id for step in plan.steps] == ["step-1", "step-2"] and [step.model["id"] for step in plan.steps] == ["dota-detector", "rs-vlm"]
     assert not NUMERAL_PATTERN.findall(plan.summary + " ".join(step.description for step in plan.steps))
     assert all(len(step.description) > 20 for step in plan.steps)
 
@@ -108,7 +108,7 @@ async def test_a_spoken_request_over_a_picture_is_planned_paused_run_and_phrased
         return None
 
     outcome = await converse("hey aeris, how many basketball courts are there, and does it look like a school?", approver=approver, image_paths=[crop_path()])
-    assert seen and [s["modelId"] for s in seen[0]["plan"]["steps"]] == ["dota-detector", "rs-vlm"]
+    assert seen and [s["model"]["id"] for s in seen[0]["plan"]["steps"]] == ["dota-detector", "rs-vlm"]
     [count, reading] = outcome.results
     assert count["state"] == "completed" and count["claims"][0]["metrics"][0]["value"] == 3.0
     assert reading["state"] == "completed" and "not a measurement" in reading["claims"][0]["text"]
