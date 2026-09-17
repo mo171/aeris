@@ -31,7 +31,7 @@ class Capability(Protocol):
 
 class DotaDetectorCapability:
     @property
-    def id(self) -> str: return "dota_detector"
+    def id(self) -> str: return "dota-detector"
     
     @property
     def supported_intents(self) -> list[Intent]:

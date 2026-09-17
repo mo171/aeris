@@ -25,7 +25,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from app.agents.planner import apply_approval, build_plan
+from app.agents.legacy_planner import apply_approval, build_plan
 from app.agents.requests import InputPaths
 from app.agents.router import SceneFacts, route_plan, routing_arbiter, routing_resources
 from app.agents.state import AgentState, StepRecord, StepResult, describe_step

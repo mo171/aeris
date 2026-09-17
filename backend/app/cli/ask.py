@@ -55,17 +55,20 @@ async def execute_ask(
 
     encoder, bank = await routing_resources()
     modalities = tuple(Modality.SAR if flag else Modality.OPTICAL for flag in sar)
-    plan = await route_plan(question, encoder=encoder, bank=bank, facts=SceneFacts(None, len(pictures), modalities))
-    render_plan(plan, console, encoder is not None)
-
-    # Every step is answered in order; one that cannot be is said so, and the rest still run. The command
-    # exits non-zero if any step was refused or needs a graph, so a script sees a partial answer as partial.
-    answered = True
-    for index, decision in enumerate(plan.steps, start=1):
-        if len(plan.steps) > 1:
-            console.print(f"\n  [dim]answer {index}/{len(plan.steps)}: {escape(decision.query)}[/dim]")
-        answered &= await _answer_step(decision, pictures, sar, manager, console)
-    return answered
+    facts = SceneFacts(None, len(pictures), modalities)
+    
+    from app.lib.llm.chat_model import build_chat_model
+    llm = build_chat_model()
+    
+    from app.agents.harness.agent import run_harness
+    console.print("\n  [bold yellow]Using Phase 1.14 Agent Harness...[/bold yellow]")
+    try:
+        final_answer = await run_harness(question, facts=facts, model=llm, pictures=pictures, sar=sar, manager=manager)
+        console.print(f"\n  [bold green]Agent Synthesis:[/bold green]\n  {escape(final_answer)}\n")
+        return True
+    except Exception as e:
+        console.print(f"\n  [bold red]Agent Harness Failed:[/bold red] {escape(str(e))}")
+        return False
 
 
 async def _answer_step(decision: RoutingDecision, pictures: list[np.ndarray], sar: list[bool], manager: ModelManager, console: Console) -> bool:
