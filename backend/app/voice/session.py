@@ -18,7 +18,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from app.constants.voice import VoiceSessionState
+from app.constants.voice import VoiceSessionState, SpeechKind
 from app.db.identifiers import IdentifierPrefix, new_identifier
 from app.voice.speech import (
     AuthoredSpeech,
@@ -233,8 +233,15 @@ class VoiceSession:
             except Exception as error:  # noqa: BLE001 — speech errors don't kill the session
                 logger.warning("provisional speech failed: %s", error)
         else:
-            # No active run — just log the question; full voice Q&A is Phase 2
+            # No active run - full voice Q&A is Phase 2, but provide audible feedback instead of silence
             logger.info("question outside active run: %r (full Q&A is Phase 2)", transcript)
+            speech = AuthoredSpeech(
+                text="I do not have a mission loaded. Please provide an observation or command a mission.",
+                run_id="sys_session",
+                utterance_id=new_identifier(IdentifierPrefix.UTTERANCE),
+                kind=SpeechKind.REFUSAL,
+            )
+            await self._speak(speech)
 
     async def _handle_abandon(self) -> None:
         """Abandon the active run at a safe node boundary."""
