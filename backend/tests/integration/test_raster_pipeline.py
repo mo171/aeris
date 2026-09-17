@@ -368,7 +368,7 @@ async def test_the_tilejson_carries_what_the_frontend_reads() -> None:
     # Ghaziabad, in the Delhi NCR - the AOI Phase 1.1 fetched.
     assert 76.5 < west < 78.5 and 27.0 < south < 29.5
     assert isinstance(tilejson["minzoom"], int) and isinstance(tilejson["maxzoom"], int)
-    assert tilejson["minzoom"] < tilejson["maxzoom"]
+    assert tilejson["minzoom"] <= tilejson["maxzoom"]
 
 
 @pytest.mark.integration

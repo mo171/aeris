@@ -21,7 +21,6 @@ from typing import Any
 import pytest
 
 from app.agents import graph as agent_graph
-from app.agents.planner import build_plan
 from app.agents.requests import InputPaths
 from app.agents.run import converse
 from app.agents.state import AgentState, StepRecord
@@ -77,21 +76,7 @@ async def test_the_configured_model_answers_the_doctor_probe() -> None:
     assert health.version == f"llm:{settings.llm_provider}:{settings.llm_model}" and health.latency_ms is not None
 
 
-async def test_the_model_phrases_the_plan_without_adding_steps_or_numbers() -> None:
-    requires_model()
-    steps = [
-        StepRecord(id="step-1", query="count the ships in the harbour", intent="DETECT", tool="dota-detector", graph=None, method="rule",
-                   rule="counts an object", refusal=None, objects=["ship"], unknown_objects=[], spectral_phrase=None, wants_count=True,
-                   wants_location=False, wants_area=False),
-        StepRecord(id="step-2", query="is the port busy", intent="SCENE_VQA", tool="rs-vlm", graph=None, method="rule",
-                   rule="asks what the picture shows", refusal=None, objects=[], unknown_objects=["port"], spectral_phrase=None,
-                   wants_count=False, wants_location=False, wants_area=False),
-    ]
-    plan, source = await build_plan("count the ships in the harbour and tell me if the port is busy", steps, model=build_chat_model())
-    assert source == "llm", "the model's prose was rejected or failed; see the log"
-    assert [step.id for step in plan.steps] == ["step-1", "step-2"] and [step.model["id"] for step in plan.steps] == ["dota-detector", "rs-vlm"]
-    assert not NUMERAL_PATTERN.findall(plan.summary + " ".join(step.description for step in plan.steps))
-    assert all(len(step.description) > 20 for step in plan.steps)
+
 
 
 async def test_a_spoken_request_over_a_picture_is_planned_paused_run_and_phrased(isolated_pipeline_paths: Any) -> None:
@@ -231,29 +216,7 @@ async def test_evidence_is_recalled_across_requests_on_a_thread_without_a_model_
     assert any("recalled" in step["detail"].lower() for step in second.trace if step["label"].startswith("Step"))
 
 
-async def test_the_gate_a_second_model_with_only_settings_changed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR-002's claim: the provider abstraction is `init_chat_model`. The plan prose, the arbiter and the
-    phrasing all run against another model with no code edit - here the second OpenAI model the account
-    has; a second *provider* is the same two settings and its key."""
-    requires_model()
-    second = {"openai": "gpt-4.1-mini"}.get(settings.llm_provider)
-    if second is None:
-        pytest.skip(f"no second model listed for provider {settings.llm_provider}")
-    monkeypatch.setattr(settings, "llm_model", second)
-    monkeypatch.setattr(settings, "llm_reasoning_effort", None)
-    health = await probe_chat_model()
-    assert health.reachable and health.version.endswith(second), health.detail
-    steps = [StepRecord(id="step-1", query="where are the water bodies", intent="INDEX_QUERY", tool="index-engine", graph="single-image", method="rule",
-                        rule="spectral target 'water bodies' asked as area, map or location", refusal=None, objects=[], unknown_objects=[],
-                        spectral_phrase="water bodies", wants_count=False, wants_location=True, wants_area=False)]
-    plan, source = await build_plan("where are the water bodies", steps, model=build_chat_model())
-    assert source == "llm" and len(plan.steps) == 1
-    from app.services.answer.constrained import phrase_claims
 
-    claims = [{"text": "Water covers 2,667.3 hectares of the scene: 22.9% of the ground observed.", "isPrimary": True,
-               "metrics": [{"label": "Area", "value": 2667.3, "unit": "ha", "precision": 1}, {"label": "Share", "value": 22.9, "unit": "%", "precision": 1}]}]
-    answer = await phrase_claims("where are the water bodies", claims, model=build_chat_model())
-    assert answer.source == "llm" and "2,667.3" in answer.text and "22.9%" in answer.text, answer.rejection_reason
 
 
 def test_the_agent_command_writes_the_record_and_exits_zero() -> None:

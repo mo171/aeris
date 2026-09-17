@@ -31,18 +31,21 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from app.cli import agent as agent_command
-from app.cli import analyse as analyse_command
-from app.cli import ask as ask_command
-from app.cli import dataset as dataset_command
-from app.cli import doctor as doctor_command
-from app.cli import figures as figures_command
-from app.cli import ingest as ingest_command
-from app.cli import models as models_command
-from app.cli import preprocess as preprocess_command
-from app.cli import route as route_command
-from app.cli import run as run_command
-from app.cli import voice as voice_command
+from app.cli import (
+    agent as agent_command,
+    analyse as analyse_command,
+    ask as ask_command,
+    dataset as dataset_command,
+    doctor as doctor_command,
+    evaluate as evaluate_command,
+    figures as figures_command,
+    ingest as ingest_command,
+    models as models_command,
+    preprocess as preprocess_command,
+    route as route_command,
+    run as run_command,
+    voice as voice_command,
+)
 from app.config import settings
 from app.constants.datasets import DatasetId, DatasetSplit
 from app.constants.intents import Intent
@@ -620,6 +623,16 @@ async def _run_models[T](work: Coroutine[object, object, T]) -> T:
         await reset_manager()
         await _close_connections()
 
+
+@app.command()
+def evaluate(
+    skip_ml: bool = typer.Option(False, "--skip-ml", help="Skip the time-consuming ML evaluation and just run integration tests."),
+    vlm_file: Path | None = typer.Option(None, "--vlm-file", help="Path to the JSONL file for VQA evaluation.")
+) -> None:
+    """Run the complete Phase 1.15 evaluation scorecard."""
+    exit_code = asyncio.run(evaluate_command.execute_scorecard(skip_ml=skip_ml, vlm_file=vlm_file))
+    if exit_code != 0:
+        raise typer.Exit(code=exit_code)
 
 @app.command()
 def version() -> None:

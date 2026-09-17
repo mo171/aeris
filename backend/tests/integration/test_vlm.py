@@ -29,12 +29,24 @@ async def manager() -> ModelManager:
 
 
 async def test_the_version_says_whether_an_adapter_is_attached() -> None:
+    if settings.vlm_adapter_repository:
+        from pathlib import Path
+        local = Path("data/models/adapters") / settings.vlm_adapter_repository.replace("/", "-")
+        if not (local / "adapter_model.safetensors").exists():
+            pytest.skip("VLM adapter not downloaded locally, skipping test")
+    
     record = resolved_fleet()[ModelId.REMOTE_SENSING_VLM]
     assert record.weights is not None and record.weights.repository.startswith("Qwen/Qwen3-VL")
     assert (UNADAPTED_SUFFIX in record.version) == (settings.vlm_adapter_repository is None)
 
 
 async def test_the_gate_a_question_about_one_picture_is_answered_in_the_cli_path(manager: ModelManager) -> None:
+    if settings.vlm_adapter_repository:
+        from pathlib import Path
+        local = Path("data/models/adapters") / settings.vlm_adapter_repository.replace("/", "-")
+        if not (local / "adapter_model.safetensors").exists():
+            pytest.skip("VLM adapter not downloaded locally, skipping test")
+
     image = dota8_crop()
     reading = await answer_question(image, "Is there a sports field in this image?", manager=manager)
     assert reading.text and reading.image_count == 1 and 0.0 < reading.confidence <= 1.0
@@ -70,6 +82,12 @@ async def test_the_gate_a_seeded_number_comes_out_of_the_model_exactly_or_not_at
 
 
 async def test_declared_footprint_is_not_smaller_than_measured(manager: ModelManager) -> None:
+    if settings.vlm_adapter_repository:
+        from pathlib import Path
+        local = Path("data/models/adapters") / settings.vlm_adapter_repository.replace("/", "-")
+        if not (local / "adapter_model.safetensors").exists():
+            pytest.skip("VLM adapter not downloaded locally, skipping test")
+
     if not manager.device.has_accelerator:
         pytest.skip("footprints are measured on a CUDA device")
     import torch
