@@ -50,14 +50,22 @@ from app.constants.scenes import SceneModality
 from app.constants.stages import PipelineStage
 from app.lib.exceptions import InvalidRequestError
 from app.schemas.events import ClaimEvent, LayerProvenance, LayerReadyEvent, ValueDomain
-from app.services.change_detection.detector import detect_change
+from app.services.change_detection.detector import detect_change, _stated_confidence
+from app.services.change_detection.math.change_statistics import change_fraction
 from app.services.evidence.artefacts import read_artefact, store_artefact, store_json_artefact
 from app.services.evidence.builder import build_raster_layer, build_region_evidence, grid_extent
 from app.services.evidence.spatial import measure_mask_on_grid
 from app.services.evidence.trace import ModelRecord
 from app.services.imagery.frames import AnalysisInput, InputKind, RgbFrame
 from app.services.pipeline.inputs import primary_frame, primary_input, reference_frame, reference_input
-from app.services.pipeline.node import attach_artefact_layer, current_trace_step_id, describe_trace_step, pipeline_node
+from app.services.pipeline.node import (
+    attach_artefact_layer,
+    attach_artefact_uri,
+    current_trace_step_id,
+    describe_trace_step,
+    pipeline_node,
+    record_step_parameters,
+)
 from app.services.pipeline.state import AnalysisState
 from app.services.pipeline.stream import emit
 from app.services.preprocessing.coregistration import measure_coregistration, require_comparison_ready
@@ -128,7 +136,14 @@ async def _alignment_band(source: AnalysisInput, level: ProcessingLevel | None) 
     return luminance, "luminance"
 
 
-@pipeline_node(PipelineStage.S13, detail="Detecting change between the two dates", model_id=ModelId.CHANGEFORMER, model_version=FLEET[ModelId.CHANGEFORMER].version)
+@pipeline_node(
+    PipelineStage.S13,
+    detail="Detecting change between the two dates",
+    model_id=ModelId.CHANGEFORMER,
+    model_version=FLEET[ModelId.CHANGEFORMER].version,
+    operation_id="change-detection",
+    depends_on=("coregister_pair",),
+)
 async def detect_change_node(state: AnalysisState) -> dict[str, object]:
     """S13. Both frames as the model saw them, the probability it returned, the mask cut from it."""
     from app.models.manager import get_manager
@@ -147,6 +162,16 @@ async def detect_change_node(state: AnalysisState) -> dict[str, object]:
             details={"modality": modality.value},
         )
 
+    # Dynamic threshold resolution from parameter_overrides or state
+    overrides = state.get("parameter_overrides") or {}
+    change_overrides = overrides.get("change-detection") if isinstance(overrides.get("change-detection"), dict) else overrides
+    threshold = float(
+        change_overrides.get("threshold")
+        or (overrides.get(PipelineStage.S13.value, {}).get("threshold") if isinstance(overrides.get(PipelineStage.S13.value), dict) else None)
+        or state.get("change_threshold")
+        or CHANGE_PROBABILITY_THRESHOLD
+    )
+
     run_id = state["run_id"]
     step_id = current_trace_step_id()
     source = await primary_input(state)
@@ -162,33 +187,63 @@ async def detect_change_node(state: AnalysisState) -> dict[str, object]:
         emit(shown.event)
         figures.append(shown.event.figure_id)
 
-    result = await detect_change(before.for_model(), after.for_model(), manager=await get_manager())
-    probability = result.probability.astype(np.float32)
-    encoded = np.full(result.mask.shape, DETECTION_MASK_NOT_DETECTED, dtype=np.uint8)
-    encoded[result.mask] = DETECTION_MASK_DETECTED
-    encoded[~result.observed] = DETECTION_MASK_UNOBSERVED
-    probability_artefact = await store_artefact(probability, run_id=run_id, stage=PipelineStage.S13, name=CHANGE_PROBABILITY_ARTEFACT_NAME, reference=source.reference)
+    latency_ms = 0
+    if state.get("reuse_inference") and state.get("change_probability_path"):
+        prob_path = Path(str(state["change_probability_path"]))
+        prob_key = str(state["change_probability_object_key"])
+        probability = await read_artefact(prob_path, prob_key)
+        observed = np.isfinite(probability)
+        mask = observed & (np.nan_to_num(probability, nan=0.0) >= threshold)
+        confidence = _stated_confidence(probability, observed)
+        changed_fraction = float(change_fraction(mask, observed))
+        model_id_val = str(state.get("change_model_id") or ModelId.CHANGEFORMER.value)
+        model_version_val = str(state.get("change_model_version") or FLEET[ModelId.CHANGEFORMER].version)
+        prob_storage_uri = str(state.get("change_probability_storage_uri") or "")
+        prob_artefact_path = str(prob_path)
+        prob_artefact_key = prob_key
+        input_files = list(state.get("input_files") or [])
+    else:
+        result = await detect_change(before.for_model(), after.for_model(), manager=await get_manager())
+        probability = result.probability.astype(np.float32)
+        observed = result.observed
+        mask = observed & (np.nan_to_num(probability, nan=0.0) >= threshold)
+        confidence = result.confidence
+        changed_fraction = result.changed_fraction
+        latency_ms = result.latency_ms
+        model_id_val = result.model_id.value
+        model_version_val = result.model_version
+        probability_artefact = await store_artefact(
+            probability, run_id=run_id, stage=PipelineStage.S13, name=CHANGE_PROBABILITY_ARTEFACT_NAME, reference=source.reference
+        )
+        prob_storage_uri = probability_artefact.storage_uri
+        prob_artefact_path = str(probability_artefact.path)
+        prob_artefact_key = probability_artefact.object_key
+        input_files = await before.input_records() + await after.input_records()
+
+    encoded = np.full(mask.shape, DETECTION_MASK_NOT_DETECTED, dtype=np.uint8)
+    encoded[mask] = DETECTION_MASK_DETECTED
+    encoded[~observed] = DETECTION_MASK_UNOBSERVED
     mask_artefact = await store_artefact(
         encoded, run_id=run_id, stage=PipelineStage.S13, name=CHANGE_MASK_ARTEFACT_NAME, reference=source.reference,
         nodata=DETECTION_MASK_UNOBSERVED, categorical=True,
     )
 
     update: dict[str, object] = {
-        "change_probability_path": str(probability_artefact.path), "change_probability_object_key": probability_artefact.object_key,
-        "change_probability_storage_uri": probability_artefact.storage_uri, "change_mask_path": str(mask_artefact.path),
+        "change_probability_path": prob_artefact_path, "change_probability_object_key": prob_artefact_key,
+        "change_probability_storage_uri": prob_storage_uri, "change_mask_path": str(mask_artefact.path),
         "change_mask_object_key": mask_artefact.object_key, "change_mask_storage_uri": mask_artefact.storage_uri,
-        "change_threshold": CHANGE_PROBABILITY_THRESHOLD, "change_confidence": result.confidence,
-        "change_model_id": result.model_id.value, "change_model_version": result.model_version, "changed_fraction": result.changed_fraction,
-        "frame_observed_fraction": float(result.observed.mean()), "change_layer_id": None, "layers": [],
-        "input_files": await before.input_records() + await after.input_records(),
-        "stage_models": [ModelRecord(stage=PipelineStage.S13, model_id=result.model_id.value, model_version=result.model_version, confidence=result.confidence).to_wire()],
+        "change_threshold": threshold, "change_confidence": confidence,
+        "change_model_id": model_id_val, "change_model_version": model_version_val, "changed_fraction": changed_fraction,
+        "frame_observed_fraction": float(observed.mean()), "change_layer_id": None, "layers": [],
+        "input_files": input_files,
+        "stage_models": [ModelRecord(stage=PipelineStage.S13, model_id=model_id_val, model_version=model_version_val, confidence=confidence).to_wire()],
     }
     if source.georeferenced and source.resolution_metres is not None:
         extent = await grid_extent(source.transform, source.crs or "", probability.shape, source.resolution_metres)
         layer = await build_raster_layer(
             title=f"Change probability - {source.scene_id}", kind=LayerKind.RASTER_TILES, overlay_id="change-probability",
-            storage_uri=probability_artefact.storage_uri, extent=extent, color_ramp_id=ColorRampId.CONFIDENCE_MAGMA, opacity=SURFACE_LAYER_OPACITY,
-            provenance=LayerProvenance(model_id=result.model_id.value, model_version=result.model_version, trace_step_id=step_id, confidence=result.confidence),
+            storage_uri=prob_storage_uri, extent=extent, color_ramp_id=ColorRampId.CONFIDENCE_MAGMA, opacity=SURFACE_LAYER_OPACITY,
+            provenance=LayerProvenance(model_id=model_id_val, model_version=model_version_val, trace_step_id=step_id, confidence=confidence),
             value_domain=ValueDomain(minimum=0.0, maximum=1.0),
             rendering={"rescale": "0,1", "colormap_name": MATPLOTLIB_COLORMAPS[ColorRampId.CONFIDENCE_MAGMA].lower()},
         )
@@ -200,7 +255,7 @@ async def detect_change_node(state: AnalysisState) -> dict[str, object]:
     figure = await render_index_map(
         probability, run_id=run_id, trace_step_id=step_id, title=f"Change probability - {source.scene_id}", label="change probability",
         ramp=ColorRampId.CONFIDENCE_MAGMA, scene_ids=[before.source.scene_id, after.source.scene_id], crs=source.crs,
-        mask_applied=bool((~result.observed).any()),
+        mask_applied=bool((~observed).any()),
         caption="The change model's probability that each pixel changed between the two dates. Unobserved ground on either date is transparent.",
     )
     emit(figure.event)
@@ -208,15 +263,25 @@ async def detect_change_node(state: AnalysisState) -> dict[str, object]:
     update["change_probability_figure_id"] = figure.event.figure_id
     update["figure_ids"] = figures
 
+    record_step_parameters({"threshold": threshold, "method": model_id_val})
+    attach_artefact_uri(prob_storage_uri)
+
     describe_trace_step(
-        f"{result.changed_fraction:.1%} of observed ground changed at p >= {CHANGE_PROBABILITY_THRESHOLD:.{SCORE_PRECISION}f}"
-        + (f"; mean winning probability {result.confidence:.{SCORE_PRECISION}f}" if result.confidence is not None else "")
-        + f"; {float(result.observed.mean()):.1%} observed on both dates; {result.latency_ms} ms"
+        f"{changed_fraction:.1%} of observed ground changed at p >= {threshold:.{SCORE_PRECISION}f}"
+        + (f"; mean winning probability {confidence:.{SCORE_PRECISION}f}" if confidence is not None else "")
+        + f"; {float(observed.mean()):.1%} observed on both dates; {latency_ms} ms"
     )
     return update
 
 
-@pipeline_node(PipelineStage.S15, detail="Measuring the change as regions", model_id=ModelId.CHANGEFORMER, model_version=FLEET[ModelId.CHANGEFORMER].version)
+@pipeline_node(
+    PipelineStage.S15,
+    detail="Measuring the change as regions",
+    model_id=ModelId.CHANGEFORMER,
+    model_version=FLEET[ModelId.CHANGEFORMER].version,
+    operation_id="localise-change",
+    depends_on=("detect_change",),
+)
 async def localise_change(state: AnalysisState) -> dict[str, object]:
     """S15. The mask as hectares, regions and polygons; the comparison figure the run stands behind."""
     run_id = state["run_id"]

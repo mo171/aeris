@@ -18,6 +18,8 @@ from app.db.models.mission import Mission
 from app.db.models.run import Run
 from app.db.models.scene import Scene
 from app.db.models.trace_step import TraceStep
+from app.db.models.project import Project
+from app.db.models.history import InvestigationHistory, InvestigationVersion
 
 __all__ = [
     "Base",
@@ -29,4 +31,7 @@ __all__ = [
     "Run",
     "Scene",
     "TraceStep",
+    "Project",
+    "InvestigationHistory",
+    "InvestigationVersion",
 ]

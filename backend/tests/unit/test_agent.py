@@ -6,7 +6,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from app.agents import graph as agent_graph
-from app.agents.planner import PlanProse, apply_approval, build_plan, template_plan, verify_prose
+from app.agents.legacy_planner import PlanProse, apply_approval, build_plan, template_plan, verify_prose
 from app.agents.run import converse
 from app.agents.state import StepRecord
 from app.agents.tools.interface_tools import default_ui_commands, validate_ui_commands

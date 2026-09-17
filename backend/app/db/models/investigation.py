@@ -81,6 +81,14 @@ class Investigation(Base, TimestampMixin):
         nullable=True,
     )
 
+    project_id: Mapped[str | None] = mapped_column(
+        String(IDENTIFIER_MAXIMUM_LENGTH),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    
+    template_version_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
     # Provenance identity. Unique, permanent, quoted in reports.
     trace_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
 

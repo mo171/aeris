@@ -300,3 +300,11 @@ class AnalysisState(IndexQueryState, total=False):
     radar_informative: bool
     cross_modal_result: dict[str, Any]
     cross_modal_result_path: str
+
+    # --- Phase 2 Execution Graph & Checkpoint Invalidation ---------------------------------------------
+    parameter_overrides: dict[str, Any]
+    rerun_from_step_id: str | None
+    parent_run_id: str | None
+    reused_stages: list[str]
+    reuse_inference: bool
+

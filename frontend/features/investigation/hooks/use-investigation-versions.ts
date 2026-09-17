@@ -131,20 +131,13 @@ export function useInvestigationVersions(investigationId: string) {
     if (!version) return;
 
     const store = useInvestigationStore.getState();
-    
-    // Spec rule: restore puts back inputs and parameters only — it never fabricates results.
-    // So we update the scene slots and timeline selection, and stop there.
-    
-    // We can't directly mutate sceneSlots on the investigation here as it's passed via props from a separate query,
-    // but we can set the timeline pair which drives the comparator.
-    // store.setComparatorBinding("split"); // Ensure we're in split mode
-    
-    // The store doesn't have a direct setter for timeline scenes yet, we might need to add one or simulate it.
-    // For now we'll just log it to verify the contract.
-    console.log(`Restoring version ${versionId}: setting baseline to ${version.snapshot.timelinePair.baselineSceneId}, comparison to ${version.snapshot.timelinePair.comparisonSceneId}`);
+    const pair = version.snapshot.timelinePair;
+    if (pair?.baselineSceneId && pair?.comparisonSceneId) {
+      store.setTimelinePair(pair.baselineSceneId, pair.comparisonSceneId);
+    }
     
     toast.success(`Restored inputs from version: ${version.label}`);
-    toast.info("Click Run to re-evaluate the analysis with these inputs.");
+    toast.info("Timeline pair restored. Re-run analysis to execute with these inputs.");
   };
 
   return {

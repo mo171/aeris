@@ -61,6 +61,11 @@ class AnalysisRequest:
     objects: tuple[str, ...] = ()
     classes: tuple[str, ...] = ()
     wants_location: bool = False
+    
+    # Phase 2 Overrides & Re-run
+    parameter_overrides: dict[str, Any] | None = None
+    rerun_from_step_id: str | None = None
+    parent_run_id: str | None = None
 
     def initial_state(self) -> dict[str, Any]:
         state: dict[str, Any] = {
@@ -68,6 +73,9 @@ class AnalysisRequest:
             "declared_level": self.declared_level.value if self.declared_level else None,
             "declared_resolution_metres": self.declared_resolution_metres, "is_sar": self.is_sar,
             "objects": list(self.objects), "classes": list(self.classes), "wants_location": self.wants_location, "tool": self.tool,
+            "parameter_overrides": self.parameter_overrides,
+            "rerun_from_step_id": self.rerun_from_step_id,
+            "parent_run_id": self.parent_run_id,
         }
         if self.reference is not None:
             state.update({
@@ -113,12 +121,45 @@ class RunOutcome:
 
 async def run_analysis(request: AnalysisRequest, *, console: Console | None = None) -> RunOutcome:
     """Run the request's graph end to end and return what the checkpoint holds when it stops."""
+    from app.services.pipeline.invalidation import compute_invalidation_plan
+
     async with open_checkpointer() as checkpointer, open_memory_store() as store:
         graph = GRAPH_BUILDERS[request.graph]().compile(checkpointer=checkpointer, store=store)
+        initial_state = request.initial_state()
+
+        if request.parent_run_id is not None:
+            parent_snapshot = await read_thread_state(graph, request.parent_run_id)
+            parent_values = parent_snapshot.values or {}
+            plan = compute_invalidation_plan(request.graph, changed_parameters=request.parameter_overrides)
+            initial_state["reused_stages"] = [s.value for s in plan.reused_stages]
+            initial_state["reuse_inference"] = plan.reuse_inference
+
+            # Restore cached state keys for reused stages
+            keys_to_restore = [
+                "registration",
+                "input_kind",
+                "modality",
+                "cloud_mask_path",
+                "cloud_mask_object_key",
+                "cloud_mask_storage_uri",
+            ]
+            if plan.reuse_inference:
+                keys_to_restore.extend([
+                    "change_probability_path",
+                    "change_probability_object_key",
+                    "change_probability_storage_uri",
+                    "change_model_id",
+                    "change_model_version",
+                    "input_files",
+                ])
+            for key in keys_to_restore:
+                if key in parent_values and key not in initial_state:
+                    initial_state[key] = parent_values[key]
+
         async with open_session() as session:
             fanout = EventFanout()
             handle = await session.start(
-                graph=graph, query=request.query, intent=request.intent, fanout=fanout, extra_state=request.initial_state(),
+                graph=graph, query=request.query, intent=request.intent, fanout=fanout, extra_state=initial_state,
             )
             async with open_journal(handle.run_id) as journal, open_figure_writer(handle.run_id) as figures:
                 # Journal first: provenance before decoration (`services/sessions/fanout.py`).

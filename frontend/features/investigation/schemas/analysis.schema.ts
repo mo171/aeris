@@ -108,6 +108,7 @@ export const analysisRunRequestSchema = z.object({
   operationId: z.string().nullable(),
   parameterOverrides: z.record(z.string(), z.record(z.string(), parameterValueSchema)).nullable().optional(),
   rerunFromStepId: z.string().nullable().optional(),
+  parentRunId: z.string().nullable().optional(),
 });
 
 export const analysisPlanStepSchema = analysisStepSchema.extend({

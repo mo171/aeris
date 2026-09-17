@@ -41,7 +41,7 @@ export function VersionCanvas({ versions }: VersionCanvasProps) {
             </div>
             <div className="flex items-center gap-6 text-xs text-zinc-400">
               <span className="font-mono">
-                {version.authorName || version.authorId || "Unknown User"}
+                {version.actor}
               </span>
               <span className="font-mono text-zinc-500">
                 {date.toLocaleString(undefined, {
@@ -59,12 +59,6 @@ export function VersionCanvas({ versions }: VersionCanvasProps) {
         ),
         renderDetails: () => (
           <div className="flex flex-col gap-3 text-sm text-zinc-300">
-            {version.description && (
-              <div>
-                <strong className="text-zinc-100 text-[10px] uppercase tracking-widest block mb-1">Description</strong>
-                <span className="text-zinc-400">{version.description}</span>
-              </div>
-            )}
             <div className="grid grid-cols-3 gap-4 mt-2 p-3 bg-[#09090b] rounded-md border border-zinc-800">
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1"><Hash className="w-3 h-3"/> Commit ID</span>
@@ -72,7 +66,7 @@ export function VersionCanvas({ versions }: VersionCanvasProps) {
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1"><User className="w-3 h-3"/> Author</span>
-                <span className="font-mono text-zinc-300">{version.authorName || version.authorId || "Unknown User"}</span>
+                <span className="font-mono text-zinc-300">{version.actor}</span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1"><Calendar className="w-3 h-3"/> Date</span>

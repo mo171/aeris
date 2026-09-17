@@ -11,6 +11,7 @@ import {
   type Edge as XYEdge,
   type NodeTypes,
   type OnSelectionChangeParams,
+  BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -76,7 +77,7 @@ export function WorkflowCanvas({ graph, onNodeSelect, className }: WorkflowCanva
         minZoom={0.2}
         maxZoom={2}
       >
-        <Background color="#334155" variant="dots" gap={24} size={2} className="opacity-40" />
+        <Background color="#334155" variant={BackgroundVariant.Dots} gap={24} size={2} className="opacity-40" />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>

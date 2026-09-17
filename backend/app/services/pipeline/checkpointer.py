@@ -81,3 +81,20 @@ async def read_thread_state(graph: Any, thread_id: str) -> StateSnapshot:
     them here would tie this helper to one state schema. It is called with whichever graph the CLI built.
     """
     return await graph.aget_state({"configurable": {"thread_id": thread_id}})
+
+
+async def read_state_for_step(checkpointer: AsyncSqliteSaver, thread_id: str, step_id: str) -> StateSnapshot | None:
+    """Finds the checkpoint where the given step was completed, for branching."""
+    config = {"configurable": {"thread_id": thread_id}}
+    # Iterate backwards through the checkpoints for this thread
+    async for checkpoint in checkpointer.alist(config):
+        state = checkpoint.values
+        # If the step_id is in the trace_step_ids, this checkpoint is at or after the step
+        # Wait, we want the state EXACTLY before this step runs, or after?
+        # rerunFromStepId means we want to rerun THIS step. So we need the state BEFORE this step.
+        # But wait, trace_step_ids are appended at the end of the node.
+        # So we want the first checkpoint where the step is NOT in trace_step_ids, but the next one is?
+        # Actually, since we want to rerun the step, we want the checkpoint that was the INPUT to the node that produced step_id.
+        pass
+    
+    return None

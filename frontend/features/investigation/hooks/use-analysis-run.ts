@@ -57,6 +57,8 @@ interface AskOptions {
   parameterOverrides?: Record<string, Record<string, ParameterValue>>;
   /** The step from which downstream re-execution should begin. */
   rerunFromStepId?: string;
+  /** Parent run id for DAG invalidation and checkpoint tensor reuse. */
+  parentRunId?: string;
 }
 
 interface AnalysisRunControls {
@@ -195,6 +197,24 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
         case "ui-command":
           void dispatchUiCommandEvent(event, observeUiCommandDispatch);
           break;
+
+        case "speech":
+          if (event.audioUrl) {
+             import("@/lib/audio/speech-manager").then((m) => {
+               m.speechManager.play(event.audioUrl!, event.utteranceId, event.interruptible);
+             });
+          }
+          break;
+
+        case "figure-ready":
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(`aeris-figure-${event.figureId}`, JSON.stringify(event));
+            if (event.isPrimary) {
+              const features = "width=1000,height=800,menubar=no,toolbar=no,location=no,status=no";
+              window.open(`/figures?figureId=${event.figureId}`, `aeris-figure-${event.figureId}`, features);
+            }
+          }
+          break;
       }
     },
     [commitClaim, commitLayer, flushPendingAnswer, observeUiCommandDispatch],
@@ -224,6 +244,7 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
           operationId: options?.operationId ?? null,
           parameterOverrides: options?.parameterOverrides ?? null,
           rerunFromStepId: options?.rerunFromStepId ?? null,
+          parentRunId: options?.parentRunId ?? null,
         },
         { onEvent: handleEvent },
         abortController.signal,
@@ -256,6 +277,12 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
     flushPendingAnswer();
     stopFlushTimer();
 
+    if (typeof window !== "undefined") {
+      import("@/lib/audio/speech-manager").then((m) => {
+        m.speechManager.stop();
+      });
+    }
+
     const pending = pendingAnswerRef.current;
     if (pending) {
       useInvestigationStore.getState().cancelRun(pending.runId);
@@ -276,9 +303,17 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
     (stepId: string, parameterOverrides: Record<string, ParameterValue>) => {
       const latestRun = useInvestigationStore.getState().runs.at(-1);
       if (!latestRun) return;
+      const targetStep = latestRun.traceSteps.find(
+        (s) => s.id === stepId || s.operationId === stepId || s.stageCode === stepId,
+      );
+      const opKey = targetStep?.operationId || targetStep?.stageCode || stepId;
       ask(latestRun.query, {
         rerunFromStepId: stepId,
-        parameterOverrides: { [stepId]: parameterOverrides },
+        parameterOverrides: {
+          [stepId]: parameterOverrides,
+          [opKey]: parameterOverrides,
+        },
+        parentRunId: latestRun.id,
       });
     },
     [ask],

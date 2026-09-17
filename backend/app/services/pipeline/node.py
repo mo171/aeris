@@ -207,6 +207,26 @@ def pipeline_node(
             )
             token = _CURRENT_STEP.set(context)
 
+            reused_stages = state.get("reused_stages") or []
+            if stage.value in reused_stages:
+                parent_id = state.get("parent_run_id") or "prior run"
+                _emit_step(
+                    run_id,
+                    step_id,
+                    stage,
+                    TraceStepState.SKIPPED,
+                    detail=f"reused from run {parent_id}",
+                    duration_ms=0,
+                    model_id=model_id,
+                    model_version=model_version,
+                    artefact_layer_id=None,
+                    operation_id=operation_id,
+                    parameters=dict(context.parameters),
+                    depends_on=list(context.depends_on),
+                )
+                _CURRENT_STEP.reset(token)
+                return _with_trace_step_id(None, step_id)
+
             def emit_step(step_state: TraceStepState, *, text: str | None, duration_ms: int | None) -> None:
                 _emit_step(
                     run_id,

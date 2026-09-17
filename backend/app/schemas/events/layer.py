@@ -75,6 +75,11 @@ class EvidenceFeature(CamelCaseModel):
     value: float | None = None
     # A class id for categorical products, never a colour: the frontend owns the palette.
     class_id: str | None = None
+    
+    # Phase 2 Evidence properties
+    model_id: str = Field(min_length=1)
+    model_version: str = Field(min_length=1)
+    trace_step_id: str = Field(min_length=1)
 
 
 class LayerProvenance(CamelCaseModel):

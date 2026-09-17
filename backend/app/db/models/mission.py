@@ -76,6 +76,12 @@ class Mission(Base, TimestampMixin):
         nullable=True,
     )
 
+    project_id: Mapped[str | None] = mapped_column(
+        String(IDENTIFIER_MAXIMUM_LENGTH),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
     __table_args__ = (
         # Exactly the order `GET /missions` returns, so the list is an index scan.
         Index("ix_missions_status_rank_updated_at", "status_rank", text("updated_at DESC")),

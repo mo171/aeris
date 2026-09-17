@@ -183,17 +183,18 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     tracked: TrackedFeature,
     layerId: string,
     descriptor: StageLayer,
-    ring: readonly { latitude: number; longitude: number }[],
+    geometry: { ring: readonly { latitude: number; longitude: number }[], holes?: readonly (readonly { latitude: number; longitude: number }[])[] },
   ): Entity[] {
     const palette = resolveFeaturePalette(descriptor, tracked.feature);
     const fillColor = palette.fill;
     const outlineColor = palette.outline;
     const highlightColor = palette.highlight;
 
-    const positions = ring.map((point) =>
+    const positions = geometry.ring.map((point) =>
       Cartesian3.fromDegrees(point.longitude, point.latitude),
     );
-    const hierarchy = new PolygonHierarchy(positions);
+    const holes = geometry.holes?.map(hole => new PolygonHierarchy(hole.map(point => Cartesian3.fromDegrees(point.longitude, point.latitude)))) ?? [];
+    const hierarchy = new PolygonHierarchy(positions, holes);
 
     const resolveFillColor = () => {
       const base = tracked.state.isSpotlit ? highlightColor : fillColor;
@@ -270,7 +271,7 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
     // Draped: a classified fill plus a ground-clamped outline. Ground primitives cannot draw their own
     // outline, so the boundary is a separate clamped polyline — without it, adjacent change regions
     // merge into one indistinct blob.
-    return [
+    const entities = [
       new Entity({
         polygon: {
           hierarchy,
@@ -295,6 +296,34 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
         },
       }),
     ];
+
+    if (geometry.holes) {
+      for (const hole of geometry.holes) {
+        const holePositions = hole.map((point) =>
+          Cartesian3.fromDegrees(point.longitude, point.latitude),
+        );
+        entities.push(
+          new Entity({
+            polyline: {
+              positions: [...holePositions, holePositions[0]],
+              width: LAYER_RENDERING.polygonOutlineWidthPixels,
+              clampToGround: true,
+              material: new ColorMaterialProperty(
+                new CallbackProperty(
+                  () =>
+                    (tracked.state.isSpotlit ? highlightColor : outlineColor).withAlpha(
+                      resolveAlpha(tracked, layerId, 1),
+                    ),
+                  false,
+                ),
+              ),
+            },
+          })
+        );
+      }
+    }
+
+    return entities;
   }
 
   function buildBoundingBoxEntity(
@@ -394,7 +423,7 @@ export function createEvidenceVectorLayerSet(viewer: Viewer): EvidenceVectorLaye
 
     switch (feature.geometry.type) {
       case "polygon":
-        tracked.entities = buildPolygonEntities(tracked, layerId, descriptor, feature.geometry.ring);
+        tracked.entities = buildPolygonEntities(tracked, layerId, descriptor, feature.geometry);
         break;
       case "bbox":
         tracked.entities = buildBoundingBoxEntity(

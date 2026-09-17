@@ -190,6 +190,7 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     "storage.Bucket": "Internal. A bucket role never crosses the boundary; the frontend sees signed URLs.",
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",
     "voice.VoiceSessionState": "Internal. A terminal session state machine; the frontend sees discrete speech/command events.",
+    "failures.FailureCode": "Internal to agent execution and orchestration; failure recovery signals between harness components.",
 }
 
 # Frontend vocabularies the backend has not met yet, each with the sub-phase that will meet it. This is a
