@@ -18,7 +18,7 @@ from app.config import settings
 from app.lib import database, redis
 from app.lib.error_handler import register_exception_handlers
 from app.lib.logger import configure_logging
-from app.routes import health
+from app.routes import catalogue, health, imagery
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,10 @@ def create_app() -> FastAPI:
     # Health & readiness probes at root and under /api/v1
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api/v1")
+
+    # API v1 routes
+    app.include_router(imagery.router, prefix="/api/v1")
+    app.include_router(catalogue.router, prefix="/api/v1")
 
     return app
 
