@@ -62,13 +62,18 @@ BROWSER_EXPOSED_HEADERS: Final[tuple[str, ...]] = ("ETag", "Content-Length", "Co
 # looking at the tab.
 BROWSER_PREFLIGHT_CACHE_SECONDS: Final[int] = 600
 
+# Maximum scene size accepted by the ingest pipeline (8 GB).
+MAX_SCENE_FILE_SIZE_BYTES: Final[int] = 8 * 1024 * 1024 * 1024
+
 # What a presigned upload is allowed to declare. The content type is signed into the URL, so it is a
-# commitment rather than a hint: the PUT fails unless the browser sends exactly this. Kept small on purpose -
-# these are the formats Phase 1.2 can actually ingest, and a scene arriving as something else should be
-# refused when the ticket is issued, not four stages later inside rasterio.
+# commitment rather than a hint: the PUT fails unless the browser sends exactly this.
 INGESTIBLE_CONTENT_TYPES: Final[frozenset[str]] = frozenset(
     {
         "image/tiff",
+        "image/geotiff",
+        "image/png",
+        "image/jpeg",
+        "image/jp2",
         "application/octet-stream",
         "application/zip",
         "application/x-netcdf",
@@ -78,3 +83,4 @@ INGESTIBLE_CONTENT_TYPES: Final[frozenset[str]] = frozenset(
 # The fallback when a caller does not know. S3 defaults to this too; naming it means the default is a
 # decision rather than an accident.
 DEFAULT_CONTENT_TYPE: Final[str] = "application/octet-stream"
+

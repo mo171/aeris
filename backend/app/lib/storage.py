@@ -317,6 +317,19 @@ async def delete_object(bucket: Bucket, key: str) -> None:
         raise _as_upstream_error(error, f"deleting {name}/{key}") from error
 
 
+async def list_objects(bucket: Bucket, prefix: str) -> list[str]:
+    """List object keys in a bucket matching a given prefix."""
+    client = await get_client()
+    name = await bucket_name(bucket)
+    try:
+        response = await client.list_objects_v2(Bucket=name, Prefix=prefix)
+        contents = response.get("Contents", [])
+        return [str(item["Key"]) for item in contents]
+    except ClientError as error:
+        raise _as_upstream_error(error, f"listing objects in {name} with prefix {prefix}") from error
+
+
+
 # --- Presigned URLs ---------------------------------------------------------------------------------------
 
 

@@ -3847,6 +3847,16 @@
             }
           ]
         },
+        "parentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "planId": {
           "anyOf": [
             {
@@ -4151,6 +4161,16 @@
             "step": {
               "properties": {
                 "artefactLayerId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artefactUri": {
                   "anyOf": [
                     {
                       "type": "string"
@@ -5564,6 +5584,16 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "artefactLayerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artefactUri": {
           "anyOf": [
             {
               "type": "string"
@@ -9934,6 +9964,16 @@
                       }
                     ]
                   },
+                  "artefactUri": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "dependsOn": {
                     "items": {
                       "type": "string"
@@ -10360,6 +10400,16 @@
                       }
                     ]
                   },
+                  "artefactUri": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "dependsOn": {
                     "items": {
                       "type": "string"
@@ -10767,6 +10817,16 @@
           "items": {
             "properties": {
               "artefactLayerId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "artefactUri": {
                 "anyOf": [
                   {
                     "type": "string"

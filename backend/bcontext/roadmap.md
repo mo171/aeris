@@ -1256,11 +1256,11 @@ provenance integrity, refusal quality, orchestration behavior and voice interact
 
 Phase 2 adds adapters over the Phase 1 core. **It deletes nothing and moves no logic.**
 
-| # | Sub-phase | Deliverable | Gate |
-|---|---|---|---|
-| 2.0 | FastAPI shell | `main.py`, error handler, request logging, CORS, `/health`, `/ready` | `aeris doctor` equivalent over HTTP |
-| 2.1 | Read endpoints | imagery (cursor-paginated), missions, globe markers and tracks, model status, catalogue search | Frontend runs with `NEXT_PUBLIC_USE_MOCK_DATA=false` for read paths |
-| 2.2 | Upload flow | `POST /imagery/upload-ticket` → direct-to-MinIO PUT → `POST /imagery/:id/confirm` | A multi-GB scene uploads without passing through the app server |
+| # | Sub-phase | Deliverable | Gate | Status |
+|---|---|---|---|---|
+| 2.0 | FastAPI shell | `main.py`, error handler, request logging, CORS, `/health`, `/ready` | `aeris doctor` equivalent over HTTP | **done** (2026-09-17) |
+| 2.1 | Read endpoints | imagery (cursor-paginated), missions, globe markers and tracks, model status, catalogue search | Frontend runs with `NEXT_PUBLIC_USE_MOCK_DATA=false` for read paths | **done** (2026-09-17) |
+| 2.2 | Upload flow | `POST /imagery/upload-ticket` → direct-to-MinIO PUT → `POST /imagery/:id/confirm` | A multi-GB scene uploads without passing through the app server | **done** (2026-09-17) |
 | 2.3 | Investigations + SSE | create/get/patch, attach scene, `/runs` as SSE over the same `graph.astream()` the CLI consumes, plus the two figure endpoints of `api-contract.md` §6 — the list and the image bytes, CORS on and immutably cacheable | The frontend's existing parsers consume a live run with no client change; a `figure-ready` event's `imageUrl` loads in a browser |
 | 2.4 | WebSocket | Bidirectional: audio frames in, events out | Voice from the browser, end to end |
 | 2.5 | Inngest binding | `app/inngest/functions/` — one function per graph invocation, carrying the retry and backoff policy. The graphs do not change; the checkpointer moves from SQLite to Postgres | The same run produces an identical journal invoked from the CLI and from Inngest, and a forced mid-run failure is retried and resumes from its checkpoint rather than from S1 |

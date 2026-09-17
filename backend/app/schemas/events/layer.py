@@ -77,9 +77,9 @@ class EvidenceFeature(CamelCaseModel):
     class_id: str | None = None
     
     # Phase 2 Evidence properties
-    model_id: str = Field(min_length=1)
-    model_version: str = Field(min_length=1)
-    trace_step_id: str = Field(min_length=1)
+    model_id: str | None = None
+    model_version: str | None = None
+    trace_step_id: str | None = None
 
 
 class LayerProvenance(CamelCaseModel):

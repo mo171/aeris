@@ -35,3 +35,29 @@ class ImageryScene(CamelCaseModel):
     processing_state: SceneProcessingState
     temporal_role: TemporalRole
     thumbnail_url: str | None = None
+
+
+class ImageryUploadTicketRequest(CamelCaseModel):
+    """Payload sent by the browser to request a direct-to-storage upload ticket."""
+
+    file_name: str = Field(min_length=1)
+    file_size_bytes: int = Field(gt=0)
+    content_type: str = Field(min_length=1)
+
+
+class ImageryUploadTicket(CamelCaseModel):
+    """Signed URL ticket for direct-to-storage PUT upload, matching imageryUploadTicketSchema."""
+
+    scene_id: str = Field(min_length=1)
+    upload_url: str = Field(min_length=1)
+    expires_at: datetime
+    required_headers: dict[str, str]
+
+
+class ImageryConfirmResponse(CamelCaseModel):
+    """Acknowledgement returned after confirming that the file landed in storage."""
+
+    scene_id: str = Field(min_length=1)
+    processing_state: SceneProcessingState
+    message: str = Field(min_length=1)
+
