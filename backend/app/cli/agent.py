@@ -60,8 +60,8 @@ def render_plan(plan: dict[str, Any], source: str, console: Console) -> None:
     console.print(f"  {escape(plan['summary'])}")
     for step in plan["steps"]:
         mark = "[green]on [/green]" if step["isEnabled"] else "[red]off[/red]"
-        console.print(f"  {mark} {step['id']:8s} {step['stageCode']:4s} {step['modelId']:18s} [bold]{escape(step['title'])}[/bold]")
-        console.print(f"                {escape(step['description'])}")
+        console.print(f"  {mark} {step['id']:8s} {step['stageCode']:4s} {step['model']['id']:18s} [bold]{escape(step['title'])}[/bold]")
+        console.print(f"             {escape(step['description'])}")
 
 
 def render_outcome(outcome: AgentOutcome, console: Console) -> None:
