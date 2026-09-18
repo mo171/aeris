@@ -18,7 +18,17 @@ from app.config import settings
 from app.lib import database, redis
 from app.lib.error_handler import register_exception_handlers
 from app.lib.logger import configure_logging
-from app.routes import catalogue, globe, health, imagery, missions, models
+from app.routes import (
+    catalogue,
+    figures,
+    globe,
+    health,
+    imagery,
+    investigations,
+    missions,
+    models,
+    regions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     logger.info("Shutting down AERIS API application")
     await database.dispose_engine()
-    await redis.close()
+    await redis.close_client()
 
 
 def create_app() -> FastAPI:
@@ -62,6 +72,9 @@ def create_app() -> FastAPI:
     app.include_router(missions.router, prefix="/api/v1")
     app.include_router(globe.router, prefix="/api/v1")
     app.include_router(models.router, prefix="/api/v1")
+    app.include_router(investigations.router, prefix="/api/v1")
+    app.include_router(figures.router, prefix="/api/v1")
+    app.include_router(regions.router, prefix="/api/v1")
 
     return app
 

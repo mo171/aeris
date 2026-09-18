@@ -61,8 +61,13 @@ from app.services.spectral.indices import locate_bands, read_scene_bands, read_s
 
 OPTICAL_ROLES = (BandRole.GREEN, BandRole.NEAR_INFRARED, BandRole.SHORTWAVE_INFRARED_1)
 RADAR_ROLES = (BandRole.VV, BandRole.VH)
-RADAR_INCIDENCE_DEGREES = 39.0
-RADAR_LOOK_AZIMUTH_DEGREES = 280.0
+# Sentinel-1 nominal mid-swath incidence angle (IW mode: 29.1° - 46.0°, nominal center ~39.0°)
+RADAR_NOMINAL_INCIDENCE_DEGREES = 39.0
+# Sentinel-1 descending pass look azimuth (nominally ~280.0° for right-looking SAR)
+RADAR_NOMINAL_LOOK_AZIMUTH_DEGREES = 280.0
+# Backward-compatibility aliases
+RADAR_INCIDENCE_DEGREES = RADAR_NOMINAL_INCIDENCE_DEGREES
+RADAR_LOOK_AZIMUTH_DEGREES = RADAR_NOMINAL_LOOK_AZIMUTH_DEGREES
 # At Sentinel's 10 m grid this is 500 pixels. The ledger is an operator-facing catalogue of material
 # regions; complete per-pixel masks remain retained in the sensor artefacts.
 MINIMUM_LEDGER_REGION_HECTARES = 5.0
@@ -205,15 +210,17 @@ async def analyse_radar(state: AnalysisState) -> dict[str, object]:
     vv_power, vv_was_db = _as_linear_power(vv)
     vh_power, vh_was_db = _as_linear_power(vh)
     elevation = await elevation_on_grid(located[BandRole.VV])
+    incidence = float(state.get("radar_incidence_degrees") or RADAR_NOMINAL_INCIDENCE_DEGREES)
+    look_azimuth = float(state.get("radar_look_azimuth_degrees") or RADAR_NOMINAL_LOOK_AZIMUTH_DEGREES)
     vv_processed, vh_processed = await asyncio.gather(
         preprocess_sar(
             vv_power, elevation, polarisation=Polarisation.VV, calibration_factor=None,
-            incidence_angle_degrees=RADAR_INCIDENCE_DEGREES, radar_azimuth_degrees=RADAR_LOOK_AZIMUTH_DEGREES,
+            incidence_angle_degrees=incidence, radar_azimuth_degrees=look_azimuth,
             pixel_size_metres=float(source.resolution_metres or 10.0),
         ),
         preprocess_sar(
             vh_power, elevation, polarisation=Polarisation.VH, calibration_factor=None,
-            incidence_angle_degrees=RADAR_INCIDENCE_DEGREES, radar_azimuth_degrees=RADAR_LOOK_AZIMUTH_DEGREES,
+            incidence_angle_degrees=incidence, radar_azimuth_degrees=look_azimuth,
             pixel_size_metres=float(source.resolution_metres or 10.0),
         ),
     )
@@ -230,7 +237,7 @@ async def analyse_radar(state: AnalysisState) -> dict[str, object]:
         masks=result, values={"water": result.vv_decibels, "built_up": result.vv_decibels},
         confidences={"water": result.water_confidence, "built_up": result.built_up_confidence},
         model_id=ModelId.SAR_PREPROCESS, model_version=version, obscured=~result.observed,
-        polarisation="ratio", look_azimuth=RADAR_LOOK_AZIMUTH_DEGREES, incidence=RADAR_INCIDENCE_DEGREES,
+        polarisation="ratio", look_azimuth=look_azimuth, incidence=incidence,
         quantity={"water": "VV <= -17 dB and VH <= -22 dB", "built_up": "VV >= -8 dB and VH >= -15 dB"},
     )
     describe_trace_step(

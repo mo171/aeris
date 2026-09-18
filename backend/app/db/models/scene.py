@@ -58,13 +58,13 @@ class Scene(Base, TimestampMixin):
     # columns, which is always 4326; this records what the pixels are in, and preprocessing needs it.
     coordinate_reference_system: Mapped[str] = mapped_column(String(64), nullable=False)
 
-    footprint: Mapped[str] = mapped_column(
+    footprint: Mapped[str | None] = mapped_column(
         Geometry(geometry_type=POLYGON_GEOMETRY, srid=STORAGE_SRID, spatial_index=True),
-        nullable=False,
+        nullable=True,
     )
-    centroid: Mapped[str] = mapped_column(
+    centroid: Mapped[str | None] = mapped_column(
         Geometry(geometry_type=POINT_GEOMETRY, srid=STORAGE_SRID, spatial_index=True),
-        nullable=False,
+        nullable=True,
     )
 
     # BIGINT, not INTEGER: a multi-band scene passes INTEGER's 2.147 GB ceiling, and the overflow would
@@ -100,6 +100,10 @@ class Scene(Base, TimestampMixin):
         CheckConstraint(
             "processing_state <> 'ready' OR cog_object_key IS NOT NULL",
             name="ready_scene_has_a_cog",
+        ),
+        CheckConstraint(
+            "processing_state != 'ready' OR (footprint IS NOT NULL AND centroid IS NOT NULL)",
+            name="ready_scene_has_geometry",
         ),
         CheckConstraint(
             "ground_sample_distance_meters > 0",

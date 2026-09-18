@@ -6,6 +6,7 @@ Adheres to bcontext/folder-archtecture.md:
 
 from fastapi import APIRouter, BackgroundTasks, Query
 
+from app.constants.statuses import SceneProcessingState
 from app.controllers import imagery_controller
 from app.lib.responses import CursorPage
 from app.schemas.imagery import (
@@ -23,9 +24,10 @@ async def list_imagery(
     cursor: str | None = Query(None, description="Next page cursor"),
     limit: int = Query(25, ge=1, le=100, description="Items per page"),
     search: str | None = Query(None, description="Search filter"),
+    state: SceneProcessingState | None = Query(SceneProcessingState.READY, description="Filter by processing state"),
 ) -> CursorPage[ImageryScene]:
     """Retrieve cursor-paginated imagery scenes."""
-    return await imagery_controller.list_imagery(cursor=cursor, limit=limit, search=search)
+    return await imagery_controller.list_imagery(cursor=cursor, limit=limit, search=search, state=state)
 
 
 @router.post("/upload-ticket", response_model=ImageryUploadTicket)

@@ -39,16 +39,21 @@ from app.services.imagery.ingest_task import run_scene_ingest
 
 logger = logging.getLogger(__name__)
 
-# In-memory registry for fast lookups and unmigrated test fallback
-_IN_MEMORY_SCENES: dict[str, ImageryScene] = {}
 _TICKET_REGISTRY: dict[str, dict[str, Any]] = {}
 
 
 def _scene_to_wire(scene: Scene) -> ImageryScene:
     """Map SQLAlchemy Scene model to ImageryScene wire representation."""
-    centroid_geom = to_shape(scene.centroid)
-    footprint_geom = to_shape(scene.footprint)
-    minx, miny, maxx, maxy = footprint_geom.bounds
+    centroid = GeoPoint(latitude=0.0, longitude=0.0)
+    if scene.centroid is not None:
+        centroid_geom = to_shape(scene.centroid)
+        centroid = GeoPoint(latitude=centroid_geom.y, longitude=centroid_geom.x)
+
+    bbox = GeoBoundingBox(west=0.0, south=0.0, east=0.0, north=0.0)
+    if scene.footprint is not None:
+        footprint_geom = to_shape(scene.footprint)
+        minx, miny, maxx, maxy = footprint_geom.bounds
+        bbox = GeoBoundingBox(west=minx, south=miny, east=maxx, north=maxy)
 
     return ImageryScene(
         id=scene.id,
@@ -61,8 +66,8 @@ def _scene_to_wire(scene: Scene) -> ImageryScene:
         ground_sample_distance_meters=scene.ground_sample_distance_meters,
         cloud_cover_percentage=scene.cloud_cover_percentage,
         coordinate_reference_system=scene.coordinate_reference_system,
-        bounding_box=GeoBoundingBox(west=minx, south=miny, east=maxx, north=maxy),
-        centroid=GeoPoint(latitude=centroid_geom.y, longitude=centroid_geom.x),
+        bounding_box=bbox,
+        centroid=centroid,
         file_size_bytes=scene.file_size_bytes,
         processing_state=scene.processing_state,
         temporal_role=scene.temporal_role,
@@ -74,49 +79,38 @@ async def list_imagery(
     cursor: str | None = None,
     limit: int = 25,
     search: str | None = None,
+    state: SceneProcessingState | None = SceneProcessingState.READY,
 ) -> CursorPage[ImageryScene]:
     """Retrieve cursor-paginated imagery catalog scenes."""
-    try:
-        async with database.get_session() as session:
-            query = select(Scene).order_by(Scene.captured_at.desc()).limit(limit + 1)
-            if cursor:
-                query = query.where(Scene.id < cursor)
-            if search:
-                query = query.where(Scene.name.ilike(f"%{search}%"))
+    async with database.get_session() as session:
+        query = select(Scene).order_by(Scene.captured_at.desc()).limit(limit + 1)
+        if state is not None:
+            query = query.where(Scene.processing_state == state)
+        if cursor:
+            query = query.where(Scene.id < cursor)
+        if search:
+            query = query.where(Scene.name.ilike(f"%{search}%"))
 
-            result = await session.execute(query)
-            scenes = list(result.scalars().all())
+        result = await session.execute(query)
+        scenes = list(result.scalars().all())
 
-            next_cursor = None
-            if len(scenes) > limit:
-                next_cursor = scenes[limit - 1].id
-                scenes = scenes[:limit]
+        next_cursor = None
+        if len(scenes) > limit:
+            next_cursor = scenes[limit - 1].id
+            scenes = scenes[:limit]
 
-            items = [_scene_to_wire(s) for s in scenes]
-            # If DB returned rows, use them; if empty, include in-memory items
-            if not items and _IN_MEMORY_SCENES:
-                items = list(_IN_MEMORY_SCENES.values())
-            return CursorPage(items=items, next_cursor=next_cursor, total_count=len(items))
-    except Exception:
-        # Fallback when database is unmigrated or unseeded in tests
-        items = list(_IN_MEMORY_SCENES.values())
-        return CursorPage(items=items, next_cursor=None, total_count=len(items))
+        items = [_scene_to_wire(s) for s in scenes]
+        return CursorPage(items=items, next_cursor=next_cursor, total_count=len(items))
 
 
 async def get_imagery_by_id(scene_id: str) -> ImageryScene:
     """Retrieve a single imagery scene by ID."""
-    try:
-        async with database.get_session() as session:
-            query = select(Scene).where(Scene.id == scene_id)
-            result = await session.execute(query)
-            scene = result.scalar_one_or_none()
-            if scene is not None:
-                return _scene_to_wire(scene)
-    except Exception:
-        pass
-
-    if scene_id in _IN_MEMORY_SCENES:
-        return _IN_MEMORY_SCENES[scene_id]
+    async with database.get_session() as session:
+        query = select(Scene).where(Scene.id == scene_id)
+        result = await session.execute(query)
+        scene = result.scalar_one_or_none()
+        if scene is not None:
+            return _scene_to_wire(scene)
 
     raise ResourceNotFoundError(
         f"Scene '{scene_id}' does not exist.",
@@ -159,54 +153,29 @@ async def create_upload_ticket(request: ImageryUploadTicketRequest) -> ImageryUp
     }
 
     # Pre-create scene record in database with QUEUED state
-    try:
-        async with database.get_session() as session:
-            now = datetime.now(UTC)
-            box_geom = box(0.0, 0.0, 1.0, 1.0)
-            pt_geom = Point(0.5, 0.5)
-            scene = Scene(
-                id=scene_id,
-                name=request.file_name,
-                captured_at=now,
-                ingested_at=now,
-                modality=SceneModality.OPTICAL,
-                sensor_platform="Uploaded Scene",
-                band_count=1,
-                ground_sample_distance_meters=10.0,
-                cloud_cover_percentage=None,
-                coordinate_reference_system="EPSG:4326",
-                footprint=from_shape(box_geom, srid=STORAGE_SRID),
-                centroid=from_shape(pt_geom, srid=STORAGE_SRID),
-                file_size_bytes=request.file_size_bytes,
-                processing_state=SceneProcessingState.QUEUED,
-                temporal_role=TemporalRole.SINGLE,
-                raw_object_key=raw_object_key,
-                cog_object_key=None,
-            )
-            session.add(scene)
-            await session.commit()
-    except Exception as exc:
-        logger.debug("Pre-creating Scene record in DB skipped", extra={"error": str(exc)})
-
-    # Also register in in-memory fallback
-    _IN_MEMORY_SCENES[scene_id] = ImageryScene(
-        id=scene_id,
-        name=request.file_name,
-        captured_at=datetime.now(UTC),
-        ingested_at=datetime.now(UTC),
-        modality=SceneModality.OPTICAL,
-        sensor_platform="Uploaded Scene",
-        band_count=1,
-        ground_sample_distance_meters=10.0,
-        cloud_cover_percentage=None,
-        coordinate_reference_system="EPSG:4326",
-        bounding_box=GeoBoundingBox(west=0.0, south=0.0, east=1.0, north=1.0),
-        centroid=GeoPoint(latitude=0.5, longitude=0.5),
-        file_size_bytes=request.file_size_bytes,
-        processing_state=SceneProcessingState.QUEUED,
-        temporal_role=TemporalRole.SINGLE,
-        thumbnail_url=None,
-    )
+    async with database.get_session() as session:
+        now = datetime.now(UTC)
+        scene = Scene(
+            id=scene_id,
+            name=request.file_name,
+            captured_at=now,
+            ingested_at=now,
+            modality=SceneModality.OPTICAL,
+            sensor_platform="Uploaded Scene",
+            band_count=1,
+            ground_sample_distance_meters=10.0,
+            cloud_cover_percentage=None,
+            coordinate_reference_system="EPSG:4326",
+            footprint=None,
+            centroid=None,
+            file_size_bytes=request.file_size_bytes,
+            processing_state=SceneProcessingState.QUEUED,
+            temporal_role=TemporalRole.SINGLE,
+            raw_object_key=raw_object_key,
+            cog_object_key=None,
+        )
+        session.add(scene)
+        await session.commit()
 
     return ImageryUploadTicket(
         scene_id=scene_id,
@@ -252,47 +221,35 @@ async def confirm_upload(
     file_name = _TICKET_REGISTRY.get(scene_id, {}).get("fileName", Path(raw_object_key).name)
     file_size = _TICKET_REGISTRY.get(scene_id, {}).get("fileSizeBytes", 1024)
 
-    try:
-        async with database.get_session() as session:
-            result = await session.execute(select(Scene).where(Scene.id == scene_id))
-            scene = result.scalar_one_or_none()
-            now = datetime.now(UTC)
-            if scene:
-                scene.processing_state = SceneProcessingState.PROCESSING
-                scene.raw_object_key = raw_object_key
-            else:
-                box_geom = box(0.0, 0.0, 1.0, 1.0)
-                pt_geom = Point(0.5, 0.5)
-                scene = Scene(
-                    id=scene_id,
-                    name=file_name,
-                    captured_at=now,
-                    ingested_at=now,
-                    modality=SceneModality.OPTICAL,
-                    sensor_platform="Uploaded Scene",
-                    band_count=1,
-                    ground_sample_distance_meters=10.0,
-                    cloud_cover_percentage=None,
-                    coordinate_reference_system="EPSG:4326",
-                    footprint=from_shape(box_geom, srid=STORAGE_SRID),
-                    centroid=from_shape(pt_geom, srid=STORAGE_SRID),
-                    file_size_bytes=file_size,
-                    processing_state=SceneProcessingState.PROCESSING,
-                    temporal_role=TemporalRole.SINGLE,
-                    raw_object_key=raw_object_key,
-                    cog_object_key=None,
-                )
-                session.add(scene)
-            await session.commit()
-    except Exception as exc:
-        logger.debug("Database update to PROCESSING skipped", extra={"error": str(exc)})
-
-    # Update in-memory fallback
-    if scene_id in _IN_MEMORY_SCENES:
-        current = _IN_MEMORY_SCENES[scene_id]
-        _IN_MEMORY_SCENES[scene_id] = current.model_copy(
-            update={"processing_state": SceneProcessingState.PROCESSING}
-        )
+    async with database.get_session() as session:
+        result = await session.execute(select(Scene).where(Scene.id == scene_id))
+        scene = result.scalar_one_or_none()
+        now = datetime.now(UTC)
+        if scene:
+            scene.processing_state = SceneProcessingState.PROCESSING
+            scene.raw_object_key = raw_object_key
+        else:
+            scene = Scene(
+                id=scene_id,
+                name=file_name,
+                captured_at=now,
+                ingested_at=now,
+                modality=SceneModality.OPTICAL,
+                sensor_platform="Uploaded Scene",
+                band_count=1,
+                ground_sample_distance_meters=10.0,
+                cloud_cover_percentage=None,
+                coordinate_reference_system="EPSG:4326",
+                footprint=None,
+                centroid=None,
+                file_size_bytes=file_size,
+                processing_state=SceneProcessingState.PROCESSING,
+                temporal_role=TemporalRole.SINGLE,
+                raw_object_key=raw_object_key,
+                cog_object_key=None,
+            )
+            session.add(scene)
+        await session.commit()
 
     # Trigger background ingest
     if background_tasks is not None:

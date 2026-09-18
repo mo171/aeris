@@ -181,7 +181,7 @@ services:
       # The container listens on **80**, not 8000 - measured from its own startup log ("Listening at:
       # http://0.0.0.0:80"), after assuming 8000 and getting a health check that never went green. Published
       # on 8000 so the host-facing URL matches what the tests and the frontend use.
-      - "127.0.0.1:8000:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       minio:
         condition: service_healthy

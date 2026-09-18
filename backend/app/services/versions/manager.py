@@ -52,8 +52,23 @@ async def save_version(
             )
 
     now = datetime.now(timezone.utc)
+    normalized_snapshot = {
+        **snapshot,
+        "sceneSlots": snapshot.get("sceneSlots", []),
+        "timelinePair": snapshot.get("timelinePair", {
+            "baselineSceneId": None,
+            "comparisonSceneId": None,
+        }),
+        "steps": snapshot.get("steps", []),
+        "resultSummary": snapshot.get("resultSummary", {
+            "claimMetrics": [],
+            "confidence": None,
+        }),
+        "layerIds": snapshot.get("layerIds", snapshot.get("activeLayers", [])),
+        "traceId": snapshot.get("traceId", investigation.trace_id if investigation else "trc_default"),
+    }
     version_state = {
-        "snapshot": snapshot,
+        "snapshot": normalized_snapshot,
         "actor": actor,
         "parentVersionId": parent_version_id,
         "label": label,
@@ -233,3 +248,45 @@ def compare_version_snapshots(
             else None
         ),
     }
+
+
+async def append_history(
+    session: AsyncSession,
+    *,
+    investigation_id: str,
+    actor: str = "operator",
+    summary: str = "",
+    command_id: str | None = None,
+    params: dict[str, Any] | None = None,
+) -> InvestigationHistory:
+    """Append an action entry to investigation history."""
+    now = datetime.now(timezone.utc)
+    entry = InvestigationHistory(
+        investigation_id=investigation_id,
+        at=now,
+        actor=actor,
+        command_id=command_id,
+        params=params,
+        summary=summary,
+    )
+    session.add(entry)
+    await session.commit()
+    await session.refresh(entry)
+    return entry
+
+
+async def get_investigation_history(
+    session: AsyncSession,
+    *,
+    investigation_id: str,
+) -> list[dict[str, Any]]:
+    """List investigation action history entries ordered chronologically."""
+    stmt = (
+        select(InvestigationHistory)
+        .where(InvestigationHistory.investigation_id == investigation_id)
+        .order_by(InvestigationHistory.at.asc())
+    )
+    result = await session.execute(stmt)
+    entries = result.scalars().all()
+    return [e.to_wire() for e in entries]
+

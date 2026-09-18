@@ -229,8 +229,9 @@ def synthesis_facts(results: list[StepResult], steps: list[StepRecord]) -> tuple
 def _interface_resources(state: AgentState) -> str:
     """Render only opaque ids for the controller prompt; numeric values stay behind resolvers."""
     current = _current_results(state)
+    raw_claim_ids = [str(claim["id"]) for result in current for claim in result.get("claims") or [] if claim.get("id")]
     claims = [
-        f"{claim['id']}: {claim.get('text', '')} (evidenceIds={claim.get('evidenceIds') or claim.get('evidence_ids') or []})"
+        f"id='{claim['id']}' finding='{claim.get('text', '')}'"
         for result in current
         for claim in result.get("claims") or []
         if claim.get("id")
@@ -245,9 +246,9 @@ def _interface_resources(state: AgentState) -> str:
     layers = [str(identifier) for result in current for identifier in result.get("layer_ids") or result.get("layerIds") or []]
     target_sources: list[str] = []
     if isinstance(state.get("camera_targets"), dict):
-        target_sources.extend(f"{identifier} (layerId={identifier})" for identifier in state["camera_targets"])
+        target_sources.extend(f"{identifier}" for identifier in state["camera_targets"])
     for result in current:
-        target_sources.extend(f"{identifier} (layerId={identifier})" for identifier in (result.get("camera_targets") or {}))
+        target_sources.extend(f"{identifier}" for identifier in (result.get("camera_targets") or {}))
     targets = target_sources
     active_report_id = _active_report_id(state)
     associations = [
@@ -255,7 +256,10 @@ def _interface_resources(state: AgentState) -> str:
         for result in current
         for identifier, resource in (result.get("evidence_resources") or {}).items()
     ]
-    return f"claims={claims}; evidence={evidence}; evidenceAssociations={associations}; layers={layers}; cameraTargetIds={targets}; activeReportId={active_report_id}"
+    return (
+        f"availableClaimIds={raw_claim_ids}; claimsSummary={claims}; availableEvidenceIds={list(dict.fromkeys(evidence))}; "
+        f"availableLayerIds={list(dict.fromkeys(layers))}; cameraTargetIds={list(dict.fromkeys(targets))}; activeReportId={active_report_id}"
+    )
 
 
 async def control_interface(state: AgentState) -> dict[str, Any]:
@@ -292,11 +296,15 @@ async def control_interface(state: AgentState) -> dict[str, Any]:
         for capability in UI_CAPABILITIES
     )
     prompt = (
-        f"The operator asked: {state.get('request', '')!r}\nValidated interface resources: {_interface_resources(state)}\n"
+        f"The operator asked: {state.get('request', '')!r}\n"
+        f"Validated interface resources:\n{_interface_resources(state)}\n"
         f"Allowed presentation capabilities:\n{capability_text}\n"
-        "Select only capabilities that help present the validated findings or progress. Use resource ids exactly "
-        "as listed. Never provide coordinates, measurements, counts, report paths or other invented values. "
-        "Every call must include a concise reason with no numerals."
+        "Select presentation capabilities to present the validated findings or progress to the operator.\n"
+        "Instructions:\n"
+        "1. If there is a validated finding claim in availableClaimIds, invoke spotlight_claim passing the exact claim ID from availableClaimIds.\n"
+        "2. Pass ONLY the exact opaque id (e.g. from availableClaimIds, availableEvidenceIds, availableLayerIds) as the tool argument without any descriptions, labels, or colons.\n"
+        "3. Never provide coordinates, measurements, counts, report paths, or invented values.\n"
+        "4. Every tool call must include a concise reason with words only (no numerals)."
     )
     try:
         reply = await model.bind_tools(INTERFACE_TOOLS).ainvoke([("system", AGENT_SYSTEM_PROMPT), ("human", prompt)])

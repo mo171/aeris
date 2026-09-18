@@ -110,7 +110,22 @@ def _resource_ids(state: Mapping[str, Any], kind: UiResourceKind) -> set[str]:
 
 def _identity_resolver(parameter: str, kind: UiResourceKind) -> Resolver:
     def resolve(value: str | None, state: Mapping[str, Any]) -> dict[str, Any] | None:
-        return {parameter: value} if isinstance(value, str) and value in _resource_ids(state, kind) else None
+        if not isinstance(value, str):
+            return None
+        valid_ids = _resource_ids(state, kind)
+        if value in valid_ids:
+            return {parameter: value}
+        cleaned = value.strip().strip("'\"`[]()")
+        if ":" in cleaned:
+            cleaned = cleaned.split(":", 1)[0].strip()
+        if " " in cleaned:
+            cleaned = cleaned.split(None, 1)[0].strip()
+        if cleaned in valid_ids:
+            return {parameter: cleaned}
+        for valid_id in valid_ids:
+            if valid_id in value:
+                return {parameter: valid_id}
+        return None
 
     return resolve
 

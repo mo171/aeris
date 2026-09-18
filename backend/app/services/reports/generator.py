@@ -63,11 +63,16 @@ def _sentence(text: str, *, question: bool = False) -> str:
 
 def _figure_subject(title: str, query: str) -> tuple[str, str]:
     lower = title.lower()
-    query_lower = query.lower()
     if "detector" in lower and "shown" in lower:
         return "Source", "image supplied to the object detector"
     if "detection" in lower:
-        subject = "basketball courts" if "basketball" in query_lower else "requested objects"
+        q = query.strip()
+        q_lower = q.lower()
+        subject = "requested objects"
+        for prefix in ("count the ", "count ", "detect the ", "detect ", "how many ", "find the ", "find "):
+            if q_lower.startswith(prefix):
+                subject = q[len(prefix):].rstrip("?.")
+                break
         return "Detection", subject
     sensor = "Radar" if "radar" in lower or "sar" in lower else "Optical"
     subject = "built-up land" if "built" in lower else "surface water" if "water" in lower else "cross-sensor agreement"
@@ -116,7 +121,7 @@ def _fallback_document(*, run_id: str, values: dict[str, Any], figure_events: li
     for event in figure_events:
         sensor, subject = _figure_subject(str(_get(event, "title", "")), query)
         figure_id = str(_get(event, "figure_id", ""))
-        title = "Input image before analysis" if sensor == "Source" else "Basketball-court detections" if sensor == "Detection" else f"{sensor} evidence for {subject}"
+        title = "Input image before analysis" if sensor == "Source" else f"Detections for {subject}" if sensor == "Detection" else f"{sensor} evidence for {subject}"
         if sensor == "Source":
             caption = "The complete image supplied to the detector, shown without analytical annotations."
         elif sensor == "Detection":
@@ -145,9 +150,10 @@ def _fallback_document(*, run_id: str, values: dict[str, Any], figure_events: li
         primary_text + " The individual sensor findings remain usable, but the unresolved relationship must not be presented as a single fused classification."
         if refused else "The assessment is bounded by the supplied imagery, its stated resolution and quality, the requested classes, and the retained model evidence. Results should not be extended beyond the observed area or acquisition context."
     )
-    if "basketball" in query.lower():
-        title = "Basketball Court Detection and Count"
-    elif "built" in query.lower() and "water" in query.lower():
+    if query:
+        clean_q = query.rstrip(".?").strip()
+        title = f"Assessment of {clean_q[:1].lower() + clean_q[1:]}"
+    elif "built" in primary_text.lower() and "water" in primary_text.lower():
         title = "Optical and Radar Assessment of Built-up Land and Surface Water"
     else:
         title = "Earth Observation Evidence Assessment"

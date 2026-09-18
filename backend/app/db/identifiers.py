@@ -41,6 +41,7 @@ class IdentifierPrefix(StrEnum):
     EVIDENCE = "ev"
     CLAIM = "clm"
     MISSION = "msn"
+    PROJECT = "prj"
 
     # Not persisted as tables yet, and listed because the wire already names them: a layer id and a figure
     # id appear in `layer-ready` and `figure-ready` events, and an utterance id in `speech`. Declaring them
@@ -57,6 +58,8 @@ class IdentifierPrefix(StrEnum):
     REPORT = "rpt"
     UTTERANCE = "utt"
     PLAN = "pln"
+    TRACE = "trc"
+    SUGGESTION = "sug"
 
 
 IDENTIFIER_SEPARATOR: Final[str] = "_"
@@ -66,14 +69,15 @@ IDENTIFIER_SEPARATOR: Final[str] = "_"
 IDENTIFIER_MAXIMUM_LENGTH: Final[int] = 32
 
 
-def new_identifier(prefix: IdentifierPrefix) -> str:
+def new_identifier(prefix: IdentifierPrefix | str) -> str:
     """Generate a fresh, time-ordered identifier for one entity.
 
     Sync, and deliberately so (code-standards.md §7): it does no I/O now and cannot plausibly do any later -
     a ULID is generated from the clock and a random source, both in process. It is also called from inside
     SQLAlchemy column defaults, which are sync callables.
     """
-    return f"{prefix.value}{IDENTIFIER_SEPARATOR}{ULID()}"
+    prefix_val = prefix.value if isinstance(prefix, IdentifierPrefix) else str(prefix).rstrip(IDENTIFIER_SEPARATOR)
+    return f"{prefix_val}{IDENTIFIER_SEPARATOR}{ULID()}"
 
 
 def prefix_of(identifier: str) -> IdentifierPrefix | None:

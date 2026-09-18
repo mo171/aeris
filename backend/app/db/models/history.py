@@ -29,10 +29,16 @@ class InvestigationHistory(Base):
     )
 
     def to_wire(self) -> dict[str, Any]:
+        dt = self.at or datetime.now()
+        iso = dt.isoformat()
+        if iso.endswith("+00:00"):
+            iso = iso[:-6] + "Z"
+        elif not iso.endswith("Z"):
+            iso += "Z"
         return {
             "id": self.id,
             "investigationId": self.investigation_id,
-            "at": self.at.isoformat() if self.at else datetime.now().isoformat(),
+            "at": iso,
             "actor": self.actor,
             "commandId": self.command_id,
             "params": self.params,
@@ -59,10 +65,16 @@ class InvestigationVersion(Base, TimestampMixin):
     def to_wire(self) -> dict[str, Any]:
         state_dict = self.state or {}
         snapshot = state_dict.get("snapshot", state_dict)
+        dt = self.created_at or datetime.now()
+        iso = dt.isoformat()
+        if iso.endswith("+00:00"):
+            iso = iso[:-6] + "Z"
+        elif not iso.endswith("Z"):
+            iso += "Z"
         return {
             "id": self.id,
             "label": self.name or "Version Snapshot",
-            "createdAt": self.created_at.isoformat() if self.created_at else datetime.now().isoformat(),
+            "createdAt": iso,
             "actor": state_dict.get("actor", "operator"),
             "parentVersionId": state_dict.get("parentVersionId"),
             "snapshot": snapshot,

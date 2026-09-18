@@ -150,7 +150,7 @@ class Settings(BaseSettings):
 
     # --- Tiles and COGs ---
 
-    tile_server_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8000")
+    tile_server_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8080")
     cog_working_directory: Path = Path("data/cogs")
 
     # --- The specialist fleet (Phase 1.6) ---

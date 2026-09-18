@@ -14,6 +14,7 @@ whether the situation that produced it still holds.
 | ADR-002 | LangGraph owns all orchestration; Inngest owns the retry loop; no custom protocols | Accepted, amends 001 |
 | ADR-003 | Everything is `async def`; maths lives in a per-subsystem `math/` module | Accepted |
 | ADR-004 | Figures are rendered server-side with Matplotlib/Agg and shipped as images, not composed in the browser | Accepted |
+| ADR-005 | Active LLM is an unconditional invariant; zero mock returns across all services | Accepted |
 
 ---
 
@@ -309,3 +310,21 @@ reproduce the image byte-for-byte.
 - Invariant 19 and scientific boundary 13 in `architecture-context.md` are the checkable form of this ADR.
 - **Coordinated frontend change**, like `ui-command` and `speech`: the figure surface is not built and `ROUTES`
   has no entry for it yet.
+
+---
+
+## ADR 005: Active LLM Invariant & Strict Zero-Mock Policy
+
+**Date:** 2026-09-18
+**Status:** Accepted
+
+### Context
+
+During early iterations of Phase 2 serving controllers, placeholder fallbacks (e.g. `acq_01sentinel2_sample`, static markers, `_sample_mission`, and canned tool returns) were added to prevent client errors when databases were unseeded. Furthermore, code comments and templates had assumed an "if LLM is disabled" fallback branch.
+
+### Decision
+
+1. **Active LLM is an Unconditional Invariant:** The LLM reasoning tier (`build_chat_model()` using `gpt-5-mini` or declared provider) is always ON across all endpoints and services. There are no offline, dummy, or template-based mock fallbacks in production serving code.
+2. **Strict Anti-Hardcoding Rule:** Zero hardcoded responses, synthetic claims, or static fallbacks in backend controllers, services, and agent tools. Every endpoint must be backed by real PostGIS database records, deterministic scientific algorithms, or dynamic LLM reasoning.
+3. **Empty Over Synthetic:** If a query finds no matching records (e.g. no satellite passes for a bounding box, no missions, no completed runs), the system must return an honest empty response (`[]`, `None`, or typed scientific refusal), never synthetic mock entities.
+

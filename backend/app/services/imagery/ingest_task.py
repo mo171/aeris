@@ -76,9 +76,8 @@ async def run_scene_ingest(scene_id: str, raw_object_key: str) -> None:
                 logger.info("scene successfully ingested and ready", extra={"scene_id": scene_id})
 
     except Exception as exc:
-        logger.info("ingest encountered non-raster or simulated payload; marking ready if present", extra={"error": str(exc)})
-        # In test or synthetic environments, if raw payload is not a true GeoTIFF, mark scene READY so it remains usable
-        await _update_scene_state(scene_id, SceneProcessingState.READY)
+        logger.warning("ingest failed for scene", extra={"scene_id": scene_id, "error": str(exc)})
+        await _update_scene_state(scene_id, SceneProcessingState.FAILED)
     finally:
         # Cleanup temporary files
         if await asyncio.to_thread(local_raw_path.exists):
@@ -89,15 +88,10 @@ async def run_scene_ingest(scene_id: str, raw_object_key: str) -> None:
 
 async def _update_scene_state(scene_id: str, state: SceneProcessingState) -> None:
     """Helper to update scene processing state in the database."""
-    try:
-        async with database.get_session() as session:
-            result = await session.execute(select(Scene).where(Scene.id == scene_id))
-            scene = result.scalar_one_or_none()
-            if scene:
-                scene.processing_state = state
-                if state == SceneProcessingState.READY and not scene.cog_object_key:
-                    # Maintain CHECK constraint ready_scene_has_a_cog
-                    scene.cog_object_key = scene.raw_object_key or f"raw/{scene_id}/scene.tif"
-                await session.commit()
-    except Exception as exc:
-        logger.debug("could not update scene state in db (e.g. unmigrated)", extra={"error": str(exc)})
+    async with database.get_session() as session:
+        result = await session.execute(select(Scene).where(Scene.id == scene_id))
+        scene = result.scalar_one_or_none()
+        if scene:
+            scene.processing_state = state
+            await session.commit()
+
