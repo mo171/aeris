@@ -46,7 +46,7 @@ from app.services.pipeline.inputs import primary_frame, reference_frame
 from app.services.pipeline.node import current_trace_step_id, describe_trace_step, pipeline_node
 from app.services.pipeline.state import AnalysisState
 from app.services.pipeline.stream import emit
-from app.services.prompts.vlm import SAR_IMAGE_NOTE
+from app.prompts.vlm import SAR_IMAGE_NOTE
 from app.services.rendering.figures import figure_object_key, render_frame
 from app.services.rendering.math.rasterize import ImageFormat
 from app.services.vlm.reading import answer_question, read_labelled_figure, read_pair

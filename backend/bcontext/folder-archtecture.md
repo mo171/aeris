@@ -95,6 +95,14 @@ backend/
 │   │       ├── speech.py                # speech        (NEW - api-contract.md §5)
 │   │       └── ui_command.py            # ui-command    (NEW - api-contract.md §4)
 │   │
+│   ├── prompts/                         # Centralized prompt registry. Every system prompt and template.
+│   │   ├── agent.py                     # routing, planning, synthesis, interface-control
+│   │   ├── voice.py                     # voice-turn classifier, grounded narration, progress, provisional
+│   │   ├── investigations.py            # dynamic region suggestions
+│   │   ├── harness.py                   # orchestration planner, scientific facts synthesis
+│   │   ├── report.py                    # report editorial policy
+│   │   └── vlm.py                       # system prompt, SAR note, VQA, caption, constrained answer
+│   │
 │   ├── services/
 │   │   │
 │   │   ├── datasets/                    # Phase 1.1. Acquisition, licensing, enumeration. DONE
@@ -253,11 +261,6 @@ backend/
 │   │   │   └── math/
 │   │   │       └── rendering.py         # the fixed S2 true-colour and S1 false-colour stretches; training
 │   │   │                                #   and serving import the same functions
-│   │   │
-│   │   ├── prompts/                     # Every prompt put in front of a language model, as strings. DONE (1.7)
-│   │   │   ├── vlm.py                   # system prompt, SAR note, VQA / caption / constrained-answer templates
-│   │   │   └── report.py                # report-editor policy; accepts facts and returns typed prose only
-│   │   │
 │   │   ├── query/                       # DONE (1.8). Query understanding: what is being asked, of what.
 │   │   │   ├── classifier.py            # cues narrow to a family, kNN over the bank votes within it
 │   │   │   ├── decomposer.py            # filler off, clauses split at connectives, pronouns flagged
@@ -330,7 +333,7 @@ backend/
 │   │       ├── analysis_tools.py        # index query (the real graph via pipeline/runner.py), count, VQA, recall;
 │   │       │                            #   @tool schemas, deterministic dispatch by the routing table
 │   │       └── interface_tools.py       # spotlight_claim / focus_evidence / toggle_layer, bound with bind_tools;
-│   │                                    #   every id checked against the run. Prompts: services/prompts/agent.py
+│   │                                    #   every id checked against the run. Prompts: app/prompts/agent.py
 │   │
 │   ├── models/                          # ML model residency, not SQLAlchemy models.  DONE (1.6)
 │   │   ├── registry.py                  # `LOADERS`: which of the twelve ids this process can build, bound
@@ -424,7 +427,7 @@ backend/
 │       │                                #   object lengths for the resolution gate, the cue regexes, the encoder
 │       ├── vlm.py                       # (Phase 1.7) the Qwen3-VL variants and footprints, the image size, the
 │       │                                #   token budgets, the numeral rule, the BigEarthNet.txt categories (not)
-│       │                                #   trained. The prompt strings are services/prompts/vlm.py.
+│       │                                #   trained. The prompt strings are app/prompts/vlm.py.
 │       ├── spectral.py                  # (Phase 1.4) the seven indices, their band roles, coefficients,
 │       │                                #   interpretation bands and the phrase -> target table. Transcribed
 │       │                                #   from the frontend's overlays/spectral-indices.ts (PDF §3.3).

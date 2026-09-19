@@ -38,6 +38,10 @@ from app.db.models.scene import Scene as DbScene
 from app.lib import database
 from app.lib.exceptions import InvalidRequestError, ResourceNotFoundError
 from app.lib.llm.chat_model import build_chat_model
+from app.prompts.investigations import (
+    REGION_SUGGESTION_SYSTEM_PROMPT,
+    REGION_SUGGESTION_USER_TEMPLATE,
+)
 from app.schemas.events.claim import Claim, ClaimMetric
 from app.services.sessions.journal_writer import read_journal
 from app.schemas.events.layer import (
@@ -538,22 +542,24 @@ async def get_region_suggestions(investigation_id: str, bounds: dict[str, float]
     if model is None:
         raise UpstreamUnavailableError("Language model is unavailable for dynamic region suggestions.")
 
-    user_prompt = (
-        f"You are an autonomous Earth observation intelligence assistant for AERIS.\n"
-        f"An operator has selected a geographic sub-region on the 3D canvas:\n"
-        f"- Bounding Box: West={west:.4f}, South={south:.4f}, East={east:.4f}, North={north:.4f}\n"
-        f"- Centroid: ({centroid_lat:.4f}, {centroid_lon:.4f})\n"
-        f"- Calculated Area: ~{area_ha} hectares\n"
-        f"- Investigation Context: {inv.name} (AOI: {inv.area_of_interest_name})\n"
-        f"- Available Sensors: {sensors_str}\n"
-        f"- Temporal Baseline: {time_span_str}\n"
-        f"- Seed Query: {inv.seed_query or 'General environmental and land monitoring'}\n\n"
-        f"Generate 3 to 4 grounded, highly specific analytical questions/prompts that an EO specialist should ask about this sub-region."
+    user_prompt = REGION_SUGGESTION_USER_TEMPLATE.format(
+        west=west,
+        south=south,
+        east=east,
+        north=north,
+        centroid_lat=centroid_lat,
+        centroid_lon=centroid_lon,
+        area_ha=area_ha,
+        inv_name=inv.name,
+        aoi_name=inv.area_of_interest_name,
+        sensors=sensors_str,
+        time_span=time_span_str,
+        seed_query=inv.seed_query or "General environmental and land monitoring",
     )
     try:
         structured_llm = model.with_structured_output(_LLMSuggestionResult)
         result = await structured_llm.ainvoke([
-            ("system", "You are an Earth observation intelligence specialist. Propose questions strictly grounded in the given coordinates, area, and sensor capabilities."),
+            ("system", REGION_SUGGESTION_SYSTEM_PROMPT),
             ("human", user_prompt),
         ])
     except Exception as err:

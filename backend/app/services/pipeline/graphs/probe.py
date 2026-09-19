@@ -84,6 +84,40 @@ async def compose_answer(state: ProbeState) -> dict[str, object]:
     for token in tokens:
         emit_answer_token(run_id, token)
 
+    # Phase 2.7: Emit ui-command and speech events over the live stream
+    from app.constants.ui_commands import UiCommand
+    from app.constants.voice import SpeechKind
+    from app.controllers.speech_controller import speech_registry
+    from app.db.identifiers import IdentifierPrefix, new_identifier
+    from app.schemas.events.interface import UiCommandEvent
+    from app.schemas.events.voice import SpeechEvent
+    from app.services.pipeline.stream import emit
+
+    emit(
+        UiCommandEvent(
+            run_id=run_id,
+            command_id=UiCommand.GLOBE_FLY_TO.value,
+            params={"latitude": 33.8938, "longitude": 35.5018, "altitudeMeters": 15000},
+            reason="Positioning camera over target area of interest",
+        )
+    )
+
+    utterance_id = new_identifier(IdentifierPrefix.UTTERANCE)
+    speech_text = "The analysis spine is verified and operational."
+    speech_registry.register_utterance(utterance_id, speech_text)
+    emit(
+        SpeechEvent(
+            run_id=run_id,
+            utterance_id=utterance_id,
+            kind=SpeechKind.PROGRESS,
+            text=speech_text,
+            audio_url=f"/api/v1/speech/{utterance_id}.opus",
+            claim_ids=[],
+            interruptible=True,
+            provisional=False,
+        )
+    )
+
     # `None` rather than a number, on purpose. This node ran no specialist model, so it has no confidence
     # to report - and `0.0` would claim it has none, which is a different statement (api-contract.md §1
     # rule 2). The probe graph refusing to invent a confidence is the same rule the real pipeline runs on.

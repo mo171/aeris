@@ -33,7 +33,7 @@ from app.constants.routing import Modality
 from app.models.manager import ModelManager, get_manager
 from app.services.detection.detector import ObjectDetectionResult, detect_objects
 from app.services.imagery.frames import inspect_input, read_rgb_frame
-from app.services.prompts.vlm import SAR_IMAGE_NOTE
+from app.prompts.vlm import SAR_IMAGE_NOTE
 from app.services.vlm.reading import Reading, answer_question, describe_image, read_pair
 
 # What `ask` can do without a scene. Everything else is named with where it is answered.

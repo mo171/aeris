@@ -3,7 +3,7 @@
 what  : `VlmSize` and `VLM_VARIANTS` (the base checkpoints and their measured footprints), the image size
         the model is fed, the generation settings, the prompt templates for VQA / captioning / the
         constrained answer, and the numeral rule the constrained generator enforces.
-where : `app/models/vlm.py` loads by variant; the prompt strings themselves are `services/prompts/vlm.py`;
+where : `app/models/vlm.py` loads by variant; the prompt strings themselves are `app/prompts/vlm.py`;
         `services/answer/` enforces `NUMERAL_PATTERN`; the training notebooks under `notebooks/08_vlm_finetuning/` read the
         same templates so the model is asked at inference exactly what it was taught.
 how   : Qwen3-VL-Instruct (Apache-2.0), 2B on the 4 GB profile and 4B where 8 GB or more is available, both

@@ -1,11 +1,13 @@
-"""Keeps the Phase 1.12 research-editor prompt at the backend's single prompt boundary.
+"""Keeps the research-editor prompt at the backend's centralized prompt boundary.
 
 what  : `REPORT_EDITORIAL_PROMPT`, the rules for turning a validated dossier into professional report prose.
-where : Used only by `services/reports/generator.py`; no renderer or exporter contains model instructions.
+where : Used by `services/reports/generator.py`; no renderer or exporter contains model instructions.
 how   : The prompt permits explanation and organisation but forbids new measurements, causes, or certainty.
 """
 
-REPORT_EDITORIAL_PROMPT: str = """
+from typing import Final
+
+REPORT_EDITORIAL_PROMPT: Final[str] = """
 You are the senior scientific editor for AERIS, an Earth-observation intelligence product. Rewrite the
 validated dossier below into a concise, content-rich report for a remote-sensing professional and an
 informed decision-maker.

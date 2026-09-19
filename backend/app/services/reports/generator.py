@@ -24,7 +24,7 @@ from app.schemas.report import (
     ReportFinding,
     ReportSectionDocument,
 )
-from app.services.prompts.report import REPORT_EDITORIAL_PROMPT
+from app.prompts.report import REPORT_EDITORIAL_PROMPT
 
 logger = logging.getLogger(__name__)
 _NUMBER = re.compile(r"(?<![A-Za-z_])[-+]?\d[\d,.]*(?:%|\b)")

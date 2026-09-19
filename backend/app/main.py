@@ -33,6 +33,7 @@ from app.lib import database, redis
 from app.lib.error_handler import register_exception_handlers
 from app.lib.logger import configure_logging
 from app.routes import (
+    assistant,
     catalogue,
     figures,
     globe,
@@ -42,6 +43,7 @@ from app.routes import (
     missions,
     models,
     regions,
+    speech,
     tiles,
     voice,
 )
@@ -92,6 +94,8 @@ def create_app() -> FastAPI:
     app.include_router(figures.router, prefix="/api/v1")
     app.include_router(regions.router, prefix="/api/v1")
     app.include_router(tiles.router, prefix="/api/v1")
+    app.include_router(speech.router, prefix="/api/v1")
+    app.include_router(assistant.router, prefix="/api/v1")
     app.include_router(voice.router, prefix="/api/v1/voice")
 
     # Inngest webhook serving for durable background functions (Phase 2.5)

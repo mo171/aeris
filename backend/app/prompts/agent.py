@@ -1,13 +1,11 @@
-"""Every prompt the agent's language model sees: the routing policy for arbitration, the plan's prose, the answer's prose.
+"""Every prompt the agent's language model sees: the routing policy for arbitration, the plan's prose, the answer's prose, and interface control.
 
-what  : `AGENT_SYSTEM_PROMPT`, `ARBITER_TEMPLATE`, `PLANNER_TEMPLATE`, `SYNTHESIS_TEMPLATE`.
-where : `agents/arbiter.py`, `agents/planner.py`, `agents/graph.py` (synthesis). Strings only; the
+what  : `AGENT_SYSTEM_PROMPT`, `ARBITER_TEMPLATE`, `PLANNER_TEMPLATE`, `SYNTHESIS_TEMPLATE`, `INTERFACE_CONTROL_PROMPT_TEMPLATE`.
+where : `agents/arbiter.py`, `agents/planner.py`, `agents/graph.py` (synthesis & interface control). Strings only; the
         vocabularies they mention are `constants/intents.py` and `constants/routing.py`.
-how   : The model is told the policy it is asked to apply, because measured bare it does not know it:
-        asked with no policy, gpt-5-mini put "how many ships are there" under SCENE_VQA. The arbiter is
-        only ever asked to choose *within the family the cues allowed*; the planner is only ever asked to
-        *phrase* steps that are already decided; synthesis copies placeholders and invents no number, the
-        same contract the VLM has (`prompts/vlm.py`) checked by the same guard.
+how   : The model is told the policy it is asked to apply, because measured bare it does not know it.
+        The arbiter is only ever asked to choose within the family the cues allowed; the planner is only ever asked to
+        phrase steps that are already decided; synthesis copies placeholders and invents no number.
 """
 
 from typing import Final
@@ -48,4 +46,16 @@ SYNTHESIS_TEMPLATE: Final[str] = (
     "count, area or percentage that is not a placeholder; a figure written out in a finding (a resolution, "
     "a threshold) is copied exactly as written or left out, never rounded. Where a step was refused, say "
     "what could not be done and why, in the operator's terms. Do not add findings."
+)
+
+INTERFACE_CONTROL_PROMPT_TEMPLATE: Final[str] = (
+    "The operator asked: {request!r}\n"
+    "Validated interface resources:\n{resources}\n"
+    "Allowed presentation capabilities:\n{capabilities}\n"
+    "Select presentation capabilities to present the validated findings or progress to the operator.\n"
+    "Instructions:\n"
+    "1. If there is a validated finding claim in availableClaimIds, invoke spotlight_claim passing the exact claim ID from availableClaimIds.\n"
+    "2. Pass ONLY the exact opaque id (e.g. from availableClaimIds, availableEvidenceIds, availableLayerIds) as the tool argument without any descriptions, labels, or colons.\n"
+    "3. Never provide coordinates, measurements, counts, report paths, or invented values.\n"
+    "4. Every tool call must include a concise reason with words only (no numerals)."
 )

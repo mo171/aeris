@@ -1,6 +1,6 @@
 """What the vision-language model is asked, word for word - the prompts, in one place, so training and serving ask the same thing.
 
-what  : `SYSTEM_PROMPT`, `SAR_IMAGE_NOTE`, `VQA_TEMPLATE`, `CAPTION_TEMPLATE`, `CONSTRAINED_ANSWER_TEMPLATE`.
+what  : `SYSTEM_PROMPT`, `SAR_IMAGE_NOTE`, `VQA_TEMPLATE`, `CAPTION_TEMPLATE`, `CONSTRAINED_ANSWER_TEMPLATE`, `FIGURE_READING_TEMPLATE`.
 where : `app/models/vlm.py` (system prompt), `services/vlm/reading.py` (VQA, caption, SAR note),
         `services/answer/constrained.py` (the constrained answer), and `training/vlm/` and the notebooks
         under `notebooks/08_vlm_finetuning/`, which restate these by value and say they must match.
@@ -28,10 +28,12 @@ SAR_IMAGE_NOTE: Final[str] = (
 )
 
 VQA_TEMPLATE: Final[str] = "{question}\nAnswer briefly."
+
 CAPTION_TEMPLATE: Final[str] = (
     "Describe the land cover and the major objects visible in this image in two or three sentences. "
     "Name only what you can see."
 )
+
 # The constrained answer: the claims are given as numbered facts with placeholders where their numbers
 # go, and the model is asked to phrase them - placeholders copied verbatim, no new figures.
 CONSTRAINED_ANSWER_TEMPLATE: Final[str] = (

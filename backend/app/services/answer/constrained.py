@@ -34,7 +34,7 @@ from app.constants.model_ids import ModelId
 from app.constants.vlm import NUMERAL_PATTERN, PLACEHOLDER_PATTERN, VLM_MAX_NEW_TOKENS
 from app.lib.exceptions import AerisError
 from app.models.manager import ModelManager
-from app.services.prompts.vlm import CONSTRAINED_ANSWER_TEMPLATE
+from app.prompts.vlm import CONSTRAINED_ANSWER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,7 @@ async def _phrase_with_vlm(manager: ModelManager, prompt: str) -> tuple[str, str
 
 async def _phrase_with_chat_model(model, prompt: str) -> tuple[str, str | None, str | None]:  # noqa: ANN001
     from app.lib.llm.chat_model import chat_model_record
-    from app.services.prompts.agent import AGENT_SYSTEM_PROMPT
+    from app.prompts.agent import AGENT_SYSTEM_PROMPT
 
     record = chat_model_record()
     version = record.version if record else "llm"

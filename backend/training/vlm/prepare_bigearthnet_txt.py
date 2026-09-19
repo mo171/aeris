@@ -39,7 +39,7 @@ from app.constants.datasets import DatasetId, DatasetSplit
 from app.constants.vlm import BEN_TXT_CONSTANT_CATEGORIES, BEN_TXT_TRAINED_CATEGORIES
 from app.services.datasets.catalogue import require_trainable
 from app.services.datasets.loader import split_directory
-from app.services.prompts.vlm import SAR_IMAGE_NOTE
+from app.prompts.vlm import SAR_IMAGE_NOTE
 from app.services.vlm.math.rendering import render_s1_false_colour, render_s2_true_colour
 
 logger = logging.getLogger(__name__)

@@ -195,6 +195,8 @@ class VoiceSession:
             await self._handle_approve(enabled_step_ids=decision.enabled_step_ids or None)
         elif action == VoiceTurnAction.QUESTION:
             await self._handle_question(transcript)
+        elif action == VoiceTurnAction.COMMAND:
+            await self._handle_command(decision, transcript)
         elif action == VoiceTurnAction.ABANDON:
             await self._handle_abandon()
         elif action == VoiceTurnAction.STANDBY:
@@ -254,6 +256,34 @@ class VoiceSession:
             )
             await self._speak(speech)
 
+    async def _handle_command(self, decision: VoiceTurnDecision, transcript: str) -> None:
+        """Handle operator voice command driving the UI (fly camera, toggle layer, focus evidence)."""
+        command_id = decision.command_id or "interface.openCommandPalette"
+        params = decision.params or {}
+        reason = decision.response or f"Operator voice command: {transcript}"
+        run_id = self._active_run.run_id if self._active_run else new_identifier(IdentifierPrefix.RUN)
+
+        # 1. Dispatch ui-command event to client
+        if hasattr(self._player, "send_json"):
+            await self._player.send_json({
+                "type": "ui-command",
+                "runId": run_id,
+                "commandId": command_id,
+                "params": params,
+                "reason": reason,
+            })
+
+        # 2. Spoken confirmation
+        speech_text = decision.response or f"Executing {command_id}."
+        utterance_id = new_identifier(IdentifierPrefix.UTTERANCE)
+        speech = AuthoredSpeech(
+            text=speech_text,
+            run_id=run_id,
+            utterance_id=utterance_id,
+            kind=SpeechKind.PROGRESS,
+        )
+        await self._speak(speech)
+
     async def _handle_abandon(self) -> None:
         """Abandon the active run at a safe node boundary."""
         if self._active_run is None or not self._active_run.is_running:
@@ -280,7 +310,13 @@ class VoiceSession:
     async def _speak(self, authored: AuthoredSpeech) -> None:
         """Synthesize and play one authored utterance."""
         try:
-            chunks = self._synthesizer.chunks(authored)
+            if self._synthesizer is not None:
+                chunks = self._synthesizer.chunks(authored)
+            else:
+                async def _empty_chunks():
+                    if False:
+                        yield b""
+                chunks = _empty_chunks()
             await self._player.speak(authored, chunks)
         except Exception as error:  # noqa: BLE001 — playback errors don't kill the session
             logger.warning("speech playback failed: %s", error)
@@ -385,6 +421,17 @@ class VoiceSession:
                 declared_level=declared_level,
                 ground_sample_distance=ground_sample_distance,
             )
+
+            # Dispatch any interface presentation commands to the client
+            for cmd in outcome.state.get("ui_commands") or []:
+                if hasattr(self._player, "send_json"):
+                    await self._player.send_json({
+                        "type": "ui-command",
+                        "runId": outcome.request_id,
+                        "commandId": cmd.get("commandId"),
+                        "params": cmd.get("params", {}),
+                        "reason": cmd.get("reason", "Interface presentation"),
+                    })
 
             # Speak the grounded result
             claims = []

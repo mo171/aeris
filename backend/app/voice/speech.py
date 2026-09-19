@@ -16,7 +16,7 @@ from app.constants.vlm import NUMERAL_PATTERN, PLACEHOLDER_PATTERN
 from app.lib.exceptions import SpeechGenerationError
 from app.schemas.events.voice import SpeechEvent, SpeechKind
 from app.services.answer.constrained import Fact, facts_from_claims, fill_placeholders, verify_phrasing
-from app.services.prompts.voice import (
+from app.prompts.voice import (
     VOICE_GROUNDED_PROMPT,
     VOICE_PROGRESS_PROMPT,
     VOICE_PROVISIONAL_PROMPT,

@@ -21,8 +21,8 @@ from pydantic import BaseModel, Field
 from app.agents.state import StepRecord
 from app.constants.vlm import NUMERAL_PATTERN
 from app.db.identifiers import IdentifierPrefix, new_identifier
+from app.prompts.agent import AGENT_SYSTEM_PROMPT, PLANNER_TEMPLATE
 from app.schemas.agent import NO_MODEL, PLAN_STAGES, AnalysisPlan, AnalysisPlanStep
-from app.services.prompts.agent import AGENT_SYSTEM_PROMPT, PLANNER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 

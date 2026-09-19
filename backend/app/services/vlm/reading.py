@@ -34,7 +34,7 @@ from app.constants.vlm import VLM_MAX_NEW_TOKENS, VLM_MAX_NEW_TOKENS_SHORT
 from app.lib import redis
 from app.models.manager import ModelManager
 from app.models.vlm import vlm_record
-from app.services.prompts.vlm import CAPTION_TEMPLATE, FIGURE_READING_TEMPLATE, SAR_IMAGE_NOTE, VQA_TEMPLATE
+from app.prompts.vlm import CAPTION_TEMPLATE, FIGURE_READING_TEMPLATE, SAR_IMAGE_NOTE, VQA_TEMPLATE
 
 logger = logging.getLogger(__name__)
 

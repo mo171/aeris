@@ -6,7 +6,11 @@ from pydantic import BaseModel, Field
 
 from app.schemas.orchestration import TaskSpec
 from app.constants.intents import Intent
-from app.services.prompts.harness import PLANNER_SYSTEM
+from app.prompts.harness import (
+    HARNESS_PLANNER_FEEDBACK_TEMPLATE,
+    HARNESS_PLANNER_USER_TEMPLATE,
+    PLANNER_SYSTEM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +20,9 @@ class PlanResponse(BaseModel):
 async def plan_request(request: str, model: BaseChatModel, available_inputs: list[str], feedback: str = "") -> list[TaskSpec]:
     """Decompose a request into an inspectable array of TaskSpecs."""
     
-    user_prompt = "Available inputs: {inputs}\n\nRequest: {request}"
+    user_prompt = HARNESS_PLANNER_USER_TEMPLATE
     if feedback:
-        user_prompt += "\n\nPrevious attempt failed. Feedback:\n{feedback}\n\nPlease generate a NEW plan that resolves this issue (e.g. use VQA if object detection failed due to resolution)."
+        user_prompt += HARNESS_PLANNER_FEEDBACK_TEMPLATE
         
     prompt = ChatPromptTemplate.from_messages([
         ("system", PLANNER_SYSTEM),

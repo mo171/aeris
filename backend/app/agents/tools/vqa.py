@@ -3,8 +3,8 @@ import numpy as np
 
 from app.schemas.orchestration import TaskSpec
 from app.models.manager import ModelManager
+from app.prompts.vlm import SAR_IMAGE_NOTE
 from app.services.vlm.reading import answer_question, read_pair
-from app.services.prompts.vlm import SAR_IMAGE_NOTE
 
 async def execute_vqa(task: TaskSpec, pictures: list[np.ndarray], sar: list[bool], manager: ModelManager) -> dict[str, Any]:
     """Execute Vision-Language Question Answering and format as a claim."""

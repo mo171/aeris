@@ -58,6 +58,50 @@ async def generate_answer(state: AnalysisState) -> dict[str, object]:
     tokens = text.split(" ")
     for token in tokens:
         emit_answer_token(state["run_id"], token)
+    # Phase 2.7: Emit ui-command and speech events
+    from app.constants.ui_commands import UiCommand
+    from app.constants.voice import SpeechKind
+    from app.controllers.speech_controller import speech_registry
+    from app.db.identifiers import IdentifierPrefix, new_identifier
+    from app.schemas.events.interface import UiCommandEvent
+    from app.schemas.events.voice import SpeechEvent
+    from app.services.pipeline.stream import emit
+
+    primary_claim = next((c for c in claims if c.get("is_primary") or c.get("isPrimary")), None) or (claims[0] if claims else None)
+    if primary_claim and primary_claim.get("id"):
+        primary_id = primary_claim["id"]
+        emit(UiCommandEvent(
+            run_id=state["run_id"],
+            command_id=UiCommand.INVESTIGATION_SPOTLIGHT_CLAIM.value,
+            params={"claimId": primary_id},
+            reason="Spotlighting primary finding",
+        ))
+        first_ev = next(iter(primary_claim.get("evidence_ids") or primary_claim.get("evidenceIds") or []), None)
+        if first_ev:
+            emit(UiCommandEvent(
+                run_id=state["run_id"],
+                command_id=UiCommand.INVESTIGATION_FOCUS_EVIDENCE.value,
+                params={"evidenceId": first_ev},
+                reason="Focusing evidence area",
+            ))
+
+    if claims:
+        claim_ids = [c["id"] for c in claims if c.get("id")]
+        if claim_ids:
+            utterance_id = new_identifier(IdentifierPrefix.UTTERANCE)
+            speech_text = phrased.text or text
+            speech_registry.register_utterance(utterance_id, speech_text)
+            emit(SpeechEvent(
+                run_id=state["run_id"],
+                utterance_id=utterance_id,
+                kind=SpeechKind.GROUNDED,
+                text=speech_text,
+                audio_url=f"/api/v1/speech/{utterance_id}.opus",
+                claim_ids=claim_ids,
+                interruptible=True,
+                provisional=False,
+            ))
+
     describe_trace_step(
         f"{len(claims)} claims spoken in {len(tokens)} tokens by the {phrased.source} generator"
         + (f" ({phrased.model_version})" if phrased.model_version else "")

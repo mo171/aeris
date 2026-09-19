@@ -5,8 +5,8 @@ from app.schemas.orchestration import TaskSpec
 from app.constants.model_ids import ModelId
 from app.models.manager import ModelManager
 from app.services.detection.detector import detect_objects
+from app.prompts.vlm import SAR_IMAGE_NOTE
 from app.services.vlm.reading import answer_question, read_pair
-from app.services.prompts.vlm import SAR_IMAGE_NOTE
 
 from app.services.query.ontology import canonicalize_target
 

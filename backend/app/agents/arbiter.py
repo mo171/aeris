@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.intents import Intent
 from app.lib.llm.chat_model import build_chat_model, chat_model_record
-from app.services.prompts.agent import AGENT_SYSTEM_PROMPT, ARBITER_TEMPLATE
+from app.prompts.agent import AGENT_SYSTEM_PROMPT, ARBITER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 

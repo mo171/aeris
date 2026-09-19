@@ -31,7 +31,7 @@ from app.constants.fleet import FLEET, FleetRecord, WeightsSource
 from app.constants.model_ids import ModelId
 from app.constants.vlm import UNADAPTED_SUFFIX, VLM_IMAGE_PIXELS, VLM_MAX_NEW_TOKENS, VLM_VARIANTS, VlmSize
 from app.models.loader import fetch_repository
-from app.services.prompts.vlm import SYSTEM_PROMPT
+from app.prompts.vlm import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 

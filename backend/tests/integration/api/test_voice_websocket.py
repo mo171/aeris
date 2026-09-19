@@ -176,3 +176,131 @@ async def test_speech_player_streaming_and_barge_in() -> None:
     assert not player.is_active
     # Should have been interrupted early before sending all 10 chunks
     assert len(sent_binary_frames) < 10
+
+
+@pytest.mark.asyncio
+async def test_voice_session_dispatches_ui_command_over_websocket() -> None:
+    """Spoken command turn emits ui-command frame and speech over the WebSocket player."""
+    sent_json_frames: list[dict[str, Any]] = []
+
+    class MockWebSocket:
+        async def send_json(self, data: dict[str, Any]) -> None:
+            sent_json_frames.append(data)
+
+        async def send_bytes(self, data: bytes) -> None:
+            pass
+
+    mock_ws = MockWebSocket()
+    player = WebSocketSpeechPlayer(mock_ws)
+
+    from app.voice.session import VoiceSession
+    from app.voice.turns import VoiceTurnAction, VoiceTurnDecision
+
+    session = VoiceSession(
+        capture=None,
+        transcriber=None,
+        synthesizer=None,
+        player=player,
+    )
+
+    decision = VoiceTurnDecision(
+        action=VoiceTurnAction.COMMAND,
+        command_id="globe.flyTo",
+        params={"latitude": 33.8938, "longitude": 35.5018, "altitudeMeters": 15000},
+        response="Flying the camera to Beirut.",
+    )
+
+    await session._dispatch(decision, "Fly the camera to Beirut")
+
+    # Verify ui-command frame was sent to WebSocket
+    ui_cmd_frames = [f for f in sent_json_frames if f.get("type") == "ui-command"]
+    assert len(ui_cmd_frames) == 1
+    assert ui_cmd_frames[0]["commandId"] == "globe.flyTo"
+    assert ui_cmd_frames[0]["params"] == {"latitude": 33.8938, "longitude": 35.5018, "altitudeMeters": 15000}
+    assert ui_cmd_frames[0]["reason"] == "Flying the camera to Beirut."
+
+    # Verify speech frame was also emitted
+    speech_frames = [f for f in sent_json_frames if f.get("type") == "speech"]
+    assert len(speech_frames) == 1
+    assert speech_frames[0]["text"] == "Flying the camera to Beirut."
+
+
+def test_websocket_end_to_end_voice_command_turn(client: TestClient) -> None:
+    """Client speaks a command turn over WebSocket; server emits ui-command and speech frames."""
+    import json
+    from datetime import datetime
+    from app.routes.voice import set_voice_session_factory, reset_voice_session_factory
+    from app.voice.types import Transcript, CapturedTurn
+    from app.voice.turns import VoiceTurnAction, VoiceTurnDecision
+
+    class MockCapture:
+        async def capture(self, stop_event: Any) -> CapturedTurn:
+            return CapturedTurn(
+                samples=b"\x00\x00" * 8000,
+                sample_rate=16000,
+                started_at=datetime.now(),
+                duration_ms=500,
+            )
+
+    class MockTranscriber:
+        async def transcribe(self, turn: Any) -> Transcript:
+            return Transcript(text="Fly the camera to Beirut", language="en")
+
+    class MockModel:
+        def with_structured_output(self, schema: Any) -> Any:
+            class MockStructured:
+                async def ainvoke(self, prompt: Any) -> VoiceTurnDecision:
+                    return VoiceTurnDecision(
+                        action=VoiceTurnAction.COMMAND,
+                        command_id="globe.flyTo",
+                        params={"latitude": 33.8938, "longitude": 35.5018, "altitudeMeters": 15000},
+                        response="Flying the camera to Beirut.",
+                    )
+            return MockStructured()
+
+    def custom_factory(websocket: Any, audio_queue: Any, send_lock: Any = None, on_state_change: Any = None, on_transcript: Any = None) -> Any:
+        from app.routes.voice import create_voice_session
+        return create_voice_session(
+            websocket,
+            audio_queue,
+            send_lock=send_lock,
+            capture=MockCapture(),
+            transcriber=MockTranscriber(),
+            model=MockModel(),
+            on_state_change=on_state_change,
+            on_transcript=on_transcript,
+        )
+
+    set_voice_session_factory(custom_factory)
+    try:
+        with client.websocket_connect("/api/v1/voice/ws") as ws:
+            f0 = ws.receive_json()
+            assert f0 == {"type": "session_state", "state": "idle"}
+
+            # Trigger turn
+            ws.send_json({"type": "start_turn"})
+
+            frames = []
+            received_types = []
+            for _ in range(15):
+                msg = ws.receive()
+                if "text" in msg and msg["text"]:
+                    data = json.loads(msg["text"])
+                    frames.append(data)
+                    received_types.append(data.get("type"))
+                    if data.get("type") == "session_state" and data.get("state") == "idle" and "speech" in received_types:
+                        break
+
+            assert "ui-command" in received_types
+            assert "speech" in received_types
+
+            ui_cmd = next(f for f in frames if f.get("type") == "ui-command")
+            assert ui_cmd["commandId"] == "globe.flyTo"
+            assert ui_cmd["params"]["latitude"] == 33.8938
+
+            sp = next(f for f in frames if f.get("type") == "speech")
+            assert sp["text"] == "Flying the camera to Beirut."
+    finally:
+        reset_voice_session_factory()
+
+

@@ -1,4 +1,8 @@
-PLANNER_SYSTEM = """You are the orchestration planner for AERIS, an Earth Observation intelligence platform.
+"""Language-model prompts for the agent orchestration harness and execution planner."""
+
+from typing import Final
+
+PLANNER_SYSTEM: Final[str] = """You are the orchestration planner for AERIS, an Earth Observation intelligence platform.
 Your job is to decompose the user's natural language request into a sequence of explicit, dependent tasks.
 
 You MUST decompose the request strictly into one or more of the following intents:
@@ -17,7 +21,14 @@ Set the 'dependencies' list for tasks that require the output of previous tasks 
 Requested outputs should be drawn from: 'count', 'bounding_boxes', 'mask', 'area', 'qualitative_presence', 'change_magnitude'.
 """
 
-SYNTHESIS_SYSTEM = """You are AERIS, an expert Earth Observation intelligence agent.
+HARNESS_PLANNER_USER_TEMPLATE: Final[str] = "Available inputs: {inputs}\n\nRequest: {request}"
+
+HARNESS_PLANNER_FEEDBACK_TEMPLATE: Final[str] = (
+    "\n\nPrevious attempt failed. Feedback:\n{feedback}\n\n"
+    "Please generate a NEW plan that resolves this issue (e.g. use VQA if object detection failed due to resolution)."
+)
+
+SYNTHESIS_SYSTEM: Final[str] = """You are AERIS, an expert Earth Observation intelligence agent.
 Your job is to translate structured scientific Facts (Claims and Refusals) into a clear, professional, conversational response for the user.
 
 RULES:
@@ -33,3 +44,5 @@ Refusals: [code=RESOLUTION_FAILURE, target=car, gsd=10.0, required_max_gsd=0.56]
 Example Output:
 I have completed the analysis. I detected 12 ships in the provided imagery. However, I was unable to perform vehicle detection because the available 10.0m resolution is too coarse; reliable car detection requires at least 0.56m per pixel.
 """
+
+HARNESS_SYNTHESIS_USER_TEMPLATE: Final[str] = "Claims: {claims}\n\nRefusals: {refusals}"

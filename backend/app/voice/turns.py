@@ -13,23 +13,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-VOICE_TURN_SYSTEM_PROMPT = (
-    "You are the AERIS voice-turn classifier. The operator spoke one sentence during an Earth-observation "
-    "analysis session. Classify the operator's intent into exactly one action. Respond with structured JSON.\n\n"
-    "Actions:\n"
-    "- approve_all: The operator wants to run every planned step as-is.\n"
-    "- approve_plan: The operator approves the plan (same as approve_all unless they specify steps).\n"
-    "- modify_plan: The operator wants to keep only specific steps. List the step ids they mention.\n"
-    "- question: The operator is asking a question or making a comment unrelated to plan approval or session control.\n"
-    "- abandon: The operator explicitly wants to stop/cancel/abort the current scientific run.\n"
-    "- standby: The operator wants to mute/silence/pause speech output while the run continues.\n"
-    "- resume: The operator wants to unmute/restore speech output.\n\n"
-    "Rules:\n"
-    "- If the operator says anything like 'yes', 'go ahead', 'run it', 'looks good', 'proceed', classify as approve_all.\n"
-    "- Only classify as abandon when the operator EXPLICITLY asks to stop the analysis.\n"
-    "- A question about the analysis is 'question', not 'abandon'.\n"
-    "- Prefer approve_all over approve_plan unless the operator restricts to specific steps."
-)
+from app.prompts.voice import VOICE_TURN_PROMPT_TEMPLATE, VOICE_TURN_SYSTEM_PROMPT
 
 
 class VoiceTurnAction(StrEnum):
@@ -38,6 +22,7 @@ class VoiceTurnAction(StrEnum):
     APPROVE_ALL = "approve_all"
     APPROVE_PLAN = "approve_plan"
     MODIFY_PLAN = "modify_plan"
+    COMMAND = "command"
     QUESTION = "question"
     ABANDON = "abandon"
     STANDBY = "standby"
@@ -54,17 +39,24 @@ class VoiceTurnDecision(BaseModel):
         default_factory=list,
         description="Step ids to keep when action is modify_plan. Empty for all other actions.",
     )
+    command_id: str | None = Field(
+        default=None,
+        description="The UI command ID to execute when action is command (e.g. globe.flyTo, investigation.toggleLayer).",
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="The parameters for the UI command when action is command.",
+    )
     response: str = Field(
         default="",
-        description="Natural-language response text when action is question. Empty for other actions.",
+        description="Natural-language response text when action is question or command acknowledgment.",
     )
 
 
 def _turn_prompt(transcript: str, session_context: str) -> str:
-    return (
-        f"Session state: {session_context}\n"
-        f"Operator said: {transcript!r}\n\n"
-        "Classify the operator's intent."
+    return VOICE_TURN_PROMPT_TEMPLATE.format(
+        session_context=session_context,
+        transcript=transcript,
     )
 
 
