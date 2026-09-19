@@ -88,9 +88,11 @@ class Session:
         intent: Intent,
         fanout: EventFanout,
         extra_state: dict[str, Any] | None = None,
+        run_id: str | None = None,
     ) -> RunHandle:
         """Launch a run and return its handle immediately. The session is usable again on the next line."""
-        run_id = new_identifier(IdentifierPrefix.RUN)
+        if run_id is None:
+            run_id = new_identifier(IdentifierPrefix.RUN)
         initial_state: dict[str, Any] = {
             "run_id": run_id,
             "query": query,

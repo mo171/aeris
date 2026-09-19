@@ -15,11 +15,20 @@ how   : `Settings` deliberately has required fields with no defaults, so that a 
         validation failure use this fixture and then break exactly one thing.
 """
 
+import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+
+if sys.platform == "win32":
+    import asyncio
+    try:
+        from asyncio import WindowsSelectorEventLoopPolicy
+        asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+    except (ImportError, AttributeError):
+        pass
 
 from app.config import settings
 from app.lib.database import dispose_engine

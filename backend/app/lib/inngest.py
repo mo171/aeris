@@ -92,14 +92,25 @@ class EventDeliveryProof:
     failure_reason: str | None
 
 
-async def get_client() -> inngest.Inngest:
+def get_inngest_client() -> inngest.Inngest:
     """Return the process-wide Inngest client, creating it on first call."""
     global _client
     if _client is None:
+        raw_signing_key = settings.inngest_signing_key.get_secret_value()
+        # In local development against the Inngest dev server, dummy 'local' is not hexadecimal
+        # and raises ValueError in Inngest SDK's bytearray.fromhex.
+        signing_key = (
+            raw_signing_key
+            if (settings.inngest_is_production or raw_signing_key.startswith("signkey-"))
+            else None
+        )
+        raw_event_key = settings.inngest_event_key.get_secret_value()
+        event_key = raw_event_key if raw_event_key != "local" else None
+
         _client = inngest.Inngest(
             app_id=settings.inngest_app_id,
-            event_key=settings.inngest_event_key.get_secret_value(),
-            signing_key=settings.inngest_signing_key.get_secret_value(),
+            event_key=event_key,
+            signing_key=signing_key,
             api_base_url=str(settings.inngest_api_base_url).rstrip("/"),
             event_api_base_url=str(settings.inngest_event_api_base_url).rstrip("/"),
             # Derived from `environment`, never configured on its own - see `config.py`. Wrong in one
@@ -115,6 +126,11 @@ async def get_client() -> inngest.Inngest:
             logger=sdk_logger,
         )
     return _client
+
+
+async def get_client() -> inngest.Inngest:
+    """Return the process-wide Inngest client (async accessor for compatibility)."""
+    return get_inngest_client()
 
 
 async def send_event(name: EventName | str, data: dict[str, Any] | None = None) -> list[str]:
@@ -262,6 +278,35 @@ async def require_healthy_inngest() -> None:
             "Inngest is not available.",
             details={"upstream": "inngest", "reason": health.failure_reason},
         )
+
+
+async def is_inngest_serving_available() -> bool:
+    """Check if the backend serving HTTP origin is alive and Inngest dispatch should be used.
+
+    In unit/integration tests or CLI sessions where the HTTP server is not listening on the
+    configured serve origin, dispatching an event to the Inngest dev server would fail because
+    Inngest cannot call back into the app at `/api/inngest`.
+    """
+    from urllib.parse import urlparse
+
+    if settings.is_testing:
+        return False
+
+    origin = settings.inngest_serve_origin
+    parsed = urlparse(origin) if origin else urlparse("http://127.0.0.1:8000")
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "https" else 8000)
+
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=0.1,
+        )
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except Exception:
+        return False
 
 
 async def reset_client() -> None:

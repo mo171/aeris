@@ -42,6 +42,9 @@ class KeyNamespace(StrEnum):
     # a recomputation, so every operation on this namespace degrades silently instead of raising.
     CACHE = "cache"
 
+    # Phase 2.5 Pub/Sub streaming: live fan-out of SSE events from Inngest execution to HTTP handlers.
+    STREAM = "stream"
+
 
 REQUIRED_MAXMEMORY_POLICY: Final[str] = "noeviction"
 

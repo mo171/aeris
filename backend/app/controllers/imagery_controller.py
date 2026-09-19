@@ -35,6 +35,8 @@ from app.schemas.imagery import (
     ImageryUploadTicket,
     ImageryUploadTicketRequest,
 )
+from app.constants.tasks import EventName
+from app.lib.inngest import is_inngest_serving_available, send_event
 from app.services.imagery.ingest_task import run_scene_ingest
 
 logger = logging.getLogger(__name__)
@@ -251,11 +253,34 @@ async def confirm_upload(
             session.add(scene)
         await session.commit()
 
-    # Trigger background ingest
-    if background_tasks is not None:
-        background_tasks.add_task(run_scene_ingest, scene_id, raw_object_key)
-    else:
-        asyncio.create_task(run_scene_ingest(scene_id, raw_object_key))
+    # Trigger background ingest via Inngest durable worker if available,
+    # falling back to local background execution when offline / during unit test execution
+    inngest_dispatched = False
+    if await is_inngest_serving_available():
+        try:
+            await send_event(
+                EventName.SCENE_INGEST_REQUESTED,
+                {
+                    "scene_id": scene_id,
+                    "raw_object_key": raw_object_key,
+                },
+            )
+            inngest_dispatched = True
+            logger.info(
+                "Dispatched scene ingestion to Inngest",
+                extra={"scene_id": scene_id, "key": raw_object_key},
+            )
+        except Exception as inngest_err:
+            logger.warning(
+                "Could not dispatch scene ingestion to Inngest (%s); falling back to local task",
+                inngest_err,
+            )
+
+    if not inngest_dispatched:
+        if background_tasks is not None:
+            background_tasks.add_task(run_scene_ingest, scene_id, raw_object_key)
+        else:
+            asyncio.create_task(run_scene_ingest(scene_id, raw_object_key))
 
     return ImageryConfirmResponse(
         scene_id=scene_id,

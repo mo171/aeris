@@ -111,35 +111,60 @@ async def start_investigation_run(
                 extra_state["scene_directory"] = valid_scenes[0].cog_object_key
                 extra_state["scene_id"] = valid_scenes[0].id
 
-    queue: asyncio.Queue[AnalysisStreamEvent | None] = asyncio.Queue()
-    fanout = EventFanout()
-
-    async def sse_event_consumer(event: AnalysisStreamEvent) -> None:
-        await queue.put(event)
-
-    fanout.register("sse_stream", sse_event_consumer)
-
-    # Launch execution in detached task
-    asyncio.create_task(
-        _execute_detached_run(
-            run_id=run_id,
-            investigation_id=investigation_id,
-            query=request.query,
-            graph_name=graph_name,
-            fanout=fanout,
-            extra_state=extra_state,
-            queue=queue,
-        )
+    from app.constants.tasks import EventName
+    from app.lib.inngest import is_inngest_serving_available, send_event
+    from app.lib.redis import get_client as get_redis_client
+    from app.services.sessions.redis_stream import (
+        RedisEventPublisher,
+        prepare_event_stream,
+        redis_event_subscriber,
     )
 
-    async def event_generator() -> AsyncIterator[AnalysisStreamEvent]:
-        while True:
-            event = await queue.get()
-            if event is None:
-                break
-            yield event
+    redis_client = await get_redis_client()
+    pubsub, stream_gen = await prepare_event_stream(investigation_id, redis_client)
 
-    return run_id, event_generator()
+    server_running = await is_inngest_serving_available()
+    inngest_dispatched = False
+
+    if server_running:
+        try:
+            await send_event(
+                EventName.INVESTIGATION_REQUESTED,
+                {
+                    "investigation_id": investigation_id,
+                    "run_id": run_id,
+                    "query": request.query,
+                    "graph_name": graph_name.value,
+                    "extra_state": extra_state,
+                },
+            )
+            inngest_dispatched = True
+            logger.info(
+                "Dispatched investigation run to Inngest",
+                extra={"run_id": run_id, "investigation_id": investigation_id},
+            )
+        except Exception as inngest_err:
+            logger.warning(
+                "Could not dispatch to Inngest (%s); falling back to local detached execution",
+                inngest_err,
+            )
+
+    # If the server is not listening on port 8000 (e.g. in-memory test client) or Inngest dispatch failed:
+    if not inngest_dispatched:
+        fanout = EventFanout()
+        fanout.register("redis_stream", RedisEventPublisher(investigation_id, redis_client))
+        asyncio.create_task(
+            _execute_detached_run(
+                run_id=run_id,
+                investigation_id=investigation_id,
+                query=request.query,
+                graph_name=graph_name,
+                fanout=fanout,
+                extra_state=extra_state,
+            )
+        )
+
+    return run_id, stream_gen
 
 
 async def _execute_detached_run(
@@ -150,7 +175,6 @@ async def _execute_detached_run(
     graph_name: GraphName,
     fanout: EventFanout,
     extra_state: dict[str, Any],
-    queue: asyncio.Queue[AnalysisStreamEvent | None],
 ) -> None:
     """Execute LangGraph run, manage journals, and update durable DB record."""
     status = RunStatus.FAILED
@@ -168,6 +192,7 @@ async def _execute_detached_run(
                     intent=Intent.SCENE_VQA,
                     fanout=fanout,
                     extra_state=extra_state,
+                    run_id=run_id,
                 )
 
                 async with open_journal(handle.run_id) as journal, open_figure_writer(handle.run_id) as figures:
@@ -198,6 +223,3 @@ async def _execute_detached_run(
                     await db_session.commit()
         except Exception:
             logger.exception("failed to update run status in database", extra={"run_id": run_id})
-
-        # Signal stream end
-        await queue.put(None)

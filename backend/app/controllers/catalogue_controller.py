@@ -174,9 +174,9 @@ async def search_catalogue(request: TemporalQueryRequest) -> CatalogueSearchResp
                         sensor_platform=scene.sensor_platform,
                         ground_sample_distance_meters=scene.ground_sample_distance_meters,
                         cloud_cover_percentage=scene.cloud_cover_percentage,
-                        quicklook_url=scene.thumbnail_url or f"/api/v1/tiles/scenes/{scene.id}/quicklook.webp",
+                        quicklook_url=scene.thumbnail_url or f"/api/v1/tiles/{scene.id}/preview",
                         tiles=AcquisitionTiles(
-                            url_template=f"/api/v1/tiles/scenes/{scene.id}/{{z}}/{{x}}/{{y}}.png",
+                            url_template=f"/api/v1/tiles/{scene.id}/{{z}}/{{x}}/{{y}}.png",
                             attribution=f"Copernicus {scene.sensor_platform}",
                             minimum_zoom=8,
                             maximum_zoom=14,

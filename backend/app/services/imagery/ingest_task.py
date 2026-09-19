@@ -19,6 +19,7 @@ from app.constants.statuses import SceneProcessingState
 from app.constants.storage import Bucket
 from app.db.models.scene import Scene
 from app.lib import database, storage
+from app.lib.exceptions import ConflictError, InvalidRequestError
 from app.services.imagery.cog import convert_to_cog, upload_cog
 from app.services.imagery.metadata import inspect_raster
 from app.services.imagery.validation import require_analysable
@@ -26,8 +27,15 @@ from app.services.imagery.validation import require_analysable
 logger = logging.getLogger(__name__)
 
 
-async def run_scene_ingest(scene_id: str, raw_object_key: str) -> None:
+async def run_scene_ingest(
+    scene_id: str,
+    raw_object_key: str,
+    *,
+    raise_on_failure: bool = False,
+) -> dict[str, Any]:
     """Execute background ingestion for a confirmed uploaded scene."""
+    import inngest
+
     logger.info("starting background ingest for scene", extra={"scene_id": scene_id, "key": raw_object_key})
 
     temp_dir = Path(settings.cog_working_directory)
@@ -45,9 +53,14 @@ async def run_scene_ingest(scene_id: str, raw_object_key: str) -> None:
         report = await require_analysable(metadata)
 
         if not report.is_analysable:
-            logger.warning("uploaded raster failed analysis requirements", extra={"problems": len(report.problems)})
+            problems = [p.reason for p in report.problems]
+            logger.warning("uploaded raster failed analysis requirements", extra={"problems": len(problems)})
             await _update_scene_state(scene_id, SceneProcessingState.FAILED)
-            return
+            if raise_on_failure:
+                raise inngest.NonRetriableError(
+                    f"Uploaded raster failed analysis requirements: {problems}"
+                )
+            return {"scene_id": scene_id, "status": SceneProcessingState.FAILED.value, "problems": problems}
 
         # 3. Convert to COG (S4-S5)
         await convert_to_cog(metadata, local_cog_path)
@@ -56,8 +69,12 @@ async def run_scene_ingest(scene_id: str, raw_object_key: str) -> None:
         cog_key = f"cogs/{scene_id}.tif"
         await upload_cog(local_cog_path, object_key=cog_key, bucket=Bucket.COG)
 
-        # 5. Extract geometry & update database record
+        # 5. Extract geometry & update database record (always in STORAGE_SRID 4326)
         minx, miny, maxx, maxy = metadata.bounds
+        if metadata.crs and metadata.crs != "EPSG:4326":
+            from rasterio.warp import transform_bounds
+            minx, miny, maxx, maxy = transform_bounds(metadata.crs, "EPSG:4326", minx, miny, maxx, maxy)
+
         geom_box = box(minx, miny, maxx, maxy)
         geom_point = Point((minx + maxx) / 2.0, (miny + maxy) / 2.0)
 
@@ -75,9 +92,24 @@ async def run_scene_ingest(scene_id: str, raw_object_key: str) -> None:
                 await session.commit()
                 logger.info("scene successfully ingested and ready", extra={"scene_id": scene_id})
 
+        return {
+            "scene_id": scene_id,
+            "status": SceneProcessingState.READY.value,
+            "cog_object_key": cog_key,
+        }
+
+    except (InvalidRequestError, ConflictError) as exc:
+        logger.warning("invalid raster for scene ingest", extra={"scene_id": scene_id, "error": str(exc)})
+        await _update_scene_state(scene_id, SceneProcessingState.FAILED)
+        if raise_on_failure:
+            raise inngest.NonRetriableError(str(exc)) from exc
+        return {"scene_id": scene_id, "status": SceneProcessingState.FAILED.value, "error": str(exc)}
     except Exception as exc:
         logger.warning("ingest failed for scene", extra={"scene_id": scene_id, "error": str(exc)})
         await _update_scene_state(scene_id, SceneProcessingState.FAILED)
+        if raise_on_failure:
+            raise
+        return {"scene_id": scene_id, "status": SceneProcessingState.FAILED.value, "error": str(exc)}
     finally:
         # Cleanup temporary files
         if await asyncio.to_thread(local_raw_path.exists):

@@ -42,3 +42,8 @@ class EventName(StrEnum):
     # supposed to have one: its whole job is to prove the round trip - the event bus accepted something and
     # can hand it back - without any function existing to run. That is the Phase 0.5 gate.
     HEALTH_PROBE = "aeris/system.health-probed"
+
+    # Phase 2.5: Durable execution of investigations and scene ingestion via Inngest (ADR-002)
+    INVESTIGATION_REQUESTED = "aeris/investigation.requested"
+    INVESTIGATION_CANCELLED = "aeris/investigation.cancelled"
+    SCENE_INGEST_REQUESTED = "aeris/scene.ingest_requested"

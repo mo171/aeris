@@ -34,3 +34,24 @@ def xyz_template(storage_uri: str, **rendering: str) -> str:
     such as `rescale="0,1"` or `colormap_name`."""
     query = urlencode({"url": storage_uri, **rendering})
     return f"{settings.tile_server}/cog/tiles/{TILE_MATRIX_SET}/{{z}}/{{x}}/{{y}}.png?{query}"
+
+
+def backend_tilejson_url(scene_id: str, preset: str | None = None, **rendering: str) -> str:
+    """Backend proxy TileJSON endpoint: /api/v1/tiles/{scene_id}/tilejson.json."""
+    query = {"preset": preset} if preset else {}
+    for k, v in rendering.items():
+        if v is not None:
+            query[k] = str(v)
+    qs = f"?{urlencode(query)}" if query else ""
+    return f"/api/v1/tiles/{scene_id}/tilejson.json{qs}"
+
+
+def backend_xyz_template(scene_id: str, preset: str | None = None, **rendering: str) -> str:
+    """Backend proxy XYZ tile template: /api/v1/tiles/{scene_id}/{z}/{x}/{y}.png."""
+    query = {"preset": preset} if preset else {}
+    for k, v in rendering.items():
+        if v is not None:
+            query[k] = str(v)
+    qs = f"?{urlencode(query)}" if query else ""
+    return f"/api/v1/tiles/{scene_id}/{{z}}/{{x}}/{{y}}.png{qs}"
+

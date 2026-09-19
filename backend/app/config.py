@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     inngest_api_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8288")
     inngest_event_api_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8288")
     inngest_request_timeout_seconds: int = Field(default=10, ge=1, le=120)
+    inngest_serve_origin: str | None = None
 
     # --- Database ---
 
@@ -430,6 +431,11 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Whether the environment is production."""
         return self.environment == "production"
+
+    @property
+    def is_testing(self) -> bool:
+        """Whether the application is executing under an active test runner."""
+        return bool(os.environ.get("PYTEST_CURRENT_TEST"))
 
 
 # Instantiated at import to validate configuration immediately.
