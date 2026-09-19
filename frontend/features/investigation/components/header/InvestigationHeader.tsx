@@ -43,6 +43,7 @@ import { SceneSlotChips } from "./SceneSlotChips";
 import { VersionListPopover } from "../versions/VersionListPopover";
 
 import { useProject } from "../../../project/hooks/use-project";
+import { VoiceActivationButton } from "@/features/voice/components/voice-activation-button";
 
 const COPY_FEEDBACK_MS = 1_400;
 
@@ -235,6 +236,8 @@ export function InvestigationHeader({
           </TooltipTrigger>
           <TooltipContent side="bottom">Audit this investigation's evidence corpus</TooltipContent>
         </Tooltip>
+
+        <VoiceActivationButton />
 
         <Button
           type="button"

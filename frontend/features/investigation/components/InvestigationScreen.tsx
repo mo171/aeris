@@ -87,6 +87,7 @@ import { SplitHandle } from "./viewer/SplitHandle";
 import { TargetLockOverlay } from "./viewer/TargetLockOverlay";
 import { TimelineScrubber } from "./viewer/TimelineScrubber";
 import { ViewerToolCluster } from "./viewer/ViewerToolCluster";
+import { VoiceControlBar } from "@/features/voice/components/voice-control-bar";
 
 interface InvestigationScreenProps {
   investigationId: string;
@@ -565,6 +566,8 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
               </div>
 
               <div className="flex-1" aria-hidden="true" />
+
+              <VoiceControlBar className="mb-2" />
 
               <SceneReadout />
               <div className="flex flex-wrap items-end justify-center gap-2">

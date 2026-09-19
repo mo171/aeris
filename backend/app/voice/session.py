@@ -28,6 +28,7 @@ from app.voice.speech import (
     author_provisional_speech,
 )
 from app.voice.turns import VoiceTurnAction, VoiceTurnDecision, classify_voice_turn
+from app.voice.types import Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class VoiceSession:
         player: Any,
         model: Any = None,
         on_state_change: Callable[[VoiceSessionState], Any] | None = None,
+        on_transcript: Callable[[Transcript], Any] | None = None,
     ) -> None:
         self._capture = capture
         self._transcriber = transcriber
@@ -56,6 +58,7 @@ class VoiceSession:
         self._player = player
         self._model = model
         self._on_state_change = on_state_change
+        self._on_transcript = on_transcript
 
         self._state = VoiceSessionState.IDLE
         self._stop_capture = asyncio.Event()
@@ -151,6 +154,14 @@ class VoiceSession:
             logger.warning("voice transcription failed: %s", error)
             self._set_state(VoiceSessionState.FAILED)
             return
+
+        if self._on_transcript is not None:
+            try:
+                result = self._on_transcript(transcript)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:  # noqa: BLE001 — transcript callback errors must not kill the session
+                logger.debug("transcript callback failed", exc_info=True)
 
         if not transcript.text.strip():
             self._set_state(VoiceSessionState.IDLE)

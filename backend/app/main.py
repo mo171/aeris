@@ -28,6 +28,7 @@ from app.routes import (
     missions,
     models,
     regions,
+    voice,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(investigations.router, prefix="/api/v1")
     app.include_router(figures.router, prefix="/api/v1")
     app.include_router(regions.router, prefix="/api/v1")
+    app.include_router(voice.router, prefix="/api/v1/voice")
 
     return app
 
