@@ -12,8 +12,7 @@ from typing import Any
 
 from fastapi import BackgroundTasks
 from geoalchemy2.shape import from_shape, to_shape
-from shapely.geometry import Point, box
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 
 from app.constants.geo import STORAGE_SRID
 from app.constants.scenes import SceneModality, TemporalRole
@@ -85,11 +84,21 @@ async def list_imagery(
 ) -> CursorPage[ImageryScene]:
     """Retrieve cursor-paginated imagery catalog scenes."""
     async with database.get_session() as session:
-        query = select(Scene).order_by(Scene.captured_at.desc()).limit(limit + 1)
+        query = select(Scene).order_by(Scene.captured_at.desc(), Scene.id.desc()).limit(limit + 1)
         if state is not None:
             query = query.where(Scene.processing_state == state)
         if cursor:
-            query = query.where(Scene.id < cursor)
+            cursor_scene = await session.get(Scene, cursor)
+            if cursor_scene is not None:
+                query = query.where(
+                    or_(
+                        Scene.captured_at < cursor_scene.captured_at,
+                        and_(
+                            Scene.captured_at == cursor_scene.captured_at,
+                            Scene.id < cursor_scene.id,
+                        ),
+                    )
+                )
         if search:
             query = query.where(Scene.name.ilike(f"%{search}%"))
 
@@ -101,8 +110,16 @@ async def list_imagery(
             next_cursor = scenes[limit - 1].id
             scenes = scenes[:limit]
 
+        total_query = select(func.count(Scene.id))
+        if state is not None:
+            total_query = total_query.where(Scene.processing_state == state)
+        if search:
+            total_query = total_query.where(Scene.name.ilike(f"%{search}%"))
+        total_count_res = await session.execute(total_query)
+        total_count = total_count_res.scalar() or 0
+
         items = [_scene_to_wire(s) for s in scenes]
-        return CursorPage(items=items, next_cursor=next_cursor, total_count=len(items))
+        return CursorPage(items=items, next_cursor=next_cursor, total_count=total_count)
 
 
 async def get_imagery_by_id(scene_id: str) -> ImageryScene:

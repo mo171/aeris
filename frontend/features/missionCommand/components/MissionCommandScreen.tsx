@@ -26,6 +26,7 @@ import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/fe
 import { GLOBE_CAMERA } from "@/lib/constants/globe";
 import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
 import { useUiStore } from "@/store/ui-store";
+import { useGeoStageStore } from "@/store/geo-stage-store";
 
 import { useInvestigationLaunch } from "@/features/investigation/hooks/use-investigation-launch";
 
@@ -49,6 +50,7 @@ export function MissionCommandScreen() {
 
   const setFocusedMissionId = useMissionCommandStore((state) => state.setFocusedMissionId);
   const toggleSceneSelection = useMissionCommandStore((state) => state.toggleSceneSelection);
+  const stage = useGeoStageStore((state) => state.handle);
 
   // Starting an investigation is investigation-domain work; only its trigger belongs to this surface.
   const { launch, isLaunching } = useInvestigationLaunch();
@@ -67,11 +69,22 @@ export function MissionCommandScreen() {
 
   const handleLocateScene = useCallback(
     (scene: ImageryScene) => {
-      toggleSceneSelection(scene.id);
-      // Hardcoded Gulf Coast Refineries coordinates per user request
-      flyToPosition(29.69080, -95.37001);
+      if (scene.boundingBox && stage) {
+        stage.sceneLayers.setAreaOfInterestOutline(scene.boundingBox);
+        stage.camera.flyToBoundingBox(scene.boundingBox, { durationMs: 2500 });
+      } else {
+        let lat = scene.centroid?.latitude ?? 0;
+        let lon = scene.centroid?.longitude ?? 0;
+        if (lat === 0 && lon === 0 && scene.boundingBox) {
+          lat = (scene.boundingBox.north + scene.boundingBox.south) / 2;
+          lon = (scene.boundingBox.east + scene.boundingBox.west) / 2;
+        }
+        if (lat !== 0 || lon !== 0) {
+          flyToPosition(lat, lon);
+        }
+      }
     },
-    [flyToPosition, toggleSceneSelection],
+    [flyToPosition, stage],
   );
 
   const handleLocateMission = useCallback(

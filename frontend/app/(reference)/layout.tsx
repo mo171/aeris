@@ -2,7 +2,7 @@
 //
 // what  : Wraps the Model Observatory and the Evidence Audit in the application shell, with no Cesium stage
 //         underneath them.
-// where : Applies to "/models" and "/evidence". Route groups do not appear in the URL, so no path changes.
+// where : Applies to "/models", "/evidence" and "/projects". Route groups do not appear in the URL, so no path changes.
 // how   : The counterpart to (geospatial), and the reason that group's comment says to scope it
 //         deliberately: a WebGL context costs memory and a boot, and neither of these surfaces draws a map.
 //         They read the model catalogue and the claim corpus, both of which are tables.

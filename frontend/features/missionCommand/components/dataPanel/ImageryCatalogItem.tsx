@@ -59,8 +59,10 @@ export const ImageryCatalogItem = memo(function ImageryCatalogItem({
     <div className="px-2 pb-1.5">
       <button
         type="button"
-        onClick={() => onToggleSelect(scene.id)}
-        onDoubleClick={() => onLocate(scene)}
+        onClick={() => {
+          onToggleSelect(scene.id);
+          onLocate(scene);
+        }}
         aria-pressed={isSelected}
         className={cn(
           "group/scene w-full rounded-md border px-2.5 py-2 text-left transition-colors duration-fast",

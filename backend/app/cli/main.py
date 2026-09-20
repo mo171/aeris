@@ -36,6 +36,7 @@ from app.cli import (
     analyse as analyse_command,
     ask as ask_command,
     dataset as dataset_command,
+    demo as demo_command,
     doctor as doctor_command,
     evaluate as evaluate_command,
     figures as figures_command,
@@ -634,6 +635,48 @@ def evaluate(
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
 
+demo_app = typer.Typer(
+    name="demo",
+    help="AERIS demonstration suite, offline hardening, and Phase 2.9 gate verification.",
+    no_args_is_help=True,
+)
+app.add_typer(demo_app)
+
+
+async def _run_demo[T](work: Coroutine[object, object, T]) -> T:
+    """Configure logging, do demo work, and close connections."""
+    await configure_logging()
+    try:
+        return await work
+    finally:
+        await _close_connections()
+
+
+@demo_app.command("run")
+def demo_run(
+    scenario: str | None = typer.Option(None, "--scenario", "-s", help="Specific scenario ID to run."),
+    runs: int = typer.Option(1, "--runs", "-n", help="Number of consecutive runs to execute (>=3 for gate verification)."),
+) -> None:
+    """Execute the canonical demonstration scenarios and verify gate criteria."""
+    success = asyncio.run(_run_demo(demo_command.execute_demo_run(console=console, scenario_id=scenario, runs=runs)))
+    if not success:
+        raise typer.Exit(code=1)
+
+
+@demo_app.command("bundle")
+def demo_bundle_cmd() -> None:
+    """Audit the offline demonstration bundle assets."""
+    ready = asyncio.run(_run_demo(demo_command.execute_demo_bundle(console=console)))
+    if not ready:
+        raise typer.Exit(code=1)
+
+
+@demo_app.command("seed")
+def demo_seed_cmd() -> None:
+    """Seed the database with the pre-computed demonstration project and scenes."""
+    asyncio.run(_run_demo(demo_command.execute_demo_seed(console=console)))
+
+
 @app.command()
 def version() -> None:
     """Print the version and the environment this process is configured for."""
@@ -644,3 +687,4 @@ def version() -> None:
 
 if __name__ == "__main__":
     app()
+

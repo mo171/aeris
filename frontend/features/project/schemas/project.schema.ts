@@ -6,11 +6,11 @@ export const projectSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   areaOfInterestName: z.string().min(1),
-  areaOfInterest: geoBoundingBoxSchema,
-  centroid: geoPointSchema,
+  areaOfInterest: geoBoundingBoxSchema.nullable(),
+  centroid: geoPointSchema.nullable(),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema,
-  lastActivityAt: isoTimestampSchema,
+  lastActivityAt: isoTimestampSchema.nullable(),
 });
 
 export const projectPageSchema = createCursorPageSchema(projectSchema);

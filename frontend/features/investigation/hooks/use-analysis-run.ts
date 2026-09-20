@@ -173,9 +173,17 @@ export function useAnalysisRun(investigationId: string): AnalysisRunControls {
 
         case "answer-token": {
           const pending = pendingAnswerRef.current;
+          const currentText = pending?.runId === event.runId ? pending.text : "";
+          const needsSpace =
+            currentText.length > 0 &&
+            !currentText.endsWith(" ") &&
+            !currentText.endsWith("\n") &&
+            !event.text.startsWith(" ") &&
+            !event.text.startsWith("\n") &&
+            !/^[.,!?;:]/.test(event.text);
           pendingAnswerRef.current = {
             runId: event.runId,
-            text: (pending?.runId === event.runId ? pending.text : "") + event.text,
+            text: currentText + (needsSpace ? " " : "") + event.text,
           };
           break;
         }

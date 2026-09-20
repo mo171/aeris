@@ -182,7 +182,14 @@ async def _execute_detached_run(
     confidence: float | None = None
 
     try:
-        async with open_checkpointer() as checkpointer, open_memory_store() as store:
+        async with (
+            open_checkpointer() as checkpointer,
+            open_memory_store() as store,
+            open_journal(run_id) as journal,
+            open_figure_writer(run_id) as figures,
+        ):
+            fanout.register("journal", journal)
+            fanout.register("figures", figures)
             graph = GRAPH_BUILDERS[graph_name]().compile(checkpointer=checkpointer, store=store)
 
             async with open_session() as session:
@@ -194,13 +201,9 @@ async def _execute_detached_run(
                     extra_state=extra_state,
                     run_id=run_id,
                 )
-
-                async with open_journal(handle.run_id) as journal, open_figure_writer(handle.run_id) as figures:
-                    fanout.register("journal", journal)
-                    fanout.register("figures", figures)
-                    status = await handle.wait()
-                    error_msg = handle.error
-                    confidence = await handle._final_confidence()
+                status = await handle.wait()
+                error_msg = handle.error
+                confidence = await handle._final_confidence()
 
     except Exception as exc:
         logger.exception("detached run error", extra={"run_id": run_id})

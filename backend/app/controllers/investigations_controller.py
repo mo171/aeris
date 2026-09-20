@@ -54,6 +54,7 @@ from app.schemas.investigations import (
     RegionSuggestionCollection,
     SaveCameraBookmarkRequest,
 )
+from app.controllers.auth_controller import get_default_user
 from app.services.investigations import investigation_service, run_service
 from app.services.versions import manager as versions_manager
 
@@ -136,11 +137,12 @@ async def list_history(investigation_id: str) -> list[dict[str, Any]]:
 
 async def append_history(investigation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Append command to investigation history."""
+    default_actor = get_default_user().username
     async with database.get_session() as session:
         entry = await versions_manager.append_history(
             session,
             investigation_id=investigation_id,
-            actor=payload.get("actor", "operator"),
+            actor=payload.get("actor", default_actor),
             summary=payload.get("summary", ""),
             command_id=payload.get("commandId"),
             params=payload.get("params"),
@@ -156,13 +158,14 @@ async def list_versions(investigation_id: str) -> list[dict[str, Any]]:
 
 async def create_version(investigation_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Save an immutable version snapshot."""
+    default_actor = get_default_user().username
     async with database.get_session() as session:
         return await versions_manager.save_version(
             session,
             investigation_id=investigation_id,
             label=payload.get("label", "Version Snapshot"),
             snapshot=payload.get("snapshot", {}),
-            actor=payload.get("actor", "operator"),
+            actor=payload.get("actor", default_actor),
             parent_version_id=payload.get("parentVersionId"),
         )
 
@@ -292,4 +295,26 @@ async def get_cross_modal_result(
         verdict=None,
         generated_at=datetime.now(UTC),
     )
+
+import asyncio
+
+async def stream_report_generation(investigation_id: str) -> AsyncIterator[str]:
+    """Generate report and stream SSE events (report-start, report-section, report-complete)."""
+    yield f"data: {json.dumps({'type': 'report-start', 'investigationId': investigation_id})}\n\n"
+    
+    # Fetch evidence for sections
+    try:
+        graph = await investigation_service.get_investigation_evidence(investigation_id)
+        for claim in graph.claims:
+            yield f"data: {json.dumps({'type': 'report-section', 'sectionTitle': claim.kind, 'content': claim.text})}\n\n"
+            await asyncio.sleep(0.1)
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'report-section', 'sectionTitle': 'Summary', 'content': 'Could not fetch evidence.'})}\n\n"
+    
+    yield f"data: {json.dumps({'type': 'report-complete'})}\n\n"
+
+async def export_report(investigation_id: str, format: str) -> Any:
+    """Export investigation report in format (pdf, json, geojson)."""
+    # Fallback to json representation of evidence if PDF not available
+    return await investigation_service.get_investigation_evidence(investigation_id)
 

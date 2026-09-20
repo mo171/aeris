@@ -22,6 +22,8 @@ import { COMMAND_IDS } from "@/lib/constants/commands";
 import { dispatchCommand } from "@/lib/command-bus";
 import { cn } from "@/lib/utils";
 
+import { useSystemHealth } from "@/hooks/use-system-health";
+
 interface AppHeaderProps {
   /** Feature-owned controls rendered on the right. Surfaces supply their own; the shell stays generic. */
   actionsSlot?: ReactNode;
@@ -29,6 +31,17 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ actionsSlot, className }: AppHeaderProps) {
+  const { data: health } = useSystemHealth();
+
+  const isHealthy = health?.status === "healthy";
+  const isDegraded = health?.status === "degraded";
+  const tone = isHealthy ? "green" : isDegraded ? "amber" : "red";
+  const label = isHealthy
+    ? SHELL_COPY.systemStatusNominal
+    : isDegraded
+      ? "SYSTEMS DEGRADED"
+      : "SYSTEM OFFLINE";
+
   return (
     <header
       className={cn(
@@ -54,9 +67,9 @@ export function AppHeader({ actionsSlot, className }: AppHeaderProps) {
 
       <div className="flex shrink-0 items-center gap-2">
         <span className="hidden items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 lg:flex">
-          <GlowDot tone="green" isPulsing />
+          <GlowDot tone={tone} isPulsing />
           <span className="font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
-            {SHELL_COPY.systemStatusNominal}
+            {label}
           </span>
         </span>
         {actionsSlot}

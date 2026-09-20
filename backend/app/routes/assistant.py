@@ -10,7 +10,14 @@ from fastapi.responses import StreamingResponse
 from app.controllers import assistant_controller
 from app.controllers.assistant_controller import AssistantAskRequest
 
+from app.schemas.assistant import SuggestionsResponse
+
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+
+@router.get("/suggestions", response_model=SuggestionsResponse)
+async def get_suggestions() -> SuggestionsResponse:
+    """Get context-aware suggestions for the assistant landing state."""
+    return await assistant_controller.get_suggestions()
 
 
 @router.post("/stream")

@@ -155,3 +155,22 @@ async def compare_versions(
     return await investigations_controller.compare_versions(
         investigation_id, from_version_id=from_version_id, to_version_id=to_version_id
     )
+
+@router.post("/{investigation_id}/report")
+async def generate_report_stream(investigation_id: str) -> StreamingResponse:
+    """Stream report generation events via SSE."""
+    generator = investigations_controller.stream_report_generation(investigation_id)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+@router.get("/{investigation_id}/report.{format}")
+async def export_report(investigation_id: str, format: str) -> Any:
+    """Download investigation report in specific format."""
+    return await investigations_controller.export_report(investigation_id, format)

@@ -54,10 +54,18 @@ export function useImageryCatalog(): ImageryCatalogResult {
   });
 
   // Flattening is memoised on the page array so scrolling does not rebuild the list on every render.
-  const scenes = useMemo(
-    () => query.data?.pages.flatMap((page) => page.items) ?? [],
-    [query.data],
-  );
+  // Deduplicated by scene.id to guarantee unique React keys across cache refetches.
+  const scenes = useMemo(() => {
+    const all = query.data?.pages.flatMap((page) => page.items) ?? [];
+    const seen = new Set<string>();
+    return all.filter((scene) => {
+      if (!scene?.id || seen.has(scene.id)) {
+        return false;
+      }
+      seen.add(scene.id);
+      return true;
+    });
+  }, [query.data]);
 
   return {
     scenes,

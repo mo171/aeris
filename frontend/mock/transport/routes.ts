@@ -35,6 +35,11 @@ import {
   selectMissionPage,
 } from "../data/mission.data";
 import { MOCK_MODEL_STATUSES } from "../data/model.data";
+import {
+  createMockProject,
+  getMockProject,
+  selectMockProjectPage,
+} from "../data/project.data";
 
 export interface MockRequestContext {
   pathname: string;
@@ -175,6 +180,34 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     method: "GET",
     match: exactPath(REST_API.assistant.suggestions),
     handle: () => ({ status: 200, data: { suggestions: MOCK_ASSISTANT_SUGGESTIONS } }),
+  },
+  
+  // ── Projects ─────────────────────────────────────────────────────────────────────────────
+  {
+    method: "GET",
+    match: exactPath(REST_API.projects.list),
+    handle: ({ query }) => ({
+      status: 200,
+      data: selectMockProjectPage(query.cursor ?? null, parsePositiveInteger(query.limit, 20)),
+    }),
+  },
+  {
+    method: "POST",
+    match: exactPath(REST_API.projects.create),
+    handle: ({ body }) => ({
+      status: 201,
+      data: createMockProject(body as Parameters<typeof createMockProject>[0]),
+    }),
+  },
+  {
+    method: "GET",
+    match: patternPath(/^\/api\/v1\/projects\/([^/]+)$/),
+    handle: ({ pathParameters }) => {
+      const project = getMockProject(pathParameters[0]);
+      return project
+        ? { status: 200, data: project }
+        : { status: 404, data: { message: "Project not found" } };
+    },
   },
 
   // ── Investigations ─────────────────────────────────────────────────────────────────────────────

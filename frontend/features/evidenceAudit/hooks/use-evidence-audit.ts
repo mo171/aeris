@@ -68,10 +68,17 @@ export function useEvidenceAudit(): EvidenceAuditView {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 
-  const claims = useMemo(
-    () => query.data?.pages.flatMap((page) => page.items) ?? [],
-    [query.data],
-  );
+  const claims = useMemo(() => {
+    const all = query.data?.pages.flatMap((page) => page.items) ?? [];
+    const seen = new Set<string>();
+    return all.filter((claim) => {
+      if (!claim?.claimId || seen.has(claim.claimId)) {
+        return false;
+      }
+      seen.add(claim.claimId);
+      return true;
+    });
+  }, [query.data]);
 
   return {
     claims,

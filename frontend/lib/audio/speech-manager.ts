@@ -4,6 +4,9 @@ class SpeechManager {
   private queue: { url: string; interruptible: boolean; id: string }[] = [];
 
   play(url: string, utteranceId: string, interruptible: boolean) {
+    if (!url || !url.trim()) {
+      return;
+    }
     if (this.currentAudio && !this.currentAudio.paused) {
       if (interruptible) {
         this.currentAudio.pause();

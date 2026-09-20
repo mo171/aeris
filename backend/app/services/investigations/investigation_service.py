@@ -31,6 +31,7 @@ from app.constants.routing import Modality
 from app.constants.scenes import SceneRole
 from app.constants.statuses import InvestigationStatus, RunStatus
 from app.db.identifiers import IdentifierPrefix, new_identifier
+from app.db.models.claim import Claim as DbClaim
 from app.db.models.investigation import Investigation as DbInvestigation, InvestigationScene as DbInvestigationScene
 from app.db.models.project import Project
 from app.db.models.run import Run as DbRun
@@ -468,13 +469,36 @@ async def get_investigation_evidence(investigation_id: str) -> EvidenceGraphResp
     layers_map: dict[str, EvidenceLayer] = {}
     evidence_map: dict[str, EvidenceItem] = {}
 
+    run_ids = [run.id for run in runs]
+    if run_ids:
+        async with database.get_session() as session:
+            claim_stmt = select(DbClaim).where(DbClaim.run_id.in_(run_ids))
+            claim_result = await session.execute(claim_stmt)
+            for c in claim_result.scalars().all():
+                claims_map[c.id] = Claim(
+                    id=c.id,
+                    run_id=c.run_id,
+                    text=c.text,
+                    kind=c.kind,
+                    confidence=c.confidence,
+                    metrics=[ClaimMetric(**m) for m in (c.metrics or [])],
+                    evidence_ids=c.evidence_ids or [],
+                    model_id=c.model_id,
+                    model_version=c.model_version,
+                    trace_step_id=c.trace_step_id,
+                    is_primary=c.is_primary,
+                )
+
     for run in runs:
         try:
             for event in read_journal(run.id):
-                if event.event == "claim" and hasattr(event, "data"):
-                    claims_map[event.data.id] = event.data
-                elif event.event == "layer-ready" and hasattr(event, "data") and hasattr(event.data, "layer"):
-                    layers_map[event.data.layer.id] = event.data.layer
+                ev_type = getattr(event, "type", None)
+                if ev_type == "claim" and hasattr(event, "claim"):
+                    claims_map[event.claim.id] = event.claim
+                elif ev_type == "layer-ready" and hasattr(event, "layer"):
+                    layers_map[event.layer.id] = event.layer
+                    for ev in getattr(event, "evidence", []):
+                        evidence_map[ev.id] = ev
         except Exception as err:
             logger.debug("Failed reading run journal for evidence aggregation", extra={"run_id": run.id, "error": str(err)})
             continue

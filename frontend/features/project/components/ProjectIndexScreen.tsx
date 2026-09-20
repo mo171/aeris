@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { Folder } from "lucide-react";
 
@@ -8,6 +9,18 @@ import { useProjects } from "../hooks/use-project";
 
 export function ProjectIndexScreen() {
   const { data: projectPage, isLoading, error } = useProjects();
+
+  const projects = useMemo(() => {
+    const all = projectPage?.pages.flatMap((p) => p.items) ?? [];
+    const seen = new Set<string>();
+    return all.filter((proj) => {
+      if (!proj?.id || seen.has(proj.id)) {
+        return false;
+      }
+      seen.add(proj.id);
+      return true;
+    });
+  }, [projectPage]);
 
   if (error) {
     return (
@@ -30,9 +43,7 @@ export function ProjectIndexScreen() {
                 className="h-28 animate-pulse rounded-lg border bg-muted/50"
               />
             ))
-          : projectPage?.pages
-              .flatMap((p) => p.items)
-              .map((project) => (
+          : projects.map((project) => (
                 <Link
                   key={project.id}
                   href={buildRoute.project(project.id)}

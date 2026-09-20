@@ -84,4 +84,5 @@ export const REST_API = {
     /** Server-sent event endpoint carrying answer tokens and execution-trace steps. */
     stream: `${API_VERSION_PREFIX}/assistant/stream`,
   },
+  health: `${API_VERSION_PREFIX}/health`,
 } as const;

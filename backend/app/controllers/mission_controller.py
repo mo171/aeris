@@ -8,7 +8,7 @@ from typing import Any
 
 from geoalchemy2.functions import ST_Intersects
 from geoalchemy2.shape import to_shape
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.constants.statuses import MissionStatus, RunStatus
 from app.db.models.mission import Mission as DbMission
@@ -18,8 +18,9 @@ from app.lib import database
 from app.lib.exceptions import ResourceNotFoundError
 from app.lib.responses import CursorPage
 from app.schemas.geo import GeoPoint
-from app.schemas.missions import Mission
-
+from app.schemas.missions import Mission, MissionCreateRequest
+from shapely.geometry import Point, Polygon
+from geoalchemy2.shape import from_shape
 
 def _db_mission_to_wire(
     db_m: DbMission, scene_count: int = 0, confidence: float | None = None
@@ -66,9 +67,24 @@ async def list_missions(cursor: str | None = None, limit: int = 20) -> CursorPag
     """Retrieve cursor-paginated missions from database."""
     try:
         async with database.get_session() as session:
-            query = select(DbMission).order_by(DbMission.status_rank.asc(), DbMission.updated_at.desc()).limit(limit + 1)
+            query = select(DbMission).order_by(DbMission.status_rank.asc(), DbMission.updated_at.desc(), DbMission.id.desc()).limit(limit + 1)
             if cursor:
-                query = query.where(DbMission.id < cursor)
+                cursor_mission = await session.get(DbMission, cursor)
+                if cursor_mission is not None:
+                    query = query.where(
+                        or_(
+                            DbMission.status_rank > cursor_mission.status_rank,
+                            and_(
+                                DbMission.status_rank == cursor_mission.status_rank,
+                                DbMission.updated_at < cursor_mission.updated_at,
+                            ),
+                            and_(
+                                DbMission.status_rank == cursor_mission.status_rank,
+                                DbMission.updated_at == cursor_mission.updated_at,
+                                DbMission.id < cursor_mission.id,
+                            ),
+                        )
+                    )
             result = await session.execute(query)
             rows = list(result.scalars().all())
 
@@ -132,4 +148,27 @@ async def get_mission_by_id(mission_id: str) -> Mission:
             return _db_mission_to_wire(db_m, scene_count=scene_count, confidence=conf)
 
     raise ResourceNotFoundError(f"Mission '{mission_id}' does not exist.", details={"missionId": mission_id})
+
+async def create_mission(request: MissionCreateRequest) -> Mission:
+    """Create a new mission."""
+    # Create a simple bounding box around the centroid for the AOI
+    pt = Point(request.centroid.longitude, request.centroid.latitude)
+    # 0.1 degrees is roughly 11km at equator
+    delta = 0.1
+    minx, miny, maxx, maxy = pt.x - delta, pt.y - delta, pt.x + delta, pt.y + delta
+    poly = Polygon([(minx, miny), (maxx, miny), (maxx, maxy), (minx, maxy), (minx, miny)])
+
+    async with database.get_session() as session:
+        db_m = DbMission(
+            name=request.name,
+            status=MissionStatus.ACTIVE,
+            centroid=from_shape(pt, srid=4326),
+            area_of_interest=from_shape(poly, srid=4326),
+            project_id=request.project_id,
+        )
+        session.add(db_m)
+        await session.commit()
+        await session.refresh(db_m)
+
+        return _db_mission_to_wire(db_m, scene_count=0, confidence=None)
 

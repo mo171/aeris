@@ -141,3 +141,27 @@ async def stream_assistant_conversation(
         "confidence": 0.92,
         "evidenceRegionCount": 1,
     })
+
+from sqlalchemy import select
+from app.lib import database
+from app.db.models.investigation import Investigation
+from app.schemas.assistant import SuggestionsResponse, AssistantSuggestion
+
+async def get_suggestions() -> SuggestionsResponse:
+    """Generate contextual suggestions based on recent activity."""
+    async with database.get_session() as session:
+        query = select(Investigation).order_by(Investigation.updated_at.desc()).limit(3)
+        result = await session.execute(query)
+        recent = list(result.scalars().all())
+        
+        suggestions = []
+        for inv in recent:
+            suggestions.append(
+                AssistantSuggestion(
+                    id=f"sugg_{inv.id}",
+                    text=f"Check the status of {inv.name}",
+                    pillar="temporal" if inv.mode == "temporal" else "single-image",
+                )
+            )
+            
+        return SuggestionsResponse(suggestions=suggestions)

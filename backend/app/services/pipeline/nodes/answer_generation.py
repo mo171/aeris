@@ -56,8 +56,9 @@ async def generate_answer(state: AnalysisState) -> dict[str, object]:
     reading_spoken = bool(reading) and (perception or admissible_reading(reading, claims))
     text = _compose(state, phrased.text, reading if reading_spoken and not perception else None)
     tokens = text.split(" ")
-    for token in tokens:
-        emit_answer_token(state["run_id"], token)
+    for i, token in enumerate(tokens):
+        prefix = " " if i > 0 else ""
+        emit_answer_token(state["run_id"], prefix + token)
     # Phase 2.7: Emit ui-command and speech events
     from app.constants.ui_commands import UiCommand
     from app.constants.voice import SpeechKind

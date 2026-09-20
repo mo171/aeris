@@ -8,9 +8,14 @@ from fastapi import APIRouter, Query
 
 from app.controllers import mission_controller
 from app.lib.responses import CursorPage
-from app.schemas.missions import Mission
+from app.schemas.missions import Mission, MissionCreateRequest
 
 router = APIRouter(prefix="/missions", tags=["missions"])
+    
+@router.post("", response_model=Mission, status_code=201)
+async def create_mission(request: MissionCreateRequest) -> Mission:
+    """Create a new mission."""
+    return await mission_controller.create_mission(request)
 
 
 @router.get("", response_model=CursorPage[Mission])

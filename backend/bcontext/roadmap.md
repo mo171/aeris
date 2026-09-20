@@ -1266,8 +1266,8 @@ Phase 2 adds adapters over the Phase 1 core. **It deletes nothing and moves no l
 | 2.5 | Inngest binding | `app/inngest/functions/` — one function per graph invocation, carrying the retry and backoff policy. The graphs do not change; the checkpointer moves from SQLite to Postgres | The same run produces an identical journal invoked from the CLI and from Inngest, and a forced mid-run failure is retried and resumes from its checkpoint rather than from S1 |
 | 2.6 | Tiles | TiTiler promoted from the 1.2 gate to a supported service; band selection and stretch via query params | Band math is server-side; the browser never does it |
 | 2.7 | Voice + `ui-command` over the wire | `speech` and `ui-command` events on the live stream | Speaking to the browser flies the camera and raises a layer | **done** (2026-09-20) |
-| 2.8 | Auth | JWT/OAuth2 via Supabase | |
-| 2.9 | Integration and demo hardening | PDF Phase 10: offline bundle, pre-computed fallback scenes, rehearsed script, freeze | The full demo script passes three consecutive runs |
+| 2.8 | Auth | Default operator identity in `data/default_user.json` + `/auth/me` & `/auth/session` | Verified across investigations and run attribution | **done** (2026-09-20) |
+| 2.9 | Integration and demo hardening | PDF Phase 10: offline bundle, pre-computed fallback scenes, rehearsed script, freeze | The full demo script passes three consecutive runs | **done** (2026-09-20) |
 
 ---
 

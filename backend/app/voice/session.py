@@ -246,13 +246,21 @@ class VoiceSession:
             except Exception as error:  # noqa: BLE001 — speech errors don't kill the session
                 logger.warning("provisional speech failed: %s", error)
         else:
-            # No active run - full voice Q&A is Phase 2, but provide audible feedback instead of silence
-            logger.info("question outside active run: %r (full Q&A is Phase 2)", transcript)
+            logger.info("question outside active run: %r -> dispatching ui-command", transcript)
+            run_id = new_identifier(IdentifierPrefix.RUN)
+            if hasattr(self._player, "send_json"):
+                await self._player.send_json({
+                    "type": "ui-command",
+                    "runId": run_id,
+                    "commandId": "investigation.ask",
+                    "params": {"query": transcript},
+                    "reason": f"Voice query: {transcript}",
+                })
             speech = AuthoredSpeech(
-                text="I do not have a mission loaded. Please provide an observation or command a mission.",
-                run_id="sys_session",
+                text=f"Initiating analysis for {transcript}.",
+                run_id=run_id,
                 utterance_id=new_identifier(IdentifierPrefix.UTTERANCE),
-                kind=SpeechKind.REFUSAL,
+                kind=SpeechKind.PROVISIONAL,
             )
             await self._speak(speech)
 

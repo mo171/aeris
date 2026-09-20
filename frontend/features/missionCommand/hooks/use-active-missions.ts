@@ -39,10 +39,17 @@ export function useActiveMissions(): ActiveMissionsResult {
     staleTime: MISSION_STALE_TIME_MS,
   });
 
-  const missions = useMemo(
-    () => query.data?.pages.flatMap((page) => page.items) ?? [],
-    [query.data],
-  );
+  const missions = useMemo(() => {
+    const all = query.data?.pages.flatMap((page) => page.items) ?? [];
+    const seen = new Set<string>();
+    return all.filter((mission) => {
+      if (!mission?.id || seen.has(mission.id)) {
+        return false;
+      }
+      seen.add(mission.id);
+      return true;
+    });
+  }, [query.data]);
 
   return {
     missions,

@@ -71,7 +71,7 @@ async def get_globe_markers() -> GlobeMarkerCollection:
                         label=msn.name,
                         position=GeoPoint(latitude=centroid_geom.y, longitude=centroid_geom.x),
                         status=status,
-                        magnitude=None,
+                        magnitude=0.0,
                     )
                 )
     except Exception:

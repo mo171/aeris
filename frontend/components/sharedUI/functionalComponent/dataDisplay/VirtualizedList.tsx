@@ -87,6 +87,9 @@ export function VirtualizedList<TItem>({
       <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
         {virtualRows.map((virtualRow) => {
           const item = items[virtualRow.index];
+          if (!item) {
+            return null;
+          }
 
           return (
             <div
