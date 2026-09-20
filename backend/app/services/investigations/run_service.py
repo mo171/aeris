@@ -101,15 +101,18 @@ async def start_investigation_run(
         ),
     }
 
-    # If real scenes are available and files exist on disk, bind them
+    # If real scenes are available, bind them to extra_state
     if slots:
         async with database.get_session() as session:
             scenes = [await session.get(DbScene, s.scene_id) for s in slots]
-            valid_scenes = [s for s in scenes if s is not None and s.cog_object_key]
-            if valid_scenes and Path(valid_scenes[0].cog_object_key).exists():
-                graph_name = GraphName.SINGLE_IMAGE
-                extra_state["scene_directory"] = valid_scenes[0].cog_object_key
+            valid_scenes = [s for s in scenes if s is not None]
+            if valid_scenes:
                 extra_state["scene_id"] = valid_scenes[0].id
+                extra_state["scene_name"] = valid_scenes[0].name
+                extra_state["sensor_platform"] = valid_scenes[0].sensor_platform
+                if valid_scenes[0].cog_object_key and Path(valid_scenes[0].cog_object_key).exists():
+                    graph_name = GraphName.SINGLE_IMAGE
+                    extra_state["scene_directory"] = valid_scenes[0].cog_object_key
 
     from app.constants.tasks import EventName
     from app.lib.inngest import is_inngest_serving_available, send_event

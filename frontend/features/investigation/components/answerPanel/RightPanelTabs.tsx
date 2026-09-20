@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 import { AnswerPanel } from "./AnswerPanel";
 import { EvidenceTab } from "./EvidenceTab";
+import { ChatTab } from "./ChatTab";
 import type { AnalysisPlan, AnalysisRun } from "../../types/analysis.types";
 import type { Claim, EvidenceItem } from "../../types/evidence.types";
 import type { InvestigationEvent } from "../../types/history.types";
@@ -101,7 +102,7 @@ export function RightPanelTabs({
 
       {/* Tab Content */}
       <div className="min-h-0 flex-1 overflow-hidden">
-        {activeTab === "analysis" || activeTab === "chat" ? (
+        {activeTab === "analysis" ? (
           <AnswerPanel
             verdictSection={verdictSection}
             runs={runs}
@@ -116,7 +117,17 @@ export function RightPanelTabs({
             onTogglePlanStep={onTogglePlanStep}
             onExecutePlan={onExecutePlan}
             onDismissPlan={onDismissPlan}
-            history={activeTab === "chat" ? history : undefined}
+          />
+        ) : activeTab === "chat" ? (
+          <ChatTab
+            runs={runs}
+            isRunning={isRunning}
+            claimsById={claimsById}
+            evidenceById={evidenceById}
+            onAsk={onAsk}
+            onStop={onStop}
+            onFocusEvidence={onFocusEvidence}
+            history={history}
           />
         ) : (
           <div className="h-full overflow-y-auto p-3">
