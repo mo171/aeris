@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "id": "mission-command-intro",
+  "title": "Mission Command: Signal In",
+  "description": "A 15-second cinematic reveal of the live AERIS Mission Command Center UI.",
+  "definition": {
+    "scene": {
+      "version": 3,
+      "camera": {
+        "x": 160,
+        "y": 90,
+        "z": 920,
+        "perspective": 920,
+        "rotateX": -11,
+        "rotateY": 14,
+        "rotateZ": -2
+      },
+      "focus": {
+        "distance": 610,
+        "fStop": 2.1,
+        "focalLength": 58,
+        "maxBlur": 8
+      },
+      "nodes": [
+        { "id": "globe-stage", "transform": { "x": 0, "y": 0, "z": -80, "rotateX": 0, "rotateY": 0, "rotateZ": 0, "scale": 1 } },
+        { "id": "data-context", "transform": { "x": -80, "y": 0, "z": 80, "rotateX": 0, "rotateY": 0, "rotateZ": 0, "scale": 1 } },
+        { "id": "assistant-rail", "transform": { "x": 80, "y": 0, "z": 120, "rotateX": 0, "rotateY": 0, "rotateZ": 0, "scale": 1 } },
+        { "id": "globe-controls", "transform": { "x": 0, "y": 0, "z": 150, "rotateX": 0, "rotateY": 0, "rotateZ": 0, "scale": 1 } }
+      ]
+    },
+    "motion": {
+      "durationMs": 15000,
+      "speed": 1,
+      "tracks": [
+        {
+          "target": { "kind": "surface", "id": "globe-stage" },
+          "property": "z",
+          "keyframes": [
+            { "timeMs": 0, "value": -420, "easing": "cinematic" },
+            { "timeMs": 5200, "value": -170, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": -80, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "data-context" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": -500, "easing": "cinematic" },
+            { "timeMs": 3900, "value": -40, "easing": "easeInOut" },
+            { "timeMs": 8200, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "data-context" },
+          "property": "rotateX",
+          "keyframes": [
+            { "timeMs": 0, "value": -28, "easing": "cinematic" },
+            { "timeMs": 5200, "value": -5, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "data-context" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0, "easing": "cinematic" },
+            { "timeMs": 3000, "value": 0.85, "easing": "easeInOut" },
+            { "timeMs": 8200, "value": 1, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "assistant-rail" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": 520, "easing": "cinematic" },
+            { "timeMs": 5200, "value": 70, "easing": "easeInOut" },
+            { "timeMs": 9400, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "assistant-rail" },
+          "property": "rotateX",
+          "keyframes": [
+            { "timeMs": 0, "value": 24, "easing": "cinematic" },
+            { "timeMs": 6000, "value": 4, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "assistant-rail" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0, "easing": "cinematic" },
+            { "timeMs": 3800, "value": 0.8, "easing": "easeInOut" },
+            { "timeMs": 9400, "value": 1, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "globe-controls" },
+          "property": "z",
+          "keyframes": [
+            { "timeMs": 0, "value": -300, "easing": "cinematic" },
+            { "timeMs": 6200, "value": 80, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": 150, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "globe-controls" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0, "easing": "cinematic" },
+            { "timeMs": 5800, "value": 0.7, "easing": "easeInOut" },
+            { "timeMs": 10000, "value": 1, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "camera" },
+          "property": "x",
+          "keyframes": [
+            { "timeMs": 0, "value": 240, "easing": "cinematic" },
+            { "timeMs": 7200, "value": -120, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "camera" },
+          "property": "z",
+          "keyframes": [
+            { "timeMs": 0, "value": 1250, "easing": "cinematic" },
+            { "timeMs": 15000, "value": 760, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "camera" },
+          "property": "rotateY",
+          "keyframes": [
+            { "timeMs": 0, "value": 18, "easing": "cinematic" },
+            { "timeMs": 7600, "value": -9, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "focus" },
+          "property": "distance",
+          "keyframes": [
+            { "timeMs": 0, "value": 980, "easing": "cinematic" },
+            { "timeMs": 7200, "value": 500, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": 620, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "focus" },
+          "property": "fStop",
+          "keyframes": [
+            { "timeMs": 0, "value": 1.5, "easing": "cinematic" },
+            { "timeMs": 7200, "value": 3.8, "easing": "easeInOut" },
+            { "timeMs": 15000, "value": 2.4, "easing": "cinematic" }
+          ]
+        }
+      ]
+    },
+    "width": 1600,
+    "height": 900
+  }
+}

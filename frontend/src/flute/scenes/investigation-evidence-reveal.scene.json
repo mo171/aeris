@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "id": "investigation-evidence-reveal",
+  "title": "Investigation Evidence: Macro Reveal",
+  "description": "A 0.5-second punched reveal of the Investigation Evidence panel over the live scene.",
+  "definition": {
+    "scene": {
+      "version": 3,
+      "camera": {
+        "x": 80,
+        "y": 0,
+        "z": 980,
+        "perspective": 980,
+        "rotateX": -3,
+        "rotateY": 5,
+        "rotateZ": -1
+      },
+      "focus": {
+        "distance": 520,
+        "fStop": 5,
+        "focalLength": 58,
+        "maxBlur": 0
+      },
+      "nodes": [
+        {
+          "id": "evidence-stage",
+          "transform": { "x": 0, "y": 0, "z": -40, "rotateX": 0, "rotateY": 0, "rotateZ": 0, "scale": 1 }
+        },
+        {
+          "id": "evidence-panel",
+          "transform": { "x": 0, "y": 0, "z": 80, "rotateX": 0, "rotateY": 0, "rotateZ": 0, "scale": 2.2 }
+        }
+      ]
+    },
+    "motion": {
+      "durationMs": 1800,
+      "speed": 1,
+      "tracks": [
+        {
+          "target": { "kind": "surface", "id": "evidence-panel" },
+          "property": "x",
+          "keyframes": [
+            { "timeMs": 0, "value": 42, "easing": "cinematic" },
+            { "timeMs": 1050, "value": 18, "easing": "easeInOut" },
+            { "timeMs": 1800, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "evidence-panel" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": -10, "easing": "cinematic" },
+            { "timeMs": 950, "value": -4, "easing": "easeInOut" },
+            { "timeMs": 1800, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "evidence-panel" },
+          "property": "rotateY",
+          "keyframes": [
+            { "timeMs": 0, "value": -7, "easing": "cinematic" },
+            { "timeMs": 1100, "value": -2, "easing": "easeInOut" },
+            { "timeMs": 1800, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "evidence-panel" },
+          "property": "rotateZ",
+          "keyframes": [
+            { "timeMs": 0, "value": 1.5, "easing": "cinematic" },
+            { "timeMs": 1050, "value": 0.5, "easing": "easeInOut" },
+            { "timeMs": 1800, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "evidence-panel" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 1, "easing": "cinematic" },
+            { "timeMs": 1800, "value": 1, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "camera" },
+          "property": "x",
+          "keyframes": [
+            { "timeMs": 0, "value": 40, "easing": "cinematic" },
+            { "timeMs": 1000, "value": -20, "easing": "easeInOut" },
+            { "timeMs": 1800, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "camera" },
+          "property": "z",
+          "keyframes": [
+            { "timeMs": 0, "value": 980, "easing": "cinematic" },
+            { "timeMs": 1200, "value": 900, "easing": "easeInOut" },
+            { "timeMs": 1800, "value": 940, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "camera" },
+          "property": "rotateY",
+          "keyframes": [
+            { "timeMs": 0, "value": 5, "easing": "cinematic" },
+            { "timeMs": 1100, "value": -3, "easing": "easeInOut" },
+            { "timeMs": 1800, "value": 0, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "focus" },
+          "property": "distance",
+          "keyframes": [
+            { "timeMs": 0, "value": 520, "easing": "cinematic" },
+            { "timeMs": 1800, "value": 520, "easing": "cinematic" }
+          ]
+        },
+        {
+          "target": { "kind": "focus" },
+          "property": "fStop",
+          "keyframes": [
+            { "timeMs": 0, "value": 5, "easing": "cinematic" },
+            { "timeMs": 1800, "value": 5, "easing": "cinematic" }
+          ]
+        }
+      ]
+    },
+    "width": 1600,
+    "height": 900
+  }
+}
