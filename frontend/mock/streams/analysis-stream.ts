@@ -20,6 +20,7 @@ import type { AnalysisRunRequest } from "@/features/investigation/types/analysis
 import type { StreamRequestConfig } from "@/lib/streaming/stream-client";
 
 import { selectMockAnalysisScript } from "../data/investigation.data";
+import mumbaiRunData from "../data/mumbai-run-data.json";
 
 const RUN_START_DELAY_MS = 150;
 const STEP_START_DELAY_MS = 140;
@@ -126,6 +127,56 @@ export async function mockAnalysisStream({
         runId,
         layer: readyLayer,
         evidence: script.evidence.filter((item) => item.layerId === readyLayer.id),
+      });
+    }
+
+    // Emit analytical figures produced by this step
+    const stepFigures = (mumbaiRunData.figures ?? []).filter(
+      (fig) => fig.stage === step.stageCode || step.id.endsWith(fig.stage),
+    );
+    for (const fig of stepFigures) {
+      emit({
+        type: "figure-ready",
+        runId,
+        figureId: fig.id,
+        kind: fig.kind === "cross-modal" ? "comparison" : fig.kind,
+        title: fig.title,
+        caption: fig.caption,
+        imageUrl: fig.imageUrl,
+        width: 1024,
+        height: 768,
+        traceStepId: step.id,
+        claimIds: script.claims
+          .filter((c) => c.traceStepId === step.id || c.traceStepId?.includes(fig.stage))
+          .map((c) => c.id),
+        legend: {
+          kind: "continuous",
+          label: fig.title,
+          colorRamp:
+            fig.kind === "index-map"
+              ? "index-vegetation"
+              : fig.kind === "sar-backscatter"
+                ? "sar-grayscale"
+                : "mask-amber",
+          domain: [0, 1],
+          entries: null,
+        },
+        renderSpec: {
+          sceneIds: ["SCN_01M289GY37847TXAC6919HZE9E"],
+          bands: ["B04", "B03", "B02"],
+          stretch: { min: 0, max: 1 },
+          colorRamp:
+            fig.kind === "index-map"
+              ? "index-vegetation"
+              : fig.kind === "sar-backscatter"
+                ? "sar-grayscale"
+                : "mask-amber",
+          resampling: "bilinear",
+          crs: "EPSG:32643",
+          decimation: 1,
+          maskApplied: true,
+        },
+        isPrimary: false,
       });
     }
   }

@@ -77,6 +77,7 @@ export const evidenceItemSchema = z.object({
   magnitude: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1).nullable(),
   sourceSceneIds: z.array(z.string()),
+  figureUrl: z.string().nullable().optional(),
 });
 
 /**

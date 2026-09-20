@@ -153,7 +153,7 @@ const SESSION_STORAGE_KEY = "aeris.mock.investigations";
  * reports "no evidence yet" with nothing anywhere saying why. It costs a session's history to discard
  * the cache; it costs an afternoon to debug a schema change against data that predates it.
  */
-const SESSION_STORAGE_VERSION = 10;
+const SESSION_STORAGE_VERSION = 11;
 
 const investigationsById = new Map<string, GeneratedInvestigation>(loadPersisted());
 
@@ -404,7 +404,7 @@ function buildAcquisitions(
       sensorPlatform: "Sentinel-2B",
       groundSampleDistanceMeters: 10,
       cloudCoverPercentage: 0.1,
-      quicklookUrl: "/figures/fig_01M289GSEDE1NJ7FAQF7TJ1FNW.webp",
+      quicklookUrl: "/figures/fig_01M289GY37847TXAC6919HZE9E.webp",
       tiles: {
         urlTemplate: STAND_IN_TILES.recentImagery.url,
         attribution: "Sentinel-2B L2A MSI 10m / AERIS Ingest",
@@ -421,7 +421,7 @@ function buildAcquisitions(
       sensorPlatform: "Sentinel-2B",
       groundSampleDistanceMeters: 10,
       cloudCoverPercentage: 0.0,
-      quicklookUrl: "/figures/fig_01M2FRFT7TYTAMDMX0MKS607DR.webp",
+      quicklookUrl: "/figures/fig_01M289GY37847TXAC6919HZE9E.webp",
       tiles: {
         urlTemplate: STAND_IN_TILES.recentImagery.url,
         attribution: "Sentinel-2B L2A MSI 10m / AERIS Ingest",
@@ -442,23 +442,6 @@ function buildAcquisitions(
       tiles: {
         urlTemplate: STAND_IN_TILES.recentImagery.url,
         attribution: "Sentinel-1A IW GRD RTC 10m / AERIS Ingest",
-        minimumZoom: 3,
-        maximumZoom: 18,
-      },
-      isAvailable: true,
-    },
-    {
-      id: `${investigationId}-acq-mum-fusion`,
-      sceneId: "SCN_01M2CROSSMODALFUSIONMUMBAI",
-      capturedAt: "2026-03-25T12:00:00.000Z",
-      modality: "sar",
-      sensorPlatform: "Sentinel-1A + Sentinel-2B Fusion",
-      groundSampleDistanceMeters: 10,
-      cloudCoverPercentage: null,
-      quicklookUrl: "/figures/fig_01M2FRG388F110H473H7803P0Q.webp",
-      tiles: {
-        urlTemplate: STAND_IN_TILES.recentImagery.url,
-        attribution: "Cross-Modal Late Fusion Pipeline / AERIS Ingest",
         minimumZoom: 3,
         maximumZoom: 18,
       },
@@ -491,7 +474,7 @@ function buildAcquisitions(
       sensorPlatform: isSar ? "Sentinel-1A" : index % 2 === 0 ? "Sentinel-2A" : "Sentinel-2B",
       groundSampleDistanceMeters: isSar ? 20 : 10,
       cloudCoverPercentage: cloud,
-      quicklookUrl: "/figures/fig_01M289GSEDE1NJ7FAQF7TJ1FNW.webp",
+      quicklookUrl: "/figures/fig_01M289GY37847TXAC6919HZE9E.webp",
       tiles: {
         urlTemplate: source.url,
         attribution: source.attribution,

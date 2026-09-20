@@ -461,7 +461,8 @@
       "confidence": 0.92,
       "sourceSceneIds": [
         "SCN_01M289GQ9QMFQY7YGAFMFPSWDP"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFVMVM2K1QH2HR24224WX.webp"
     },
     {
       "id": "ev_mumbai_sar_structural_change",
@@ -481,7 +482,8 @@
       "confidence": 0.91,
       "sourceSceneIds": [
         "SCN_01M2FRFKYDX1EKKJCCKE0K6HH5"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFVMVM2K1QH2HR24224WX.webp"
     },
     {
       "id": "ev_mumbai_groundwater",
@@ -501,7 +503,8 @@
       "sourceSceneIds": [
         "SCN_01M289GQ9QMFQY7YGAFMFPSWDP",
         "SCN_01M2FRFKYDX1EKKJCCKE0K6HH5"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M289GZXV2JJ913N9XCPCT4AC.webp"
     },
     {
       "id": "ev_mumbai_vegetation",
@@ -520,7 +523,8 @@
       "confidence": 0.88,
       "sourceSceneIds": [
         "SCN_01M289GQ9QMFQY7YGAFMFPSWDP"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M289GSEDE1NJ7FAQF7TJ1FNW.webp"
     },
     {
       "id": "ev_01M2FRFSR88QXBFXSDESV0WD88",
@@ -1041,7 +1045,8 @@
       "confidence": 0.5351548194885254,
       "sourceSceneIds": [
         "S2B_MSIL2A_20260312T053639_R005_T43QBB_20260312T092622"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFT7TYTAMDMX0MKS607DR.webp"
     },
     {
       "id": "ev_01M2FRFSR88QXBFXSDESV0WD89",
@@ -1054,7 +1059,8 @@
       "confidence": 0.5351548194885254,
       "sourceSceneIds": [
         "S2B_MSIL2A_20260312T053639_R005_T43QBB_20260312T092622"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFT7TYTAMDMX0MKS607DR.webp"
     },
     {
       "id": "ev_01M2FRFSR88QXBFXSDESV0WD8B",
@@ -1069,7 +1075,8 @@
       "confidence": 0.5351548194885254,
       "sourceSceneIds": [
         "S2B_MSIL2A_20260312T053639_R005_T43QBB_20260312T092622"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFT7TYTAMDMX0MKS607DR.webp"
     },
     {
       "id": "ev_01M2FRFX1YK5V4X4QV2KF3FDRQ",
@@ -1127,7 +1134,8 @@
       "confidence": 0.8082026243209839,
       "sourceSceneIds": [
         "S2B_MSIL2A_20260312T053639_R005_T43QBB_20260312T092622"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFX89W583EVZQNT3KD0GY.webp"
     },
     {
       "id": "ev_01M2FRFX1YK5V4X4QV2KF3FDRR",
@@ -1140,7 +1148,8 @@
       "confidence": 0.8082026243209839,
       "sourceSceneIds": [
         "S2B_MSIL2A_20260312T053639_R005_T43QBB_20260312T092622"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFX89W583EVZQNT3KD0GY.webp"
     },
     {
       "id": "ev_01M2FRFX1YK5V4X4QV2KF3FDRT",
@@ -1155,7 +1164,8 @@
       "confidence": 0.8082026243209839,
       "sourceSceneIds": [
         "S2B_MSIL2A_20260312T053639_R005_T43QBB_20260312T092622"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFX89W583EVZQNT3KD0GY.webp"
     },
     {
       "id": "ev_01M2FRFVG1J2WX696273KGQFPS",
@@ -1257,7 +1267,8 @@
       "confidence": 0.7297798991203308,
       "sourceSceneIds": [
         "S1A_IW_GRDH_1SDV_20260315T010312_20260315T010337_063631_07FF87_rtc"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFVMVM2K1QH2HR24224WX.webp"
     },
     {
       "id": "ev_01M2FRFVG1J2WX696273KGQFPT",
@@ -1270,7 +1281,8 @@
       "confidence": 0.7297798991203308,
       "sourceSceneIds": [
         "S1A_IW_GRDH_1SDV_20260315T010312_20260315T010337_063631_07FF87_rtc"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFVMVM2K1QH2HR24224WX.webp"
     },
     {
       "id": "ev_01M2FRFVG1J2WX696273KGQFPW",
@@ -1285,7 +1297,8 @@
       "confidence": 0.7297798991203308,
       "sourceSceneIds": [
         "S1A_IW_GRDH_1SDV_20260315T010312_20260315T010337_063631_07FF87_rtc"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRFVMVM2K1QH2HR24224WX.webp"
     },
     {
       "id": "ev_01M2FRG1V18KRWB4P71RG03XHW",
@@ -1898,7 +1911,8 @@
       "confidence": 0.5676200985908508,
       "sourceSceneIds": [
         "S1A_IW_GRDH_1SDV_20260315T010312_20260315T010337_063631_07FF87_rtc"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRG232Y5289NYV2KPXEB2R.webp"
     },
     {
       "id": "ev_01M2FRG1V2F16QPY237GX92EPJ",
@@ -1911,7 +1925,8 @@
       "confidence": 0.5676200985908508,
       "sourceSceneIds": [
         "S1A_IW_GRDH_1SDV_20260315T010312_20260315T010337_063631_07FF87_rtc"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRG232Y5289NYV2KPXEB2R.webp"
     },
     {
       "id": "ev_01M2FRG1V2F16QPY237GX92EPM",
@@ -1926,7 +1941,8 @@
       "confidence": 0.5676200985908508,
       "sourceSceneIds": [
         "S1A_IW_GRDH_1SDV_20260315T010312_20260315T010337_063631_07FF87_rtc"
-      ]
+      ],
+      "figureUrl": "/figures/fig_01M2FRG232Y5289NYV2KPXEB2R.webp"
     }
   ],
   "layers": [
@@ -6971,5 +6987,91 @@
         }
       ]
     }
-  }
+  },
+  "figures": [
+    {
+      "id": "fig_01M289GSEDE1NJ7FAQF7TJ1FNW",
+      "title": "Coastal Mangrove & Canopy Index (NDVI)",
+      "caption": "Multi-spectral NDVI analysis isolating 312.4 ha of coastal mangrove canopy and vegetation vigour along Thane Creek.",
+      "imageUrl": "/figures/fig_01M289GSEDE1NJ7FAQF7TJ1FNW.webp",
+      "kind": "index-map",
+      "traceStepId": "step-S12",
+      "layerId": "lyr_mumbai_ndvi_vegetation",
+      "areaHectares": 312.4,
+      "model": "Index Engine v1.4.0",
+      "stage": "S12"
+    },
+    {
+      "id": "fig_01M2FRFT7TYTAMDMX0MKS607DR",
+      "title": "Optical Built-up Footprint (NDBI > 0.05)",
+      "caption": "NDBI (> 0.05) isolates 1,933.2 ha of dense built-up fabric across Mazgaon Docklands, Byculla, and Eastern Freeway.",
+      "imageUrl": "/figures/fig_01M2FRFT7TYTAMDMX0MKS607DR.webp",
+      "kind": "mask-overlay",
+      "traceStepId": "step-S12",
+      "layerId": "lyr_01M2FRFSR88QXBFXSDESV0WD87",
+      "areaHectares": 1933.2,
+      "model": "SegFormer LandCover v1.2",
+      "stage": "S12"
+    },
+    {
+      "id": "fig_01M2FRFX89W583EVZQNT3KD0GY",
+      "title": "Optical Marine Water Extent (MNDWI > 0.15)",
+      "caption": "MNDWI (> 0.15) delineating 4,812.2 ha of marine water extent across Mumbai Harbour, Elephanta passage, and tidal channels.",
+      "imageUrl": "/figures/fig_01M2FRFX89W583EVZQNT3KD0GY.webp",
+      "kind": "mask-overlay",
+      "traceStepId": "step-S12",
+      "layerId": "lyr_01M2FRFX1YK5V4X4QV2KF3FDRP",
+      "areaHectares": 4812.2,
+      "model": "Index Engine v1.4.0",
+      "stage": "S12"
+    },
+    {
+      "id": "fig_01M2FRFVMVM2K1QH2HR24224WX",
+      "title": "Radar C-Band Double-Bounce Structural Shifts",
+      "caption": "Sentinel-1A C-band dual-pol SAR backscatter mapping 4,750.9 ha of vertical structures and 12 discrete construction assets.",
+      "imageUrl": "/figures/fig_01M2FRFVMVM2K1QH2HR24224WX.webp",
+      "kind": "sar-backscatter",
+      "traceStepId": "step-S13",
+      "layerId": "lyr_mumbai_sar_structural_change",
+      "areaHectares": 4750.9,
+      "model": "SAR Preprocessor v1.3.0",
+      "stage": "S13"
+    },
+    {
+      "id": "fig_01M2FRG232Y5289NYV2KPXEB2R",
+      "title": "Radar Specular Calm Water Extent (VV <= -17 dB)",
+      "caption": "Specular low-backscatter radar calibration isolating 1,694.2 ha of open calm water in Mumbai Harbour shipping channels.",
+      "imageUrl": "/figures/fig_01M2FRG232Y5289NYV2KPXEB2R.webp",
+      "kind": "mask-overlay",
+      "traceStepId": "step-S13",
+      "layerId": "lyr_01M2FRG1V18KRWB4P71RG03XHV",
+      "areaHectares": 1694.2,
+      "model": "SAR Preprocessor v1.3.0",
+      "stage": "S13"
+    },
+    {
+      "id": "fig_01M289GZXV2JJ913N9XCPCT4AC",
+      "title": "Intertidal Mudflat Moisture Flux (104.7 ha)",
+      "caption": "Tidal moisture and sediment flux mapping over Sewri mudflats where recession exposes wet sediment.",
+      "imageUrl": "/figures/fig_01M289GZXV2JJ913N9XCPCT4AC.webp",
+      "kind": "mask-overlay",
+      "traceStepId": "step-S13",
+      "layerId": "lyr_mumbai_groundwater_moisture",
+      "areaHectares": 104.7,
+      "model": "Multi-Spectral Ingest Engine",
+      "stage": "S13"
+    },
+    {
+      "id": "fig_01M2FRG5Z9EF6NHSBQRM764NB4",
+      "title": "Cross-Modal Late Fusion Agreement Partition",
+      "caption": "Optical/SAR joint consensus across 100 evaluation zones with 5.2 ha intertidal disagreement isolated.",
+      "imageUrl": "/figures/fig_01M2FRG5Z9EF6NHSBQRM764NB4.webp",
+      "kind": "cross-modal",
+      "traceStepId": "step-S14",
+      "layerId": null,
+      "areaHectares": null,
+      "model": "Optical/SAR Late Fusion v0.9.3",
+      "stage": "S14"
+    }
+  ]
 }

@@ -19,7 +19,7 @@
 
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
 import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
@@ -56,6 +56,13 @@ export function MissionCommandScreen() {
   const { launch, isLaunching } = useInvestigationLaunch();
 
 
+  // Ensure no analytical vector layers are displayed on the landing page globe before analysis
+  useEffect(() => {
+    if (stage) {
+      stage.sceneLayers.setLayers([]);
+    }
+  }, [stage]);
+
   // The globe handle is read at call time rather than subscribed to: these callbacks fire from user
   // interaction, long after mount, and re-creating them whenever the globe re-registers would churn every
   // memoised list row below them for no benefit.
@@ -77,6 +84,7 @@ export function MissionCommandScreen() {
         north: 19.03092,
       };
       if (stage) {
+        stage.sceneLayers.setLayers([]);
         stage.sceneLayers.setAreaOfInterestOutline(bounds);
         stage.camera.flyToBoundingBox(bounds, { durationMs: 2500 });
       }
