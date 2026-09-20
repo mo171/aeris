@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { ListFilter, MessageSquare, Microscope } from "lucide-react";
+import { CommandButton } from "@/lib/command-bus";
+import { COMMAND_IDS } from "@/lib/constants/commands";
 import { cn } from "@/lib/utils";
 
+import { useInvestigationStore } from "../../store/investigation-store";
 import { AnswerPanel } from "./AnswerPanel";
 import { EvidenceTab } from "./EvidenceTab";
 import { ChatTab } from "./ChatTab";
@@ -50,54 +52,50 @@ export function RightPanelTabs({
   onInspectStep,
   onFocusLayer,
 }: RightPanelTabsProps) {
-  const [activeTab, setActiveTab] = useState<RightPanelTab>("analysis");
+  // Store-backed so the voice agent reads the same tab a click would.
+  const activeTab = useInvestigationStore((state) => state.rightPanelTab);
   const currentRun = runs.at(-1) ?? null;
+
+  // CommandButtons, not setState calls: each tab dispatches
+  // investigation.setRightTab — the exact command the voice agent sends.
+  const rightTabButtonClass = (isActive: boolean) =>
+    cn(
+      "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-sm py-1.5 transition-colors",
+      isActive
+        ? "bg-surface-2/60 text-foreground shadow-sm"
+        : "text-muted-foreground hover:bg-surface-2/30 hover:text-foreground",
+    );
 
   return (
     <div className="flex h-full flex-col bg-surface-1/50 backdrop-blur-md">
       {/* Tab Bar */}
       <div className="flex shrink-0 items-center gap-1 border-b border-border-soft p-1">
-        <button
-          type="button"
-          onClick={() => setActiveTab("analysis")}
-          className={cn(
-            "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-sm py-1.5 transition-colors",
-            activeTab === "analysis"
-              ? "bg-surface-2/60 text-foreground shadow-sm"
-              : "text-muted-foreground hover:bg-surface-2/30 hover:text-foreground",
-          )}
+        <CommandButton
+          commandId={COMMAND_IDS.investigation.setRightTab}
+          params={{ tab: "analysis" }}
+          className={rightTabButtonClass(activeTab === "analysis")}
         >
           <Microscope className="size-3.5 shrink-0" />
           <span className="truncate text-[10px] font-medium tracking-wide uppercase">Analysis</span>
-        </button>
+        </CommandButton>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab("evidence")}
-          className={cn(
-            "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-sm py-1.5 transition-colors",
-            activeTab === "evidence"
-              ? "bg-surface-2/60 text-foreground shadow-sm"
-              : "text-muted-foreground hover:bg-surface-2/30 hover:text-foreground",
-          )}
+        <CommandButton
+          commandId={COMMAND_IDS.investigation.setRightTab}
+          params={{ tab: "evidence" }}
+          className={rightTabButtonClass(activeTab === "evidence")}
         >
           <ListFilter className="size-3.5 shrink-0" />
           <span className="truncate text-[10px] font-medium tracking-wide uppercase">Evidence</span>
-        </button>
+        </CommandButton>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab("chat")}
-          className={cn(
-            "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-sm py-1.5 transition-colors",
-            activeTab === "chat"
-              ? "bg-surface-2/60 text-foreground shadow-sm"
-              : "text-muted-foreground hover:bg-surface-2/30 hover:text-foreground",
-          )}
+        <CommandButton
+          commandId={COMMAND_IDS.investigation.setRightTab}
+          params={{ tab: "chat" }}
+          className={rightTabButtonClass(activeTab === "chat")}
         >
           <MessageSquare className="size-3.5 shrink-0" />
           <span className="truncate text-[10px] font-medium tracking-wide uppercase">Chat</span>
-        </button>
+        </CommandButton>
       </div>
 
       {/* Tab Content */}

@@ -15,10 +15,12 @@
 "use client";
 
 import { Database, Layers, Wrench } from "lucide-react";
-import { useState } from "react";
 
+import { CommandButton } from "@/lib/command-bus";
+import { COMMAND_IDS } from "@/lib/constants/commands";
 import { cn } from "@/lib/utils";
 
+import { useInvestigationStore } from "../../store/investigation-store";
 import { InputsPanel } from "./InputsPanel";
 import { LayersPanel } from "./LayersPanel";
 import { ToolboxPanel, type AnalysisReadiness } from "./ToolboxTab";
@@ -64,7 +66,8 @@ export function LeftPanelTabs({
   
   ...rest
 }: LeftPanelTabsProps) {
-  const [tab, setTab] = useState<LeftPanelTab>("inputs");
+  // Store-backed so the voice agent reads the same tab a click would.
+  const tab = useInvestigationStore((state) => state.leftPanelTab);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -74,12 +77,15 @@ export function LeftPanelTabs({
         className="flex shrink-0 items-center gap-1 rounded-md border border-border-soft bg-surface-2/40 p-0.5"
       >
         {TABS.map(({ id, label, icon: Icon }) => (
-          <button
+          // A CommandButton, not a setState call: pressing this tab dispatches
+          // investigation.setLeftTab through the bus — the exact command the
+          // voice agent sends. One path, usable by finger and by AERIS alike.
+          <CommandButton
             key={id}
-            type="button"
             role="tab"
             aria-selected={tab === id}
-            onClick={() => setTab(id)}
+            commandId={COMMAND_IDS.investigation.setLeftTab}
+            params={{ tab: id }}
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 font-mono text-[10px] tracking-wide uppercase transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               tab === id
@@ -89,7 +95,7 @@ export function LeftPanelTabs({
           >
             <Icon className="size-3" aria-hidden="true" />
             {label}
-          </button>
+          </CommandButton>
         ))}
       </div>
 

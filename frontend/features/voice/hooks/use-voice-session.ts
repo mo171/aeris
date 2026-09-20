@@ -11,7 +11,32 @@ import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
 import { dispatchUiCommandEvent } from "@/lib/streaming/ui-command-bridge";
+import { useMissionCommandStore } from "@/features/missionCommand/store/mission-command-store";
 import { useVoiceStore } from "../store/voice-store";
+
+export interface OperatorContext {
+  /** Route pathname — tells the brain which screen's commands exist right now. */
+  surface: string;
+  /** Scenes selected on Mission Command. Empty anywhere else. */
+  selectedSceneIds: string[];
+}
+
+/**
+ * The brain cannot decide what an order means without seeing what the operator
+ * sees. Every voice turn carries the live surface and selection so tool choice
+ * is grounded in the actual UI state, not in guesses.
+ */
+function collectOperatorContext(): OperatorContext {
+  let selectedSceneIds: string[] = [];
+  try {
+    selectedSceneIds = useMissionCommandStore.getState().selectedSceneIds ?? [];
+  } catch {
+    selectedSceneIds = [];
+  }
+  const surface =
+    typeof window !== "undefined" ? window.location.pathname : "unknown";
+  return { surface, selectedSceneIds };
+}
 
 interface ProcessVoiceResponse {
   success: boolean;
@@ -215,52 +240,47 @@ class AerisSessionManager {
       return;
     }
 
+    // Dynamic Jarvis TTS first so the greeting always uses the configured
+    // voice; the pre-rendered file is only a fallback (it was baked with the
+    // old thin voice) and for offline use.
+    const playUrl = async (url: string): Promise<boolean> => {
+      try {
+        const audio = new Audio(url);
+        this.currentAudioElement = audio;
+        const done = new Promise<boolean>((resolve) => {
+          audio.onended = () => resolve(true);
+          audio.onerror = () => resolve(false);
+        });
+        await audio.play();
+        return await done;
+      } catch {
+        return false;
+      }
+    };
+
     try {
-      // 1. Play authentic pre-rendered British fable voice (tts-1-hd) with instant zero-latency playback
-      const audio = new Audio("/audio/greeting.mp3");
-      this.currentAudioElement = audio;
+      const res = await fetch("/api/voice/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "greeting" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.audioBase64 && (await playUrl(data.audioBase64))) {
+          this.currentAudioElement = null;
+          store.setVoiceState("idle");
+          return;
+        }
+      }
+    } catch {}
 
-      audio.onended = () => {
-        this.currentAudioElement = null;
-        store.setVoiceState("idle");
-      };
-
-      audio.onerror = async () => {
-        // Fallback to dynamic TTS API endpoint if static file is unreachable
-        try {
-          const res = await fetch("/api/voice/process", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "greeting" }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.audioBase64) {
-              const dynAudio = new Audio(data.audioBase64);
-              this.currentAudioElement = dynAudio;
-              dynAudio.onended = () => {
-                this.currentAudioElement = null;
-                store.setVoiceState("idle");
-              };
-              dynAudio.onerror = () => {
-                this.currentAudioElement = null;
-                store.setVoiceState("idle");
-              };
-              await dynAudio.play();
-              return;
-            }
-          }
-        } catch {}
-        this.currentAudioElement = null;
-        store.setVoiceState("idle");
-      };
-
-      await audio.play();
-      return;
-    } catch (err) {
-      console.warn("Could not play greeting audio:", err);
-      store.setVoiceState("idle");
+    if (await playUrl("/audio/greeting.mp3")) {
+      this.currentAudioElement = null;
+    } else {
+      this.currentAudioElement = null;
+      console.warn("Could not play greeting audio.");
     }
+    store.setVoiceState("idle");
   }
 
   private playChime(): void {
@@ -474,8 +494,11 @@ class AerisSessionManager {
 
       const audioFile = new File([audioBlob], filename, { type: mimeType });
 
+      const operatorContext = collectOperatorContext();
+      console.log("[AERIS VOICE] operator context:", operatorContext);
       const formData = new FormData();
       formData.append("audio", audioFile, filename);
+      formData.append("context", JSON.stringify(operatorContext));
 
       const response = await fetch("/api/voice/process", {
         method: "POST",
@@ -507,10 +530,12 @@ class AerisSessionManager {
     store.setVoiceState("thinking");
 
     try {
+      const context = collectOperatorContext();
+      console.log("[AERIS VOICE] operator context:", context);
       const response = await fetch("/api/voice/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed }),
+        body: JSON.stringify({ query: trimmed, context }),
       });
 
       if (!response.ok) {
@@ -538,22 +563,50 @@ class AerisSessionManager {
       store.setLastAerisReply(data.reply);
     }
 
-    // Execute UI commands returned by AERIS
+    // Execute UI commands returned by AERIS through the command bus, and
+    // report each outcome. A dispatch never throws — failures arrive as data
+    // (not-found / invalid-params / disabled / failed) and must be surfaced,
+    // otherwise the agent appears to ignore explicit orders.
+    console.log(
+      `[AERIS VOICE] frontend received ${data.actions?.length ?? 0} action(s) for transcript "${data.transcript ?? ""}"`,
+      data.actions,
+    );
+    if (!data.actions || data.actions.length === 0) {
+      console.log("[AERIS VOICE] brain ordered no UI actions — reply was words only.");
+    }
     if (data.actions && data.actions.length > 0) {
       const actionSummaries: string[] = [];
       for (const action of data.actions) {
-        actionSummaries.push(action.description);
-        void dispatchUiCommandEvent({
+        console.log(`[AERIS VOICE] dispatching: ${action.commandId}`, action.params);
+        const result = await dispatchUiCommandEvent({
           commandId: action.commandId,
           params: action.params,
           reason: `AERIS: ${action.description}`,
         });
+        console.log(`[AERIS VOICE] dispatch outcome: ${action.commandId} -> ${result.status}`);
+        if (result.status === "completed") {
+          actionSummaries.push(action.description);
+        } else {
+          const detail =
+            result.status === "invalid-params"
+              ? `rejected params (${result.message})`
+              : result.status === "not-found"
+                ? "not available on this screen"
+                : result.status === "disabled"
+                  ? "currently disabled"
+                  : "execution failed";
+          actionSummaries.push(`${action.description} — could not run (${detail})`);
+          console.warn(`[voice] command ${action.commandId} ${result.status}:`, result);
+        }
       }
       store.setActiveActionSummary(actionSummaries.join(" • "));
       toast.info(`AERIS: ${actionSummaries.join(", ")}`);
     }
 
-    // Play synthesized British audio if available and not muted
+    // Play synthesized Jarvis audio if available and not muted
+    console.log(
+      `[AERIS VOICE] audio ${data.audioBase64 ? "present" : "MISSING"} (muted=${store.isMuted})`,
+    );
     if (data.audioBase64 && !store.isMuted) {
       store.setVoiceState("speaking");
       try {

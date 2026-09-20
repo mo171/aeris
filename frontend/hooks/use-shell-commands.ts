@@ -80,22 +80,28 @@ export function useShellCommands(): void {
       defineCommand({
         id: COMMAND_IDS.interface.toggleDataPanel,
         title: "Toggle data panel",
-        description: "Show or hide the left panel containing imagery intake, catalogue and missions.",
+        description:
+          "Show or hide the left panel containing imagery intake, catalogue and missions. " +
+          "Omit params to flip it; pass { open: true/false } for a deterministic show or hide (the agent form).",
         group: "interface",
         keywords: ["left", "panel", "imagery", "hide"],
         shortcut: ["ctrl", "b"],
-        paramsSchema: z.void(),
-        handler: () => toggleDataPanel(),
+        // Optional object (not void) so both palette/shortcut callers with no
+        // args and agent callers with { open } validate through one schema.
+        paramsSchema: z.object({ open: z.boolean().optional() }).optional(),
+        handler: (params) => toggleDataPanel(params?.open),
       }),
       defineCommand({
         id: COMMAND_IDS.interface.toggleAssistantPanel,
         title: "Toggle assistant panel",
-        description: "Show or hide the right panel containing the AERIS assistant and execution traces.",
+        description:
+          "Show or hide the right panel containing the AERIS assistant and execution traces. " +
+          "Omit params to flip it; pass { open: true/false } for a deterministic show or hide (the agent form).",
         group: "interface",
         keywords: ["right", "panel", "assistant", "chat", "hide"],
         shortcut: ["ctrl", "j"],
-        paramsSchema: z.void(),
-        handler: () => toggleAssistantPanel(),
+        paramsSchema: z.object({ open: z.boolean().optional() }).optional(),
+        handler: (params) => toggleAssistantPanel(params?.open),
       }),
       defineCommand({
         id: COMMAND_IDS.interface.toggleNavigationRail,

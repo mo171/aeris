@@ -16,12 +16,16 @@ export async function dispatchUiCommandEvent(
   event: UiCommandEvent,
   observeResult?: UiCommandDispatchObserver,
 ): Promise<CommandDispatchResult> {
+  console.log(
+    `[AERIS VOICE] bus received: ${event.commandId} ${JSON.stringify(event.params)} (reason: ${event.reason})`,
+  );
   let result: CommandDispatchResult;
   try {
     result = await dispatchCommand(event.commandId, event.params);
   } catch (error) {
     result = { status: "failed", commandId: event.commandId, error };
   }
+  console.log(`[AERIS VOICE] bus result: ${event.commandId} -> ${result.status}`, result);
   observeResult?.(result);
   return result;
 }

@@ -659,25 +659,51 @@ export function useInvestigationCommands({
         id: COMMAND_IDS.investigation.toggleTrace,
         title: "Show the execution trace",
         description:
-          "Expand or collapse the pipeline spine, where each stage can be opened to inspect what it produced.",
+          "Expand or collapse the pipeline spine, where each stage can be opened to inspect what it produced. Omit params to flip; pass { expanded: true/false } for a deterministic show or hide (the agent form).",
         group: "investigation",
         keywords: ["pipeline", "provenance", "stages"],
         icon: ListTree,
         shortcut: ["shift", "t"],
-        paramsSchema: z.object({}).optional(),
-        handler: () => store().toggleTraceExpanded(),
+        paramsSchema: z.object({ expanded: z.boolean().optional() }).optional(),
+        handler: (params) => store().toggleTraceExpanded(params?.expanded),
       }),
 
       defineCommand({
         id: COMMAND_IDS.investigation.openReport,
         title: "Generate an intelligence report",
         description:
-          "Open the one report drawer for the active investigation; the optional report handle authorizes the completed report but never selects another report.",
+          "Open or close the one report drawer for the active investigation. Omit params to open; pass { open: false } to close (the agent form).",
         group: "investigation",
         keywords: ["export", "pdf", "document"],
         icon: FileText,
-        paramsSchema: z.object({}).optional(),
-        handler: () => store().setReportOpen(true),
+        paramsSchema: z.object({ open: z.boolean().optional() }).optional(),
+        handler: (params) => store().setReportOpen(params?.open ?? true),
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.setLeftTab,
+        title: "Switch the left panel tab",
+        description:
+          "Show the inputs (scenes, acquisitions, regions), layers (evidence overlays) or toolbox (runnable analyses) tab of the left investigation panel.",
+        group: "investigation",
+        keywords: ["inputs", "layers", "toolbox", "left", "tab"],
+        icon: Layers,
+        paramsSchema: z.object({ tab: z.enum(["inputs", "layers", "toolbox"]) }),
+        handler: ({ tab }) => store().setLeftPanelTab(tab),
+        isPaletteVisible: false,
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.setRightTab,
+        title: "Switch the answer panel tab",
+        description:
+          "Show the analysis (verdict and claims), evidence (supporting geometry) or chat tab of the right answer panel.",
+        group: "investigation",
+        keywords: ["analysis", "evidence", "chat", "answer", "right", "tab"],
+        icon: FileText,
+        paramsSchema: z.object({ tab: z.enum(["analysis", "evidence", "chat"]) }),
+        handler: ({ tab }) => store().setRightPanelTab(tab),
+        isPaletteVisible: false,
       }),
 
       defineCommand({

@@ -15,6 +15,8 @@ export {
   subscribeToDispatches,
 } from "./registry";
 export { useRegisterCommands } from "./use-register-commands";
+export { CommandButton } from "./command-button";
+export type { CommandButtonProps } from "./command-button";
 export type {
   CommandDefinition,
   CommandDescriptor,

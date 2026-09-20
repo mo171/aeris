@@ -23,6 +23,8 @@ import { useCallback, useEffect } from "react";
 
 import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
 import { PanelErrorBoundary } from "@/components/sharedUI/functionalComponent/feedback/PanelErrorBoundary";
+import { dispatchCommand } from "@/lib/command-bus";
+import { COMMAND_IDS } from "@/lib/constants/commands";
 import { GLOBE_CAMERA } from "@/lib/constants/globe";
 import { BOOT_SEQUENCE_DELAY } from "@/lib/constants/motion";
 import { useUiStore } from "@/store/ui-store";
@@ -53,8 +55,9 @@ export function MissionCommandScreen() {
   const toggleSceneSelection = useMissionCommandStore((state) => state.toggleSceneSelection);
   const stage = useGeoStageStore((state) => state.handle);
 
-  // Starting an investigation is investigation-domain work; only its trigger belongs to this surface.
-  const { launch, isLaunching } = useInvestigationLaunch();
+  // Called for its command registration (investigation.create/open); the
+  // trigger itself dispatches through the bus in handleInvestigate.
+  const { isLaunching } = useInvestigationLaunch();
 
 
   // Ensure no analytical vector layers are displayed on the landing page globe before analysis
@@ -114,13 +117,21 @@ export function MissionCommandScreen() {
     [flyToPosition, setFocusedMissionId],
   );
 
+  // Dispatched through the bus, not launched directly: the Investigate click
+  // executes investigation.create — the exact command the voice agent sends —
+  // so finger and JARVIS take the same path into the workspace.
   const handleInvestigate = useCallback(() => {
     const { selectedSceneIds } = useMissionCommandStore.getState();
     if (selectedSceneIds.length === 0) {
       return;
     }
-    launch({ projectId: "prj_sih2026_demo", sceneIds: selectedSceneIds, seedQuery: null, missionId: null });
-  }, [launch]);
+    void dispatchCommand(COMMAND_IDS.investigation.create, {
+      projectId: "prj_sih2026_demo",
+      sceneIds: selectedSceneIds,
+      seedQuery: null,
+      missionId: null,
+    });
+  }, []);
 
   // Registered after the callbacks exist so the stage can route a marker click straight into them.
   useGlobeStageBinding({ onMarkerSelect: handleMarkerSelect });

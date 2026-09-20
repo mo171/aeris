@@ -172,6 +172,15 @@ interface InvestigationState {
   activeRegionId: string | null;
 
   // ── Panels ───────────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Active tabs of the investigation side panels. Stored (not component-local)
+   * so the command bus — and therefore the voice agent — can switch tabs the
+   * same way a click does. "Show me the toolbox" must reach the same state.
+   */
+  leftPanelTab: "inputs" | "layers" | "toolbox";
+  rightPanelTab: "analysis" | "evidence" | "chat";
+  setLeftPanelTab: (tab: "inputs" | "layers" | "toolbox") => void;
+  setRightPanelTab: (tab: "analysis" | "evidence" | "chat") => void;
   isTraceExpanded: boolean;
   traceView: "rows" | "canvas";
   selectedNodeId: string | null;
@@ -315,6 +324,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
   drawnRegions: [],
   activeRegionId: null,
 
+  leftPanelTab: "inputs",
+  rightPanelTab: "analysis",
   isTraceExpanded: false,
   traceView: "rows",
   selectedNodeId: null,
@@ -359,6 +370,8 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
       activeDrawTool: null,
       drawnRegions: [],
       activeRegionId: null,
+      leftPanelTab: "inputs",
+      rightPanelTab: "analysis",
       isTraceExpanded: false,
       traceView: "rows",
       selectedNodeId: null,
@@ -533,6 +546,9 @@ export const useInvestigationStore = create<InvestigationState>((set) => ({
     })),
 
   setActiveRegionId: (activeRegionId) => set({ activeRegionId }),
+
+  setLeftPanelTab: (leftPanelTab) => set({ leftPanelTab }),
+  setRightPanelTab: (rightPanelTab) => set({ rightPanelTab }),
 
   toggleTraceExpanded: (isExpanded) =>
     set((state) => ({ isTraceExpanded: isExpanded ?? !state.isTraceExpanded })),

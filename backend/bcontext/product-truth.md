@@ -42,6 +42,22 @@ its own registry schema before dispatch. **The model's arguments are never trust
 
 This is the line that separates an agentic system from a conversational one.
 
+### 1.1.2 Every clickable control is a command (recorded 2026-09-20)
+
+A button that mutates workspace state through a local setter is a control the agent can never press. So the
+rule is structural: state-changing controls dispatch through `lib/command-bus/` (`CommandButton`), and the
+voice route's brain-to-bus translation (`mapVoiceToolToActions` in `app/api/voice/process/route.ts`) may only
+emit ids from `lib/constants/commands.ts`. The contract test `tests/audio/voice-command-contract.test.ts`
+reads the brain's own tool schemas and fails the build on any drift. The brain keeps full authority over
+*which* tool to call and *why*; the deterministic layer is only the adapter from its decision to the registry,
+plus Zod validation that rejects anything the registry does not understand.
+
+Every voice turn also carries live operator context (current surface, selected scene ids) into the system
+prompt, because a tool choice is only correct relative to what is mounted: investigation-workspace commands
+do not exist on Mission Command and vice versa. Cross-surface intents ("investigate these images") are
+first-class tools (`investigate_selection` → `investigation.create`), never approximated with panel toggles,
+and the on-screen Investigate button dispatches that same command rather than calling the launcher directly.
+
 ### 1.1.1 How the Agent Harness feels to us (Phase 1.14)
 
 AERIS is an autonomous scientific operator, not just an LLM router. The distinction is in the **ReAct loop** interacting with the **scientific firewall**.
