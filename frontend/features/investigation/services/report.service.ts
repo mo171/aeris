@@ -43,6 +43,12 @@ export function buildReportExportUrl(
   investigationId: string,
   format: ReportExportFormat,
 ): string {
+  if (env.NEXT_PUBLIC_USE_MOCK_DATA) {
+    if (format === "pdf") {
+      return "/report.pdf";
+    }
+    return `/api/mock-report?format=${format}&id=${encodeURIComponent(investigationId)}`;
+  }
   return `${env.NEXT_PUBLIC_API_URL}${REST_API.investigations.report(investigationId)}.${format}`;
 }
 

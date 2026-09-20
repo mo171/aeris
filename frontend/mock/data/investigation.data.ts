@@ -46,6 +46,7 @@ import { LAYER_RENDERING } from "@/lib/constants/layers";
 
 import { createSeededRandom, pickOne, randomFloat } from "../transport/deterministic-random";
 import { MOCK_AREAS } from "./geography";
+import mumbaiRunData from "./mumbai-run-data.json";
 
 /** Public stand-in imagery. Replaced by backend TileJSON in Phase 2. */
 const STAND_IN_TILES = {
@@ -152,7 +153,7 @@ const SESSION_STORAGE_KEY = "aeris.mock.investigations";
  * reports "no evidence yet" with nothing anywhere saying why. It costs a session's history to discard
  * the cache; it costs an afternoon to debug a schema change against data that predates it.
  */
-const SESSION_STORAGE_VERSION = 8;
+const SESSION_STORAGE_VERSION = 9;
 
 const investigationsById = new Map<string, GeneratedInvestigation>(loadPersisted());
 
@@ -299,40 +300,35 @@ function generate(
 ): GeneratedInvestigation {
   const seed = seedFromIds(sceneIds);
   const random = createSeededRandom(seed);
-  const area = pickOne(random, MOCK_AREAS);
+  const area = {
+    name: "Mumbai Coastal Belt",
+    latitude: 18.975,
+    longitude: 72.86,
+    country: "India",
+  };
   const traceId = traceIdFromSeed(seed);
 
   const areaOfInterest = {
-    west: area.longitude - AOI_HALF_SPAN_DEGREES,
-    south: area.latitude - AOI_HALF_SPAN_DEGREES,
-    east: area.longitude + AOI_HALF_SPAN_DEGREES,
-    north: area.latitude + AOI_HALF_SPAN_DEGREES,
+    west: 72.81855,
+    south: 18.91907,
+    east: 72.90132,
+    north: 19.03092,
   };
 
-  const hasSar = sceneIds.length >= 3;
+  const hasSar = true;
 
   // Acquisitions first, because the role slots are DERIVED from them.
-  //
-  // A slot naming a scene the archive does not contain is exactly the incoherence the timeline exists to
-  // prevent: the comparator would show imagery the scrubber cannot find, and binding a role from the
-  // acquisition list would fail to match anything. Generating the archive and then choosing from it makes
-  // that class of bug unrepresentable rather than merely absent today.
   const acquisitions = buildAcquisitions(investigationId, random, area);
 
-  // The opening pair is the CLEAREST wide pair, not merely the first and last usable ones.
-  //
-  // That is what a backend creating an investigation would do, and it matters for more than tidiness: an
-  // operator who arrives already looking at a degraded comparison has no way to tell whether the warning
-  // is about their data or about the tool. Opening clean means the verdict changes when they move a
-  // handle, which is the only way the warning teaches them anything.
-  const usableOptical = acquisitions.filter(
-    (acquisition) => acquisition.modality === "optical" && acquisition.isAvailable,
-  );
-  const openingPair = choosePair(usableOptical);
-
-  const baselineAcquisition = openingPair?.t0 ?? acquisitions[0];
-  const comparisonAcquisition = openingPair?.t1 ?? acquisitions[acquisitions.length - 1];
-  const radarAcquisition = [...acquisitions].reverse().find((acquisition) => acquisition.modality === "sar");
+  const baselineAcquisition =
+    acquisitions.find((candidate) => candidate.sceneId === "SCN_01M2ZGSPQA1XFMJD4AJ6MHQRXD") ??
+    acquisitions[0];
+  const comparisonAcquisition =
+    acquisitions.find((candidate) => candidate.sceneId === "SCN_01M289GQ9QMFQY7YGAFMFPSWDP") ??
+    acquisitions[1];
+  const radarAcquisition =
+    acquisitions.find((candidate) => candidate.sceneId === "SCN_01M2FRFKYDX1EKKJCCKE0K6HH5") ??
+    [...acquisitions].reverse().find((acquisition) => acquisition.modality === "sar");
 
   const slotFromAcquisition = (
     acquisition: Acquisition,
@@ -340,12 +336,11 @@ function generate(
   ): InvestigationSceneSlot => ({
     role,
     sceneId: acquisition.sceneId,
-    name: `${area.name} · ${acquisition.capturedAt.slice(0, 10)}`,
+    name: `${area.name} · ${acquisition.sensorPlatform} (${role.toUpperCase()})`,
     capturedAt: acquisition.capturedAt,
     modality: acquisition.modality,
     sensorPlatform: acquisition.sensorPlatform,
     groundSampleDistanceMeters: acquisition.groundSampleDistanceMeters,
-    // Null, not zero, for radar: it is unaffected by cloud, and zero would claim a cloud-free radar scene.
     cloudCoverPercentage: acquisition.cloudCoverPercentage,
     coordinateReferenceSystem: "EPSG:32643",
     layerId: `${investigationId}-layer-${role}`,
@@ -356,21 +351,21 @@ function generate(
     slotFromAcquisition(comparisonAcquisition, "t1"),
   ];
 
-  if (hasSar && radarAcquisition) {
+  if (radarAcquisition) {
     sceneSlots.push(slotFromAcquisition(radarAcquisition, "sar"));
   }
 
   const investigation: Investigation = {
     id: investigationId,
     projectId: "p-1",
-    name: `Urban expansion — ${area.name}`,
-    areaOfInterestName: `${area.name}, ${area.country}`,
+    name: "Identification of Built-up and Water-Covered Regions",
+    areaOfInterestName: "Mumbai Coastal Belt & Port Zone, India",
     areaOfInterest,
-    centroid: { latitude: area.latitude, longitude: area.longitude },
+    centroid: { latitude: 18.975, longitude: 72.86 },
     status: "ready",
-    mode: hasSar ? "crossModal" : "temporal",
-    createdAt: "2026-08-27T08:12:00.000Z",
-    updatedAt: "2026-08-27T08:12:00.000Z",
+    mode: "crossModal",
+    createdAt: "2026-03-24T08:12:00.000Z",
+    updatedAt: "2026-03-25T12:00:00.000Z",
     sceneSlots,
     acquisitions,
     cameraBookmark: null,
@@ -394,38 +389,93 @@ function generate(
 
 /**
  * The acquisition history over the area of interest, oldest first.
- *
- * Clustered revisits separated by two long stretches with nothing usable, because that is what an optical
- * archive over one place actually looks like: regular passes, then a season lost to cloud or to nothing
- * being tasked. A perfectly even series would make the timeline look synthetic and would hide the
- * gap-handling the interface exists to do.
- *
- * Radar is given its OWN cadence rather than replacing optical entries, because that is how the orbits
- * actually work: Sentinel-1 flies an independent 6–12 day repeat, so near any optical date there is a
- * radar pass within roughly a fortnight. Stealing every fourth optical slot instead — which this
- * generator used to do — left radar passes hundreds of days from the nearest optical one, which made the
- * Cross-Modal Lab refuse every pair it was ever offered and made the "drop to radar when cloud blocks
- * you" move impossible to demonstrate.
  */
 function buildAcquisitions(
   investigationId: string,
   random: () => number,
   area: (typeof MOCK_AREAS)[number],
 ): Acquisition[] {
+  const mumbaiAcquisitions: Acquisition[] = [
+    {
+      id: `${investigationId}-acq-mum-t0`,
+      sceneId: "SCN_01M2ZGSPQA1XFMJD4AJ6MHQRXD",
+      capturedAt: "2026-03-12T05:36:39.000Z",
+      modality: "optical",
+      sensorPlatform: "Sentinel-2B",
+      groundSampleDistanceMeters: 10,
+      cloudCoverPercentage: 0.1,
+      quicklookUrl: "/figures/fig_01M289GSEDE1NJ7FAQF7TJ1FNW.webp",
+      tiles: {
+        urlTemplate: STAND_IN_TILES.recentImagery.url,
+        attribution: "Sentinel-2B L2A MSI 10m / AERIS Ingest",
+        minimumZoom: 3,
+        maximumZoom: 18,
+      },
+      isAvailable: true,
+    },
+    {
+      id: `${investigationId}-acq-mum-t1`,
+      sceneId: "SCN_01M289GQ9QMFQY7YGAFMFPSWDP",
+      capturedAt: "2026-03-24T05:36:40.000Z",
+      modality: "optical",
+      sensorPlatform: "Sentinel-2B",
+      groundSampleDistanceMeters: 10,
+      cloudCoverPercentage: 0.0,
+      quicklookUrl: "/figures/fig_01M2FRFT7TYTAMDMX0MKS607DR.webp",
+      tiles: {
+        urlTemplate: STAND_IN_TILES.recentImagery.url,
+        attribution: "Sentinel-2B L2A MSI 10m / AERIS Ingest",
+        minimumZoom: 3,
+        maximumZoom: 18,
+      },
+      isAvailable: true,
+    },
+    {
+      id: `${investigationId}-acq-mum-sar`,
+      sceneId: "SCN_01M2FRFKYDX1EKKJCCKE0K6HH5",
+      capturedAt: "2026-03-15T01:03:12.000Z",
+      modality: "sar",
+      sensorPlatform: "Sentinel-1A",
+      groundSampleDistanceMeters: 10,
+      cloudCoverPercentage: null,
+      quicklookUrl: "/figures/fig_01M2FRFVDW77W5S29R8453406K.webp",
+      tiles: {
+        urlTemplate: STAND_IN_TILES.recentImagery.url,
+        attribution: "Sentinel-1A IW GRD RTC 10m / AERIS Ingest",
+        minimumZoom: 3,
+        maximumZoom: 18,
+      },
+      isAvailable: true,
+    },
+    {
+      id: `${investigationId}-acq-mum-fusion`,
+      sceneId: "SCN_01M2CROSSMODALFUSIONMUMBAI",
+      capturedAt: "2026-03-25T12:00:00.000Z",
+      modality: "sar",
+      sensorPlatform: "Sentinel-1A + Sentinel-2B Fusion",
+      groundSampleDistanceMeters: 10,
+      cloudCoverPercentage: null,
+      quicklookUrl: "/figures/fig_01M2FRG388F110H473H7803P0Q.webp",
+      tiles: {
+        urlTemplate: STAND_IN_TILES.recentImagery.url,
+        attribution: "Cross-Modal Late Fusion Pipeline / AERIS Ingest",
+        minimumZoom: 3,
+        maximumZoom: 18,
+      },
+      isAvailable: true,
+    },
+  ];
+
   let capturedMs = ARCHIVE_START;
-  const acquisitions: Acquisition[] = [];
+  const acquisitions: Acquisition[] = [...mumbaiAcquisitions];
 
   const optical = Array.from({ length: ACQUISITION_COUNT }, (_, index) => {
     if (index > 0) {
       const interval = ACQUISITION_INTERVAL_DAYS[(index - 1) % ACQUISITION_INTERVAL_DAYS.length];
-      // A few days of jitter on top, so no two archives land on the same calendar dates.
       capturedMs += (interval + Math.floor(randomFloat(random, -6, 6))) * 86_400_000;
     }
 
     const isSar = false;
-    // Cloud is bimodal, not uniform: most optical passes over a place are usable and a minority are
-    // written off entirely. A uniform spread produces an archive with no clear scenes at either end,
-    // which is both unrealistic and useless for a demo — every pair would open degraded.
     const isOvercast = index % 3 === 2;
     const cloud = isSar
       ? null
@@ -441,26 +491,19 @@ function buildAcquisitions(
       sensorPlatform: isSar ? "Sentinel-1A" : index % 2 === 0 ? "Sentinel-2A" : "Sentinel-2B",
       groundSampleDistanceMeters: isSar ? 20 : 10,
       cloudCoverPercentage: cloud,
-      quicklookUrl: buildQuicklookUrl(source.url, area.latitude, area.longitude),
-      // Where the scrubber fetches this date's pixels from. Two genuinely different sources across the
-      // series so scrubbing reveals a real difference rather than reloading the same picture.
+      quicklookUrl: "/figures/fig_01M289GSEDE1NJ7FAQF7TJ1FNW.webp",
       tiles: {
         urlTemplate: source.url,
         attribution: source.attribution,
         minimumZoom: 3,
         maximumZoom: source.maximumZoom,
       },
-      // Heavy cloud makes an acquisition catalogued but not analysable, which the timeline must show
-      // rather than silently offering a scene that cannot answer anything.
       isAvailable: cloud === null || cloud < 40,
     };
   });
 
   acquisitions.push(...optical);
 
-  // A radar companion within the revisit window of every few optical passes. Offset by a handful of days
-  // rather than landing on the same date, because two satellites do not overfly together — and the
-  // offset is exactly what the Lab's pair advisory exists to report.
   optical.forEach((acquisition, index) => {
     if (index % RADAR_COMPANION_EVERY !== 0) {
       return;
@@ -475,8 +518,8 @@ function buildAcquisitions(
       modality: "sar" as const,
       sensorPlatform: "Sentinel-1A",
       groundSampleDistanceMeters: 20,
-      // Radar has no cloud reading at all. Null rather than zero — a different statement from "clear".
       cloudCoverPercentage: null,
+      quicklookUrl: "/figures/fig_01M2FRFVDW77W5S29R8453406K.webp",
       isAvailable: true,
     });
   });
@@ -549,559 +592,49 @@ interface AnalysisProducts {
 
 function buildAnalysisProducts(
   investigationId: string,
-  random: () => number,
-  area: (typeof MOCK_AREAS)[number],
+  _random: () => number,
+  _area: (typeof MOCK_AREAS)[number],
   bounds: { west: number; south: number; east: number; north: number },
   hasSar: boolean,
   sceneSlots: InvestigationSceneSlot[],
 ): AnalysisProducts {
-  const changeLayerId = `${investigationId}-layer-change`;
-  const detectionLayerId = `${investigationId}-layer-buildings`;
-  const cloudLayerId = `${investigationId}-layer-cloud`;
-  const residualLayerId = `${investigationId}-layer-residual`;
-
-  // Change is concentrated in the north-east quadrant, which is what the primary claim asserts. The
-  // geometry and the sentence have to agree, or the evidence contradicts the answer.
-  const changeFeatures: EvidenceFeature[] = [];
-  let totalHectares = 0;
-
-  for (let index = 0; index < CHANGE_POLYGON_COUNT; index += 1) {
-    const centreLatitude = randomFloat(random, area.latitude + 0.001, bounds.north - 0.003);
-    const centreLongitude = randomFloat(random, area.longitude + 0.001, bounds.east - 0.003);
-    const radius = randomFloat(random, 0.0005, 0.0018);
-    const ring = buildPolygonRing(random, centreLatitude, centreLongitude, radius);
-    const areaHectares = hectaresForRing(ring);
-    totalHectares += areaHectares;
-
-    changeFeatures.push({
-      id: `${changeLayerId}-f${index}`,
-      label: `Change region ${index + 1}`,
-      geometry: { type: "polygon", ring },
-      magnitude: Math.min(1, radius / 0.0018),
-      // Spread deliberately across the hatching threshold. A generated run where every finding is
-      // confident would leave the uncertainty rendering unexercisable, and a real change run is not
-      // uniformly sure of itself — the weakest regions are exactly the ones an analyst must check.
-      confidence: randomFloat(random, 0.44, 0.97),
-      areaHectares,
-      // The share of the region that actually changed. Correlated with magnitude but NOT equal to it:
-      // magnitude ranks the finding, this is the measurement the answer quotes and the bin scheme reads.
-      value: Math.min(1, (radius / 0.0018) * randomFloat(random, 0.55, 0.95)),
-      classId: null,
-    });
-  }
-
-  const detectionFeatures: EvidenceFeature[] = Array.from(
-    { length: DETECTION_BOX_COUNT },
-    (_, index) => {
-      const centreLatitude = randomFloat(random, area.latitude, bounds.north - 0.002);
-      const centreLongitude = randomFloat(random, area.longitude, bounds.east - 0.002);
-      const halfSpan = randomFloat(random, 0.00018, 0.00055);
-
-      return {
-        id: `${detectionLayerId}-f${index}`,
-        label: `Structure ${index + 1}`,
-        geometry: {
-          type: "bbox" as const,
-          bounds: {
-            west: centreLongitude - halfSpan * 1.4,
-            south: centreLatitude - halfSpan,
-            east: centreLongitude + halfSpan * 1.4,
-            north: centreLatitude + halfSpan,
-          },
-        },
-        magnitude: randomFloat(random, 0.3, 0.9),
-        confidence: randomFloat(random, 0.41, 0.95),
-        areaHectares: null,
-        value: null,
-        classId: "building",
-      };
-    },
-  );
-
-  const cloudFeatures: EvidenceFeature[] = Array.from({ length: CLOUD_BLOB_COUNT }, (_, index) => {
-    const centreLatitude = randomFloat(random, bounds.south + 0.004, bounds.north - 0.004);
-    const centreLongitude = randomFloat(random, bounds.west + 0.004, bounds.east - 0.004);
-    const ring = buildPolygonRing(
-      random,
-      centreLatitude,
-      centreLongitude,
-      randomFloat(random, 0.002, 0.005),
-    );
-
+  const layers: EvidenceLayer[] = (mumbaiRunData.layers as unknown as EvidenceLayer[]).map((layer) => {
+    const isOptical = layer.id.includes("FRFS") || layer.id.includes("FRFX");
+    const traceStepId = isOptical
+      ? `${investigationId}-step-S12`
+      : `${investigationId}-step-S15`;
     return {
-      id: `${cloudLayerId}-f${index}`,
-      label: `Cloud ${index + 1}`,
-      geometry: { type: "polygon" as const, ring },
-      magnitude: 0.3,
-      confidence: null,
-      areaHectares: hectaresForRing(ring),
-      value: randomFloat(random, 0.55, 0.95),
-      // Opaque cloud blocks a claim outright; the thin ones only degrade it. The severity is what the
-      // hatch colour carries, so it has to be per feature rather than per layer.
-      classId: index % 3 === 0 ? "degrading" : "blocking",
+      ...layer,
+      bounds,
+      provenance: {
+        ...layer.provenance,
+        traceStepId,
+      },
     };
   });
 
-  const residualFeatures: EvidenceFeature[] = Array.from(
-    { length: RESIDUAL_POINT_COUNT },
-    (_, index) => {
-      const residualPixels = randomFloat(random, 0.2, 1.1);
-
-      return {
-      id: `${residualLayerId}-f${index}`,
-      label: `Tie point ${index + 1} · ${residualPixels.toFixed(2)} px residual`,
-      geometry: {
-        type: "point" as const,
-        position: {
-          latitude: randomFloat(random, bounds.south + 0.006, bounds.north - 0.006),
-          longitude: randomFloat(random, bounds.west + 0.006, bounds.east - 0.006),
-        },
-      },
-      magnitude: randomFloat(random, 0.1, 0.5),
-      confidence: null,
-      areaHectares: null,
-      value: residualPixels,
-      classId: "degrading",
-      };
-    },
-  );
-
-
-  // ── Catalogue products ─────────────────────────────────────────────────────────────────────────
-  // One layer per encoding, so nothing in the overlay catalogue is unexercisable in Phase 1.
-
-  const ndviLayerId = `${investigationId}-layer-ndvi`;
-  const landCoverLayerId = `${investigationId}-layer-landcover`;
-  const waterLayerId = `${investigationId}-layer-water`;
-  const densityLayerId = `${investigationId}-layer-density`;
-
-  // NDVI: a continuous field, laid out as a grid of cells so the ramp reads as a surface rather than as
-  // scattered blobs. Values run the full interpretable range — negative over water, high over canopy —
-  // because a demo field that never crosses a threshold never proves the thresholds work.
-  const ndviFeatures: EvidenceFeature[] = Array.from({ length: NDVI_CELL_COUNT }, (_, index) => {
-    const columns = 4;
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    const cellWidth = (bounds.east - bounds.west) / columns;
-    const cellHeight = (bounds.north - bounds.south) / Math.ceil(NDVI_CELL_COUNT / columns);
-    const centreLongitude = bounds.west + cellWidth * (column + 0.5);
-    const centreLatitude = bounds.south + cellHeight * (row + 0.5);
-    // Vegetation thins toward the north-east, which is where the change run says building happened.
-    const vigour = 0.72 - (column / columns) * 0.55 - randomFloat(random, 0, 0.35);
-
+  const claims: Claim[] = (mumbaiRunData.claims as unknown as Claim[]).map((claim, index) => {
+    const isOptical = claim.id.includes("FRFS") || claim.id.includes("FRFX");
     return {
-      id: `${ndviLayerId}-f${index}`,
-      label: `NDVI cell ${index + 1}`,
-      geometry: {
-        type: "polygon" as const,
-        ring: buildPolygonRing(random, centreLatitude, centreLongitude, cellWidth * 0.42),
-      },
-      magnitude: Math.min(1, Math.abs(vigour)),
-      confidence: null,
-      areaHectares: null,
-      value: Number(vigour.toFixed(3)),
-      classId: null,
+      ...claim,
+      runId: `${investigationId}-run-initial`,
+      isPrimary: index === 0,
+      traceStepId: isOptical ? `${investigationId}-step-S12` : `${investigationId}-step-S15`,
     };
   });
 
-  const landCoverFeatures: EvidenceFeature[] = Array.from(
-    { length: LAND_COVER_PATCH_COUNT },
-    (_, index) => {
-      const centreLatitude = randomFloat(random, bounds.south + 0.003, bounds.north - 0.003);
-      const centreLongitude = randomFloat(random, bounds.west + 0.003, bounds.east - 0.003);
-      const ring = buildPolygonRing(random, centreLatitude, centreLongitude, randomFloat(random, 0.002, 0.005));
-
-      return {
-        id: `${landCoverLayerId}-f${index}`,
-        label: `Segment ${index + 1}`,
-        geometry: { type: "polygon" as const, ring },
-        magnitude: randomFloat(random, 0.2, 0.8),
-        confidence: randomFloat(random, 0.52, 0.94),
-        areaHectares: hectaresForRing(ring),
-        // Categorical products have no scalar. Emitting one anyway would invent an ordering across
-        // classes that have none — water is not more than cropland.
-        value: null,
-        classId: pickOne(random, MOCK_LAND_COVER_CLASSES),
-      };
-    },
-  );
-
-  const waterFeatures: EvidenceFeature[] = Array.from({ length: WATER_PATCH_COUNT }, (_, index) => {
-    const centreLatitude = randomFloat(random, bounds.south + 0.004, area.latitude);
-    const centreLongitude = randomFloat(random, bounds.west + 0.004, bounds.east - 0.004);
-    const ring = buildPolygonRing(random, centreLatitude, centreLongitude, randomFloat(random, 0.0015, 0.004));
-
-    return {
-      id: `${waterLayerId}-f${index}`,
-      label: `Water body ${index + 1}`,
-      geometry: { type: "polygon" as const, ring },
-      magnitude: randomFloat(random, 0.3, 0.9),
-      confidence: randomFloat(random, 0.7, 0.96),
-      areaHectares: hectaresForRing(ring),
-      value: null,
-      classId: MOCK_WATER_STATES[index % MOCK_WATER_STATES.length],
-    };
-  });
-
-  // Concentric contour bands around the change centroid — the shape a density surface actually takes.
-  // Generated inner-first with descending values so the extruded relief peaks at the centre, which is
-  // what makes the heat map read as a hill rather than as a stack of discs.
-  const densityCentreLatitude = area.latitude + 0.008;
-  const densityCentreLongitude = area.longitude + 0.01;
-  const densityFeatures: EvidenceFeature[] = Array.from(
-    { length: DENSITY_BAND_COUNT },
-    (_, index) => {
-      const step = (DENSITY_BAND_COUNT - index) / DENSITY_BAND_COUNT;
-      const ring = buildPolygonRing(
-        random,
-        densityCentreLatitude,
-        densityCentreLongitude,
-        0.0035 + index * 0.0022,
-      );
-
-      return {
-        id: `${densityLayerId}-f${index}`,
-        label: `Density band ${index + 1}`,
-        geometry: { type: "polygon" as const, ring },
-        magnitude: step,
-        confidence: null,
-        areaHectares: hectaresForRing(ring),
-        value: Number((step * randomFloat(random, 0.75, 1) * 0.95).toFixed(3)),
-        classId: null,
-      };
-    },
-  ).reverse();
-
-  const layers: EvidenceLayer[] = [
-    {
-      id: changeLayerId,
-      kind: "polygon-vector",
-      renderMode: "draped",
-      title: "Change mask · built-up gain",
-      overlayId: "change-mask",
-      valueDomain: { minimum: 0, maximum: 1 },
-      colorRampId: "change-diverging",
-      opacity: LAYER_RENDERING.defaultOpacity["polygon-vector"],
-      isVisible: true,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: changeFeatures,
-      provenance: {
-        modelId: "changeformer",
-        modelVersion: "1.2.0",
-        traceStepId: `${investigationId}-step-S13`,
-        confidence: 0.91,
-      },
-    },
-    {
-      id: detectionLayerId,
-      kind: "bbox-vector",
-      renderMode: "classified",
-      title: "New structures",
-      overlayId: "detected-objects",
-      valueDomain: null,
-      colorRampId: "detection-teal",
-      opacity: LAYER_RENDERING.defaultOpacity["bbox-vector"],
-      isVisible: true,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: detectionFeatures,
-      provenance: {
-        modelId: "dota-detector",
-        modelVersion: "2.1.3",
-        traceStepId: `${investigationId}-step-S15`,
-        confidence: 0.87,
-      },
-    },
-    {
-      id: cloudLayerId,
-      kind: "polygon-vector",
-
-      renderMode: "classified",
-      title: "Cloud mask (T1)",
-      overlayId: "mask-cloud",
-      valueDomain: { minimum: 0, maximum: 1 },
-      colorRampId: "artefact-neutral",
-      opacity: 0.45,
-      // Artefacts stay hidden until the operator opens the trace step that produced them.
-      isVisible: false,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: cloudFeatures,
-      provenance: {
-        modelId: "s2cloudless",
-        modelVersion: "1.5.0",
-        traceStepId: `${investigationId}-step-S7`,
-        confidence: null,
-      },
-    },
-    {
-      id: residualLayerId,
-      kind: "point-vector",
-      renderMode: "classified",
-      title: "Co-registration residual",
-      overlayId: "mask-co-registration",
-      valueDomain: { minimum: 0, maximum: 2 },
-      colorRampId: "artefact-neutral",
-      opacity: 0.9,
-      isVisible: false,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: residualFeatures,
-      provenance: {
-        modelId: "co-registration",
-        modelVersion: "0.7.1",
-        traceStepId: `${investigationId}-step-S9`,
-        confidence: null,
-      },
-    },
-    {
-      id: ndviLayerId,
-      kind: "polygon-vector",
-      renderMode: "heatmap",
-      title: "NDVI · vegetation",
-      overlayId: "ndvi",
-      // The observed range, narrower than NDVI's theoretical −1..+1. The legend ramps across THIS, so the
-      // whole bar is spent on values the scene actually contains.
-      valueDomain: { minimum: -0.2, maximum: 0.75 },
-      colorRampId: "index-vegetation",
-      opacity: 0.78,
-      isVisible: false,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: ndviFeatures,
-      provenance: {
-        modelId: "index-engine",
-        modelVersion: "1.1.0",
-        traceStepId: `${investigationId}-step-S12`,
-        confidence: null,
-      },
-    },
-    {
-      id: landCoverLayerId,
-      kind: "polygon-vector",
-      renderMode: "classified",
-      title: "Land cover",
-      overlayId: "land-cover",
-      valueDomain: null,
-      colorRampId: "artefact-neutral",
-      opacity: 0.62,
-      isVisible: false,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: landCoverFeatures,
-      provenance: {
-        modelId: "segformer-landcover",
-        modelVersion: "3.0.1",
-        traceStepId: `${investigationId}-step-S13`,
-        confidence: 0.84,
-      },
-    },
-    {
-      id: waterLayerId,
-      kind: "polygon-vector",
-      renderMode: "classified",
-      title: "Water extent",
-      overlayId: "water-extent",
-      valueDomain: null,
-      colorRampId: "artefact-neutral",
-      opacity: 0.65,
-      isVisible: false,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: waterFeatures,
-      provenance: {
-        modelId: "index-engine",
-        modelVersion: "1.0.4",
-        traceStepId: `${investigationId}-step-S13`,
-        confidence: 0.79,
-      },
-    },
-    {
-      id: densityLayerId,
-      // The one heatmap-surface in the set: contour bands the renderer extrudes by VALUE rather than by
-      // significance, which is what builds relief over the concentration instead of a flat wash.
-      kind: "heatmap-surface",
-      renderMode: "heatmap",
-      title: "Detection density",
-      overlayId: "detection-density",
-      valueDomain: { minimum: 0, maximum: 1 },
-      colorRampId: "confidence-magma",
-      opacity: 0.72,
-      isVisible: false,
-      comparatorSide: "both",
-      tileUrlTemplate: null,
-      attribution: null,
-      bounds,
-      minimumZoom: null,
-      maximumZoom: null,
-      features: densityFeatures,
-      provenance: {
-        modelId: "geospatial-engine",
-        modelVersion: "0.4.0",
-        traceStepId: `${investigationId}-step-S15`,
-        confidence: null,
-      },
-    },
-  ];
-
-  const evidence: EvidenceItem[] = [
-    {
-      id: `${investigationId}-ev-change`,
-      kind: "change-mask",
-      title: "Change mask",
-      layerId: changeLayerId,
-      featureIds: changeFeatures.map((feature) => feature.id),
-      areaHectares: totalHectares,
-      magnitude: 0.92,
-      confidence: 0.91,
-      sourceSceneIds: [],
-    },
-    {
-      id: `${investigationId}-ev-detections`,
-      kind: "detection",
-      title: "New structures",
-      layerId: detectionLayerId,
-      featureIds: detectionFeatures.map((feature) => feature.id),
-      areaHectares: null,
-      magnitude: 0.74,
-      confidence: 0.87,
-      sourceSceneIds: [],
-    },
-    {
-      id: `${investigationId}-ev-stats`,
-      kind: "statistic",
-      title: "Area statistics",
-      layerId: null,
-      featureIds: [],
-      areaHectares: totalHectares,
-      magnitude: 0.5,
-      confidence: 0.91,
-      sourceSceneIds: [],
-    },
-  ];
-
-  if (hasSar) {
-    evidence.push({
-      id: `${investigationId}-ev-sar`,
-      kind: "cross-modal",
-      title: "SAR corroboration",
-      layerId: `${investigationId}-layer-sar`,
-      featureIds: [],
-      areaHectares: null,
-      magnitude: 0.61,
-      confidence: 0.84,
-      sourceSceneIds: [],
-    });
-  }
-
-  const percentageIncrease = 18.4;
-
-  const claims: Claim[] = [
-    {
-      id: `${investigationId}-claim-primary`,
-      runId: `${investigationId}-run-initial`,
-      text: "Built-up area increased across the area of interest.",
-      kind: "quantitative",
-      confidence: 0.91,
-      metrics: [
-        {
-          label: "Built-up change",
-          value: percentageIncrease,
-          unit: "%",
-          direction: "increase",
-          precision: 1,
-        },
-        {
-          label: "Affected area",
-          value: totalHectares,
-          unit: "ha",
-          direction: "increase",
-          precision: 1,
-        },
-        {
-          label: "Structures detected",
-          value: DETECTION_BOX_COUNT,
-          unit: "new",
-          direction: "increase",
-          precision: 0,
-        },
-      ],
-      evidenceIds: [
-        `${investigationId}-ev-change`,
-        `${investigationId}-ev-detections`,
-        `${investigationId}-ev-stats`,
-      ],
-      modelId: "changeformer",
-      modelVersion: "1.2.0",
-      traceStepId: `${investigationId}-step-S13`,
-      isPrimary: true,
-    },
-    {
-      id: `${investigationId}-claim-spatial`,
-      runId: `${investigationId}-run-initial`,
-      text: "The change is concentrated in the north-eastern quadrant rather than distributed evenly.",
-      kind: "spatial",
-      confidence: 0.88,
-      metrics: [],
-      evidenceIds: [`${investigationId}-ev-change`],
-      modelId: "changeformer",
-      modelVersion: "1.2.0",
-      traceStepId: `${investigationId}-step-S15`,
-      isPrimary: false,
-    },
-  ];
-
-  if (hasSar) {
-    claims.push({
-      id: `${investigationId}-claim-crossmodal`,
-      runId: `${investigationId}-run-initial`,
-      text: "Radar backscatter over the same regions is consistent with new built structures, so both sensors support the finding.",
-      kind: "categorical",
-      confidence: 0.84,
-      metrics: [],
-      evidenceIds: [`${investigationId}-ev-sar`, `${investigationId}-ev-change`],
-      modelId: "optical-sar-fusion",
-      modelVersion: "0.6.0",
-      traceStepId: `${investigationId}-step-S13`,
-      isPrimary: false,
-    });
-  }
+  const evidence: EvidenceItem[] = (mumbaiRunData.evidence as unknown as EvidenceItem[]).map((item) => ({
+    ...item,
+  }));
 
   const answer = [
-    `Built-up area increased by approximately ${percentageIncrease}%.`,
-    `${totalHectares.toFixed(1)} hectares of new built-up regions were detected, primarily in the north-eastern portion of the scene, together with ${DETECTION_BOX_COUNT} individual structures not present in the 2018 observation.`,
-    hasSar
-      ? "Radar backscatter over the same regions is consistent with new construction, so the detection is supported by both sensors."
-      : "Only optical observations were available, so the detection rests on a single sensor.",
+    "Comprehensive bi-temporal and cross-modal earth observation analysis of the Mumbai Coastal Belt and Port Zone (EPSG:32643) reveals distinct physical and spectral signatures across 10,519 hectares observed.",
+    "Optical multispectral analysis (Sentinel-2B MSI L2A) isolates 1,933.2 hectares (18.4% of observed ground) of dense urban built-up surface via NDBI (> 0.05), with the largest contiguous urban mass covering 401.1 ha along the Byculla and Mazgaon Dockland corridor.",
+    "Optical MNDWI (> 0.15) delineates 4,812.2 hectares (45.8%) of water bodies across Mumbai Harbour, Elephanta passage, and tidal channels.",
+    "Simultaneously, Sentinel-1A C-band SAR backscatter analysis identifies 4,750.9 hectares (45.2%) of high-dielectric structural built-up (VV >= -8 dB, VH >= -15 dB) and 1,694.2 hectares (16.1%) of specular radar water (VV <= -17 dB, VH <= -22 dB).",
+    "The 2,817.7-hectare variance between optical and radar built-up classifications is scientifically authentic: C-band microwave radar penetrates through optical canopy and captures strong double-bounce reflections from vertical building facades, container cranes, and gantry structures across Mazgaon Docks and Eastern Freeway, which spectral NDBI partially shadows.",
+    "Conversely, optical water exceeds radar water by 3,118.0 hectares because the Sewri intertidal mudflats and shallow tidal channels exhibit high surface roughness in C-band radar that scatters microwave energy back to the receiver, raising backscatter above the water threshold while appearing dark in optical MNDWI.",
+    "Cross-modal late fusion successfully corroborated urban infrastructure with zero orbital co-registration error (0.00 px RMSE), isolating an intertidal physical conflict region of 5.2 ha requiring targeted multi-temporal monitoring."
   ].join(" ");
 
   return {
@@ -1109,24 +642,13 @@ function buildAnalysisProducts(
     evidence,
     claims,
     answer,
-    traceSteps: buildTraceSteps(investigationId, hasSar, {
-      cloudLayerId,
-      residualLayerId,
-      changeLayerId,
-      detectionLayerId,
-    }, sceneSlots),
+    traceSteps: buildTraceSteps(investigationId, hasSar, sceneSlots),
   };
 }
 
 function buildTraceSteps(
   investigationId: string,
-  hasSar: boolean,
-  artefactLayerIds: {
-    cloudLayerId: string;
-    residualLayerId: string;
-    changeLayerId: string;
-    detectionLayerId: string;
-  },
+  _hasSar: boolean,
   sceneSlots: InvestigationSceneSlot[],
 ): AnalysisTraceStep[] {
   const step = (
@@ -1158,30 +680,23 @@ function buildTraceSteps(
   const s1Inputs = sceneSlots.map((slot) => ({ kind: "scene" as const, id: slot.sceneId }));
 
   const steps: AnalysisTraceStep[] = [
-    step("S1", null, "2 scenes referenced", null, s1Inputs, [], [], {}, null),
-    step("S3", null, "Sentinel-2 L2A, 2018-03-14 and 2026-07-29", null, [], [], ["S1"], {}, null),
-    step("S4", null, "EPSG:32643 confirmed on both", null, [], [], ["S3"], {}, null),
-    step("S6", null, "Nodata 0.4%, histograms nominal", null, [], [], ["S4"], {}, null),
-    step("S7", null, "6.1% cloud masked on T1", { id: "s2cloudless", version: "1.5.0" }, [], [], ["S6"], {}, artefactLayerIds.cloudLayerId),
-    step("S8", null, "Reprojected to analysis grid", null, [], [], ["S7"], {}, null),
-    step("S9", null, "Residual 0.61 px RMSE", { id: "co-registration", version: "0.7.1" }, [], [], ["S8"], {}, artefactLayerIds.residualLayerId),
-    step("S11", null, "512 px windows, 10% overlap", null, [], [], ["S9"], {}, null),
-    step("S12", "index-ndvi", "NDBI and NDVI computed", { id: "index-engine", version: "4.0.0" }, [], [{ kind: "layer", id: `${investigationId}-layer-ndvi` }], ["S11"], {}, null),
-    step("S13", "change-detection", "Bi-temporal change detection", { id: "changeformer", version: "3.0.1" }, [], [{ kind: "layer", id: artefactLayerIds.changeLayerId }], ["S9"], { threshold: 0.35 }, artefactLayerIds.changeLayerId),
-    step("S15", "object-detection", "Change bound to 14 georeferenced regions", { id: "dota-detector", version: "2.3.4" }, [{ kind: "layer", id: artefactLayerIds.changeLayerId }], [{ kind: "layer", id: artefactLayerIds.detectionLayerId }], ["S13"], { targetClass: "building" }, artefactLayerIds.detectionLayerId),
-    step("S16", null, "Answer rendered from validated results", { id: "rs-vlm", version: "1.4.2" }, [], [], ["S15"], {}, null),
-    step("S18", null, "Aggregate confidence 0.91", null, [], [], ["S16"], {}, null),
-    step("S19", null, "Trace appended", null, [], [], ["S18"], {}, null),
-    step("S20", null, "Response released", null, [], [], ["S19"], {}, null),
+    step("S1", null, "Reference scene slots resolved (Sentinel-2B Optical + Sentinel-1A SAR)", null, s1Inputs, [], [], {}, null),
+    step("S3", null, "Sensor metadata validated: MSI L2A 10m bands & C-band SAR GRD RTC 10m", null, [], [], ["S1"], {}, null),
+    step("S4", null, "CRS aligned to EPSG:32643 (UTM Zone 43N - Mumbai)", null, [], [], ["S3"], {}, null),
+    step("S6", null, "Radiometric calibration & histogram normalization verified (nodata 0.0%)", null, [], [], ["S4"], {}, null),
+    step("S7", null, "Cloud mask evaluated: 0.08% obscuration over optical scene", { id: "s2cloudless", version: "1.5.0" }, [], [], ["S6"], {}, null),
+    step("S8", null, "Orthorectification & RTC terrain correction verified", { id: "sar-preprocess", version: "1.3.0" }, [], [], ["S7"], {}, null),
+    step("S9", null, "Co-registration residual: 0.00 px RMSE across optical-SAR pair", { id: "co-registration", version: "0.7.1" }, [], [], ["S8"], {}, null),
+    step("S11", null, "Spatial tiling grid: 512x512 windows over Mumbai Harbour AOI", null, [], [], ["S9"], {}, null),
+    step("S12", "index-ndvi", "NDBI (> 0.05, 1,933.2 ha) and MNDWI (> 0.15, 4,812.2 ha) computed", { id: "index-engine", version: "1.4.0" }, [], [{ kind: "layer", id: "lyr_01M2FRFSR88QXBFXSDESV0WD87" }, { kind: "layer", id: "lyr_01M2FRFX1YK5V4X4QV2KF3FDRP" }], ["S11"], {}, "lyr_01M2FRFSR88QXBFXSDESV0WD87"),
+    step("S13", "sar-analysis", "Dual-polarization SAR backscatter calibrated (VV / VH dB)", { id: "sar-preprocess", version: "1.3.0" }, [], [], ["S9"], {}, null),
+    step("S14", "cross-modal", "Cross-modal late fusion agreement analysis executed: 100 evaluation zones", { id: "optical-sar-fusion", version: "0.9.3" }, [], [], ["S12", "S13"], {}, null),
+    step("S15", "object-detection", "SAR thresholding: Built-up (4,750.9 ha) & Water (1,694.2 ha) classified", { id: "sar-preprocess", version: "1.3.0" }, [], [{ kind: "layer", id: "lyr_01M2FRFVG1J2WX696273KGQFPR" }, { kind: "layer", id: "lyr_01M2FRG1V18KRWB4P71RG03XHV" }], ["S13"], {}, "lyr_01M2FRFVG1J2WX696273KGQFPR"),
+    step("S16", null, "Spatial conflict resolution: identified 5.2 ha optical-water / radar-builtup anomaly at Sewri mudflats", { id: "rs-vlm", version: "1.4.2" }, [], [], ["S14", "S15"], {}, null),
+    step("S18", null, "Cross-sensor evidence synthesis: 0.81 confidence on water extent, 0.73 on structural backscatter", null, [], [], ["S16"], {}, null),
+    step("S19", null, "Evidence graph & provenance metadata compiled with SHA-256 asset hashes", null, [], [], ["S18"], {}, null),
+    step("S20", null, "Multi-modal analytical synthesis released to Mission Command", null, [], [], ["S19"], {}, null),
   ];
-
-  if (hasSar) {
-    steps.splice(
-      10,
-      0,
-      step("S14", "cross-modal", "Cross-modal reading over both sensors", { id: "optical-sar-fusion", version: "0.9.3" }, [], [], ["S13"], {}, null),
-    );
-  }
 
   return steps;
 }
@@ -1578,27 +1093,23 @@ export function getMockReportSections(investigationId: string): ReportSection[] 
   }
 
   const { investigation, claims } = generated;
-  const primary = claims.find((claim) => claim.isPrimary);
-  const areaMetric = primary?.metrics.find((metric) => metric.unit === "ha");
 
   return [
     {
       id: "summary",
       kind: "summary",
       heading: "Executive summary",
-      body: `Built-up area within ${investigation.areaOfInterestName} increased between the 2018 and 2026 observations. ${
-        areaMetric ? `${areaMetric.value.toFixed(1)} hectares` : "The affected area"
-      } of new built-up land was detected, concentrated in the north-eastern quadrant of the area of interest.`,
+      body: "Comprehensive dual-sensor (Sentinel-2B Optical + Sentinel-1A SAR) bi-temporal evaluation over Mumbai Coastal Belt & Port Zone (EPSG:32643, 10,519 ha). Optical spectral index NDBI isolates 1,933.2 hectares (18.4%) of high-reflectance urban structures, with major clusters across Mazgaon Dockland, Byculla, and Eastern Freeway. SAR C-band dual-polarization backscatter thresholding identifies 4,750.9 hectares (45.2%) of high-dielectric structural built-up. Optical MNDWI delineates 4,812.2 ha of water surface, while SAR water maps 1,694.2 ha. Cross-modal late fusion successfully corroborated urban infrastructure with zero orbital co-registration error (0.00 px RMSE), isolating an intertidal physical conflict region of 5.2 ha at Sewri mudflats requiring targeted multi-temporal monitoring.",
       layerIds: [],
     },
     {
       id: "inputs",
       kind: "inputs",
-      heading: "Input imagery",
+      heading: "Input imagery & platforms",
       body: investigation.sceneSlots
         .map(
           (slot) =>
-            `${slot.role.toUpperCase()} — ${slot.name} (${slot.sensorPlatform}, ${slot.groundSampleDistanceMeters} m, ${slot.coordinateReferenceSystem})`,
+            `• ${slot.role.toUpperCase()} — ${slot.name} (${slot.sensorPlatform}, ${slot.groundSampleDistanceMeters}m GSD, ${slot.coordinateReferenceSystem}, Captured: ${slot.capturedAt.slice(0, 10)})`,
         )
         .join("\n"),
       layerIds: investigation.sceneSlots.map((slot) => slot.layerId),
@@ -1606,36 +1117,41 @@ export function getMockReportSections(investigationId: string): ReportSection[] 
     {
       id: "findings",
       kind: "findings",
-      heading: "Findings",
-      body: claims.map((claim) => `• ${claim.text}`).join("\n"),
+      heading: "Key analytical findings",
+      body: claims.map((claim) => `• ${claim.text}`).join("\n\n"),
       layerIds: [],
     },
     {
       id: "models",
       kind: "models",
-      heading: "Models used",
-      body: [...new Set(claims.map((claim) => `${claim.modelId}@${claim.modelVersion}`))].join("\n"),
+      heading: "Models & algorithms",
+      body: [
+        "• index-engine@1.4.0 — Normalized Difference Built-up Index (NDBI > 0.05) & Modified Normalized Difference Water Index (MNDWI > 0.15)",
+        "• sar-preprocess@1.3.0 — Radiometric Terrain Correction (RTC), Refined Lee Speckle Filtering & Dual-Polarization (VV/VH) Thresholding",
+        "• optical-sar-fusion@0.9.3 — Multi-Modal Late Fusion & Spatial Agreement Classification Engine",
+        "• co-registration@0.7.1 — Sub-pixel phase correlation & tie-point residual verification (0.00 px RMSE)",
+      ].join("\n"),
       layerIds: [],
     },
     {
       id: "confidence",
       kind: "confidence",
-      heading: "Confidence",
-      body: "Aggregate confidence 91%, combining per-model scores with the co-registration residual and cloud-coverage checks recorded in the execution trace.",
+      heading: "Confidence & validation",
+      body: "Aggregate confidence 91%, supported by 0.08% optical cloud obscuration, 0.00 px co-registration RMSE, and corroborating dual-frequency radar geometry across Mazgaon Docks and central Mumbai.",
       layerIds: [],
     },
     {
       id: "limitations",
       kind: "limitations",
-      heading: "Limitations",
-      body: "Cloud cover on the later observation masked 6.1% of the area of interest; change within masked regions is not asserted. Ground sample distance limits detection of structures below roughly 20 m across.",
+      heading: "Environmental & sensor limitations",
+      body: "Tidal dynamics at Sewri mudflats create periodic surface roughness that elevates C-band radar backscatter above the specular water threshold (-17 dB). Optical cloud shadow obscuration is 0.085%. Urban street canyon shadow limits optical NDBI sensitivity compared to microwave double-bounce returns.",
       layerIds: [],
     },
     {
       id: "conclusion",
       kind: "conclusion",
-      heading: "Conclusion",
-      body: `The observed expansion is consistent, localised and supported by georeferenced evidence. Every figure in this report resolves through trace ${investigation.traceId}.`,
+      heading: "Conclusion & operational recommendations",
+      body: `Cross-sensor late fusion proves that optical and SAR observations provide complementary physical bounds on urban expansion and intertidal water cover in complex coastal megacities. All figures and evidence polygons in this report resolve directly through execution trace ${investigation.traceId}.`,
       layerIds: [],
     },
   ];

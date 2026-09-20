@@ -39,6 +39,101 @@ export function getImageryCatalogue(): ImageryScene[] {
   return cachedCatalogue;
 }
 
+const MUMBAI_CORE_SCENES: readonly ImageryScene[] = [
+  {
+    id: "SCN_01M2ZGSPQA1XFMJD4AJ6MHQRXD",
+    name: "Mumbai Coastal Belt · Sentinel-2B (T0 Optical Baseline)",
+    capturedAt: "2026-03-12T05:36:39.000Z",
+    ingestedAt: "2026-03-12T09:26:22.000Z",
+    modality: "optical",
+    sensorPlatform: "Sentinel-2B",
+    bandCount: 13,
+    groundSampleDistanceMeters: 10.0,
+    cloudCoverPercentage: 0.1,
+    coordinateReferenceSystem: "EPSG:32643",
+    boundingBox: {
+      west: 72.81855,
+      east: 72.90132,
+      south: 18.91907,
+      north: 19.03092,
+    },
+    centroid: { latitude: 18.975, longitude: 72.86 },
+    fileSizeBytes: 842 * 1_048_576,
+    processingState: "ready",
+    temporalRole: "t0",
+    thumbnailUrl: "/figures/fig_01M289GSEDE1NJ7FAQF7TJ1FNW.webp",
+  },
+  {
+    id: "SCN_01M289GQ9QMFQY7YGAFMFPSWDP",
+    name: "Mumbai Port & Urban Zone · Sentinel-2B (T1 Spectral & Built-up)",
+    capturedAt: "2026-03-24T05:36:40.000Z",
+    ingestedAt: "2026-03-24T08:15:00.000Z",
+    modality: "multispectral",
+    sensorPlatform: "Sentinel-2B",
+    bandCount: 13,
+    groundSampleDistanceMeters: 10.0,
+    cloudCoverPercentage: 0.0,
+    coordinateReferenceSystem: "EPSG:32643",
+    boundingBox: {
+      west: 72.81855,
+      east: 72.90132,
+      south: 18.91907,
+      north: 19.03092,
+    },
+    centroid: { latitude: 18.975, longitude: 72.86 },
+    fileSizeBytes: 915 * 1_048_576,
+    processingState: "ready",
+    temporalRole: "t1",
+    thumbnailUrl: "/figures/fig_01M2FRFT7TYTAMDMX0MKS607DR.webp",
+  },
+  {
+    id: "SCN_01M2FRFKYDX1EKKJCCKE0K6HH5",
+    name: "Mumbai Coastal Corridor · Sentinel-1A (SAR Radar Built-up)",
+    capturedAt: "2026-03-15T01:03:12.000Z",
+    ingestedAt: "2026-03-15T03:45:00.000Z",
+    modality: "sar",
+    sensorPlatform: "Sentinel-1A",
+    bandCount: 2,
+    groundSampleDistanceMeters: 10.0,
+    cloudCoverPercentage: null,
+    coordinateReferenceSystem: "EPSG:32643",
+    boundingBox: {
+      west: 72.81855,
+      east: 72.90132,
+      south: 18.91907,
+      north: 19.03092,
+    },
+    centroid: { latitude: 18.975, longitude: 72.86 },
+    fileSizeBytes: 624 * 1_048_576,
+    processingState: "ready",
+    temporalRole: "single",
+    thumbnailUrl: "/figures/fig_01M2FRFVMVM2K1QH2HR24224WX.webp",
+  },
+  {
+    id: "SCN_01M2CROSSMODALFUSIONMUMBAI",
+    name: "Mumbai Multi-Modal Synthesis · Sentinel-1A + 2B (Late Fusion)",
+    capturedAt: "2026-03-15T01:03:12.000Z",
+    ingestedAt: "2026-03-15T10:48:22.000Z",
+    modality: "sar",
+    sensorPlatform: "Sentinel-1A + Sentinel-2B",
+    bandCount: 4,
+    groundSampleDistanceMeters: 10.0,
+    cloudCoverPercentage: null,
+    coordinateReferenceSystem: "EPSG:32643",
+    boundingBox: {
+      west: 72.81855,
+      east: 72.90132,
+      south: 18.91907,
+      north: 19.03092,
+    },
+    centroid: { latitude: 18.975, longitude: 72.86 },
+    fileSizeBytes: 1240 * 1_048_576,
+    processingState: "ready",
+    temporalRole: "single",
+    thumbnailUrl: "/figures/fig_01M2FRG5Z9EF6NHSBQRM764NB4.webp",
+  },
+];
+
 function generateImageryCatalogue(sceneCount: number): ImageryScene[] {
   const random = createSeededRandom(CATALOGUE_SEED);
   const scenes: ImageryScene[] = [];
@@ -95,7 +190,7 @@ function generateImageryCatalogue(sceneCount: number): ImageryScene[] {
 
   // Newest first — the operator cares about recent acquisitions.
   scenes.sort((left, right) => Date.parse(right.capturedAt) - Date.parse(left.capturedAt));
-  return scenes;
+  return [...MUMBAI_CORE_SCENES, ...scenes];
 }
 
 export interface ImageryQuery {

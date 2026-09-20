@@ -21,11 +21,11 @@ import type { StreamRequestConfig } from "@/lib/streaming/stream-client";
 
 import { selectMockAnalysisScript } from "../data/investigation.data";
 
-const RUN_START_DELAY_MS = 120;
-const STEP_START_DELAY_MS = 90;
-const STEP_COMPLETE_DELAY_MS = 130;
-const TOKEN_DELAY_MS = 16;
-const TOKENS_PER_FRAME = 3;
+const RUN_START_DELAY_MS = 150;
+const STEP_START_DELAY_MS = 140;
+const STEP_COMPLETE_DELAY_MS = 220;
+const TOKEN_DELAY_MS = 20;
+const TOKENS_PER_FRAME = 2;
 
 export async function mockAnalysisStream({
   path,

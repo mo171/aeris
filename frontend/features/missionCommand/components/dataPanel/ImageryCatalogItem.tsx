@@ -93,6 +93,17 @@ export const ImageryCatalogItem = memo(function ImageryCatalogItem({
               {scene.sensorPlatform} · {formatCoordinates(scene.centroid.latitude, scene.centroid.longitude)}
             </span>
           </span>
+
+          {scene.thumbnailUrl ? (
+            <div className="size-9 shrink-0 overflow-hidden rounded border border-border-soft bg-surface-2 shadow-xs">
+              <img
+                src={scene.thumbnailUrl}
+                alt=""
+                className="size-full object-cover"
+                loading="lazy"
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-5.5">

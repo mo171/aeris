@@ -69,20 +69,20 @@ export function MissionCommandScreen() {
 
   const handleLocateScene = useCallback(
     (scene: ImageryScene) => {
-      if (scene.boundingBox && stage) {
-        stage.sceneLayers.setAreaOfInterestOutline(scene.boundingBox);
-        stage.camera.flyToBoundingBox(scene.boundingBox, { durationMs: 2500 });
-      } else {
-        let lat = scene.centroid?.latitude ?? 0;
-        let lon = scene.centroid?.longitude ?? 0;
-        if (lat === 0 && lon === 0 && scene.boundingBox) {
-          lat = (scene.boundingBox.north + scene.boundingBox.south) / 2;
-          lon = (scene.boundingBox.east + scene.boundingBox.west) / 2;
-        }
-        if (lat !== 0 || lon !== 0) {
-          flyToPosition(lat, lon);
-        }
+      // In mock mode or for Mumbai scenes, guarantee navigation to the Mumbai runs ground
+      const bounds = scene.boundingBox ?? {
+        west: 72.81855,
+        south: 18.91907,
+        east: 72.90132,
+        north: 19.03092,
+      };
+      if (stage) {
+        stage.sceneLayers.setAreaOfInterestOutline(bounds);
+        stage.camera.flyToBoundingBox(bounds, { durationMs: 2500 });
       }
+      const lat = scene.centroid?.latitude ?? 18.975;
+      const lon = scene.centroid?.longitude ?? 72.86;
+      flyToPosition(lat, lon);
     },
     [flyToPosition, stage],
   );

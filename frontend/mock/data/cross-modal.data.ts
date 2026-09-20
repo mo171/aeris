@@ -29,12 +29,14 @@ import {
 import type {
   AgreementRow,
   CrossModalResult,
+  ModalityAdvisory,
   SensorRun,
 } from "@/features/crossModal/types/cross-modal.types";
 import type { EvidenceLayer } from "@/features/investigation/types/layer.types";
 
 import { createSeededRandom, randomFloat } from "../transport/deterministic-random";
 import { getMockAnalysisProducts, getMockInvestigation } from "./investigation.data";
+import mumbaiRunData from "./mumbai-run-data.json";
 
 /** Radar look geometry. Fixed per investigation so layover always falls in the same place. */
 const RADAR_LOOK_AZIMUTH_DEGREES = 78;
@@ -136,31 +138,38 @@ export function getMockCrossModal(investigationId: string): CrossModalResult | n
       }
     : null;
 
-  const advisory = assessModalityPair(
-    opticalRun.capturedAt,
-    radarRun?.capturedAt ?? opticalRun.capturedAt,
-    radarRun ? randomFloat(random, 0.4, 1.1) : null,
-  );
+  const advisory: ModalityAdvisory =
+    (mumbaiRunData?.crossModal?.advisory as unknown as ModalityAdvisory) ??
+    assessModalityPair(
+      opticalRun.capturedAt,
+      radarRun?.capturedAt ?? opticalRun.capturedAt,
+      radarRun ? randomFloat(random, 0.4, 1.1) : null,
+    );
 
   // ── Classify every region ────────────────────────────────────────────────────────────────────
 
-  const rows: AgreementRow[] = changeFeatures.slice(0, SCRIPTED_STATES.length).map((feature, index) => {
-    const scripted = SCRIPTED_STATES[index];
-    const { optical, radar } = opinionsFor(scripted, feature.confidence, random);
-    const { state, reason } = classifyAgreement(optical, radar);
+  const rows: AgreementRow[] =
+    mumbaiRunData?.crossModal?.verdict?.rows &&
+    Array.isArray(mumbaiRunData.crossModal.verdict.rows) &&
+    mumbaiRunData.crossModal.verdict.rows.length > 0
+      ? (mumbaiRunData.crossModal.verdict.rows as unknown as AgreementRow[])
+      : changeFeatures.slice(0, SCRIPTED_STATES.length).map((feature, index) => {
+          const scripted = SCRIPTED_STATES[index];
+          const { optical, radar } = opinionsFor(scripted, feature.confidence, random);
+          const { state, reason } = classifyAgreement(optical, radar);
 
-    return {
-      id: `${investigationId}-agree-${index}`,
-      label: feature.label,
-      state,
-      reason,
-      opticalFeatureIds: optical.hasFinding ? [feature.id] : [],
-      radarFeatureIds: radar.hasFinding ? [feature.id] : [],
-      opticalConfidence: optical.confidence,
-      radarConfidence: radar.confidence,
-      areaHectares: feature.areaHectares,
-    };
-  });
+          return {
+            id: `${investigationId}-agree-${index}`,
+            label: feature.label,
+            state,
+            reason,
+            opticalFeatureIds: optical.hasFinding ? [feature.id] : [],
+            radarFeatureIds: radar.hasFinding ? [feature.id] : [],
+            opticalConfidence: optical.confidence,
+            radarConfidence: radar.confidence,
+            areaHectares: feature.areaHectares,
+          };
+        });
 
   // Sorted worst-first, so a conflict is never buried under agreement.
   rows.sort((left, right) => AGREEMENT[left.state].priority - AGREEMENT[right.state].priority);
