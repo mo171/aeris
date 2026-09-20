@@ -153,7 +153,7 @@ const SESSION_STORAGE_KEY = "aeris.mock.investigations";
  * reports "no evidence yet" with nothing anywhere saying why. It costs a session's history to discard
  * the cache; it costs an afternoon to debug a schema change against data that predates it.
  */
-const SESSION_STORAGE_VERSION = 9;
+const SESSION_STORAGE_VERSION = 10;
 
 const investigationsById = new Map<string, GeneratedInvestigation>(loadPersisted());
 
@@ -599,10 +599,23 @@ function buildAnalysisProducts(
   sceneSlots: InvestigationSceneSlot[],
 ): AnalysisProducts {
   const layers: EvidenceLayer[] = (mumbaiRunData.layers as unknown as EvidenceLayer[]).map((layer) => {
-    const isOptical = layer.id.includes("FRFS") || layer.id.includes("FRFX");
-    const traceStepId = isOptical
-      ? `${investigationId}-step-S12`
-      : `${investigationId}-step-S15`;
+    let traceStepId = `${investigationId}-step-S15`;
+    if (
+      layer.id === "lyr_01M2FRFSR88QXBFXSDESV0WD87" ||
+      layer.id === "lyr_01M2FRFX1YK5V4X4QV2KF3FDRP" ||
+      layer.id === "lyr_mumbai_ndvi_vegetation"
+    ) {
+      traceStepId = `${investigationId}-step-S12`;
+    } else if (
+      layer.id === "lyr_mumbai_sar_structural_change" ||
+      layer.id === "lyr_mumbai_groundwater_moisture" ||
+      layer.id === "lyr_01M2FRG1V18KRWB4P71RG03XHV"
+    ) {
+      traceStepId = `${investigationId}-step-S13`;
+    } else if (layer.id === "lyr_mumbai_construction_objects") {
+      traceStepId = `${investigationId}-step-S15`;
+    }
+
     return {
       ...layer,
       bounds,
@@ -614,12 +627,20 @@ function buildAnalysisProducts(
   });
 
   const claims: Claim[] = (mumbaiRunData.claims as unknown as Claim[]).map((claim, index) => {
-    const isOptical = claim.id.includes("FRFS") || claim.id.includes("FRFX");
+    let traceStepId = `${investigationId}-step-S15`;
+    if (claim.id.includes("FRFS") || claim.id.includes("FRFX") || claim.id.includes("ndvi")) {
+      traceStepId = `${investigationId}-step-S12`;
+    } else if (claim.id.includes("sar") || claim.id.includes("groundwater") || claim.id.includes("FRG1")) {
+      traceStepId = `${investigationId}-step-S13`;
+    } else if (claim.id.includes("const")) {
+      traceStepId = `${investigationId}-step-S15`;
+    }
+
     return {
       ...claim,
       runId: `${investigationId}-run-initial`,
       isPrimary: index === 0,
-      traceStepId: isOptical ? `${investigationId}-step-S12` : `${investigationId}-step-S15`,
+      traceStepId,
     };
   });
 
@@ -629,11 +650,13 @@ function buildAnalysisProducts(
 
   const answer = [
     "Comprehensive bi-temporal and cross-modal earth observation analysis of the Mumbai Coastal Belt and Port Zone (EPSG:32643) reveals distinct physical and spectral signatures across 10,519 hectares observed.",
-    "Optical multispectral analysis (Sentinel-2B MSI L2A) isolates 1,933.2 hectares (18.4% of observed ground) of dense urban built-up surface via NDBI (> 0.05), with the largest contiguous urban mass covering 401.1 ha along the Byculla and Mazgaon Dockland corridor.",
+    "Optical multispectral analysis (Sentinel-2B MSI L2A) isolates 1,933.2 hectares (18.4% of observed ground) of dense urban built-up surface via NDBI (> 0.05), with 312.4 hectares of coastal mangrove canopy identified via NDVI (> 0.35) along the Thane Creek buffer.",
     "Optical MNDWI (> 0.15) delineates 4,812.2 hectares (45.8%) of water bodies across Mumbai Harbour, Elephanta passage, and tidal channels.",
     "Simultaneously, Sentinel-1A C-band SAR backscatter analysis identifies 4,750.9 hectares (45.2%) of high-dielectric structural built-up (VV >= -8 dB, VH >= -15 dB) and 1,694.2 hectares (16.1%) of specular radar water (VV <= -17 dB, VH <= -22 dB).",
+    "High-resolution evidence localization isolated 12 discrete construction infrastructure assets: heavy container gantry cranes at Nhava Sheva Berth 4, logistics warehousing platforms, elevated viaduct pylons, and reclamation wharves with high structural confidence (0.88 - 0.94).",
+    "Furthermore, cross-modal difference mapping identified a 104.7-hectare subsurface groundwater and intertidal moisture flux across the Sewri mudflats, where tidal saturation increases radar surface roughness despite shallow optical inundation.",
     "The 2,817.7-hectare variance between optical and radar built-up classifications is scientifically authentic: C-band microwave radar penetrates through optical canopy and captures strong double-bounce reflections from vertical building facades, container cranes, and gantry structures across Mazgaon Docks and Eastern Freeway, which spectral NDBI partially shadows.",
-    "Conversely, optical water exceeds radar water by 3,118.0 hectares because the Sewri intertidal mudflats and shallow tidal channels exhibit high surface roughness in C-band radar that scatters microwave energy back to the receiver, raising backscatter above the water threshold while appearing dark in optical MNDWI.",
+    "Conversely, optical water exceeds radar water by 3,118.0 hectares due to this intertidal moisture scattering.",
     "Cross-modal late fusion successfully corroborated urban infrastructure with zero orbital co-registration error (0.00 px RMSE), isolating an intertidal physical conflict region of 5.2 ha requiring targeted multi-temporal monitoring."
   ].join(" ");
 
@@ -688,10 +711,48 @@ function buildTraceSteps(
     step("S8", null, "Orthorectification & RTC terrain correction verified", { id: "sar-preprocess", version: "1.3.0" }, [], [], ["S7"], {}, null),
     step("S9", null, "Co-registration residual: 0.00 px RMSE across optical-SAR pair", { id: "co-registration", version: "0.7.1" }, [], [], ["S8"], {}, null),
     step("S11", null, "Spatial tiling grid: 512x512 windows over Mumbai Harbour AOI", null, [], [], ["S9"], {}, null),
-    step("S12", "index-ndvi", "NDBI (> 0.05, 1,933.2 ha) and MNDWI (> 0.15, 4,812.2 ha) computed", { id: "index-engine", version: "1.4.0" }, [], [{ kind: "layer", id: "lyr_01M2FRFSR88QXBFXSDESV0WD87" }, { kind: "layer", id: "lyr_01M2FRFX1YK5V4X4QV2KF3FDRP" }], ["S11"], {}, "lyr_01M2FRFSR88QXBFXSDESV0WD87"),
-    step("S13", "sar-analysis", "Dual-polarization SAR backscatter calibrated (VV / VH dB)", { id: "sar-preprocess", version: "1.3.0" }, [], [], ["S9"], {}, null),
+    step(
+      "S12",
+      "index-ndvi",
+      "Optical indices computed: NDBI (> 0.05, 1,933.2 ha), MNDWI (> 0.15, 4,812.2 ha), and Mangrove NDVI (> 0.35, 312.4 ha)",
+      { id: "index-engine", version: "1.4.0" },
+      [],
+      [
+        { kind: "layer", id: "lyr_01M2FRFSR88QXBFXSDESV0WD87" },
+        { kind: "layer", id: "lyr_01M2FRFX1YK5V4X4QV2KF3FDRP" },
+        { kind: "layer", id: "lyr_mumbai_ndvi_vegetation" },
+      ],
+      ["S11"],
+      {},
+      "lyr_01M2FRFSR88QXBFXSDESV0WD87",
+    ),
+    step(
+      "S13",
+      "sar-analysis",
+      "Dual-polarization SAR backscatter calibrated (VV / VH dB), radar water classified (1,694.2 ha), and intertidal groundwater moisture flux delineated (104.7 ha)",
+      { id: "sar-preprocess", version: "1.3.0" },
+      [],
+      [
+        { kind: "layer", id: "lyr_mumbai_sar_structural_change" },
+        { kind: "layer", id: "lyr_mumbai_groundwater_moisture" },
+        { kind: "layer", id: "lyr_01M2FRG1V18KRWB4P71RG03XHV" },
+      ],
+      ["S9"],
+      {},
+      "lyr_mumbai_sar_structural_change",
+    ),
     step("S14", "cross-modal", "Cross-modal late fusion agreement analysis executed: 100 evaluation zones", { id: "optical-sar-fusion", version: "0.9.3" }, [], [], ["S12", "S13"], {}, null),
-    step("S15", "object-detection", "SAR thresholding: Built-up (4,750.9 ha) & Water (1,694.2 ha) classified", { id: "sar-preprocess", version: "1.3.0" }, [], [{ kind: "layer", id: "lyr_01M2FRFVG1J2WX696273KGQFPR" }, { kind: "layer", id: "lyr_01M2FRG1V18KRWB4P71RG03XHV" }], ["S13"], {}, "lyr_01M2FRFVG1J2WX696273KGQFPR"),
+    step(
+      "S15",
+      "object-detection",
+      "Discrete construction objects localized: 12 infrastructure bboxes (gantry cranes, container terminals, logistics warehouses)",
+      { id: "rs-vlm", version: "1.4.2" },
+      [],
+      [{ kind: "layer", id: "lyr_mumbai_construction_objects" }],
+      ["S13"],
+      {},
+      "lyr_mumbai_construction_objects",
+    ),
     step("S16", null, "Spatial conflict resolution: identified 5.2 ha optical-water / radar-builtup anomaly at Sewri mudflats", { id: "rs-vlm", version: "1.4.2" }, [], [], ["S14", "S15"], {}, null),
     step("S18", null, "Cross-sensor evidence synthesis: 0.81 confidence on water extent, 0.73 on structural backscatter", null, [], [], ["S16"], {}, null),
     step("S19", null, "Evidence graph & provenance metadata compiled with SHA-256 asset hashes", null, [], [], ["S18"], {}, null),

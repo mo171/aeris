@@ -99,14 +99,14 @@ const MUMBAI_EXPLANATION_SCRIPT: AssistantScript = {
     {
       id: "s5",
       label: "Computing optical spectral indices",
-      detail: "NDBI (> 0.05) isolates 1,933.2 ha built-up · MNDWI (> 0.15) isolates 4,812.2 ha water",
+      detail: "NDBI (> 0.05) isolates 1,933.2 ha built-up · MNDWI (> 0.15) isolates 4,812.2 ha water · NDVI (> 0.35) maps 312.4 ha mangroves",
       durationMs: 2_150,
       modelId: "index-engine",
     },
     {
       id: "s6",
-      label: "Calibrating SAR dual-polarization backscatter",
-      detail: "VV >= -8 dB & VH >= -15 dB (4,750.9 ha built-up) · VV <= -17 dB & VH <= -22 dB (1,694.2 ha water)",
+      label: "Calibrating SAR dual-polarization backscatter & moisture",
+      detail: "SAR backscatter calibrated · 104.7 ha groundwater/moisture flux delineated · 12 discrete construction assets localized",
       durationMs: 2_450,
       modelId: "sar-preprocess",
     },
@@ -129,18 +129,22 @@ const MUMBAI_EXPLANATION_SCRIPT: AssistantScript = {
     "This investigation is a rigorous dual-sensor earth observation analysis over the Mumbai Coastal Belt and Harbour Zone (EPSG:32643), spanning 10,519 hectares encompassing Byculla, Mazgaon Docks, Sewri mudflats, and the Eastern Freeway maritime corridor.\n\n" +
     "### 1. Optical Multispectral Findings (Sentinel-2B MSI L2A)\n" +
     "• Built-up Extent (NDBI > 0.05): Identifies 1,933.2 hectares (18.4% of observed ground) across 5,143 discrete urban clusters. The largest contiguous built-up mass covers 401.1 ha centered over the Byculla residential and Mazgaon commercial warehouse districts.\n" +
-    "• Water Extent (MNDWI > 0.15): Identifies 4,812.2 hectares (45.8% of observed ground) across 197 regions, dominated by a 4,502.7 ha open maritime water body spanning Mumbai Harbour and the Thane Creek approach.\n\n" +
-    "### 2. Microwave SAR Findings (Sentinel-1A C-band IW GRD RTC)\n" +
+    "• Water Extent (MNDWI > 0.15): Identifies 4,812.2 hectares (45.8% of observed ground) across 197 regions, dominated by a 4,502.7 ha open maritime water body spanning Mumbai Harbour and the Thane Creek approach.\n" +
+    "• Mangrove Canopy (NDVI > 0.35): Delineates 312.4 hectares of coastal mangrove vegetation and tidal fringes along the western and northern shoreline.\n\n" +
+    "### 2. Microwave SAR & Moisture Findings (Sentinel-1A C-band IW GRD RTC)\n" +
     "• Structural Built-up (VV >= -8 dB, VH >= -15 dB): Maps 4,750.9 hectares (45.2% of ground) in 199 regions, with the dominant contiguous urban zone measuring 4,669.7 ha.\n" +
-    "• Specular Water (VV <= -17 dB, VH <= -22 dB): Maps 1,694.2 hectares (16.1% of ground) in 2,028 regions, with the largest contiguous body covering 523.3 ha.\n\n" +
-    "### 3. Scientific Rationale for Optical vs SAR Physical Variance\n" +
+    "• Specular Water (VV <= -17 dB, VH <= -22 dB): Maps 1,694.2 hectares (16.1% of ground) in 2,028 regions, with the largest contiguous body covering 523.3 ha.\n" +
+    "• Intertidal & Groundwater Moisture Flux (104.7 ha): Identifies subsurface saturation shifts across the Sewri mudflats where tidal recession leaves damp sediment.\n\n" +
+    "### 3. Construction & Infrastructure Localizations\n" +
+    "• Discrete Infrastructure Bounding Boxes (12 assets): Localized 12 key assets including container gantry cranes at Nhava Sheva Berth 4, elevated viaduct pylons, logistics warehousing platforms, and maritime wharves with high structural confidence (0.88–0.94).\n\n" +
+    "### 4. Scientific Rationale for Optical vs SAR Physical Variance\n" +
     "A superficial comparison suggests sensor disagreement, but physical electromagnetic principles explain the variance:\n" +
     "1. Urban Built-up Variance (+2,817.7 ha in SAR): C-band radar operates at ~5.4 GHz (~5.6 cm wavelength), which penetrates tree canopies and interacts strongly with vertical architectural geometry. High-density structures, container cranes, and gantry steelwork at Mazgaon Docks create prominent 'double-bounce' corner reflections back to the radar antenna. In optical imagery, severe shadow casting between closely spaced multi-story buildings suppresses the spectral NDBI signal, undercounting dense built-up fabric that radar easily detects.\n" +
     "2. Water Body Variance (+3,118.0 ha in Optical): Optical MNDWI maps 4,812.2 ha of water whereas SAR maps only 1,694.2 ha. This discrepancy is localized to the Sewri intertidal mudflats and shallow tidal channels. At low tide, mudflats retain high surface moisture and dark spectral reflectance, triggering the optical water index. However, the micro-topographical surface roughness of tidal mud and exposed oyster beds creates diffuse surface scattering that elevates SAR backscatter above the -17 dB specular water threshold, correctly classifying the ground as intertidal mud rather than deep open water.\n\n" +
-    "### 4. Cross-Modal Late Fusion & Conflict Isolation\n" +
+    "### 5. Cross-Modal Late Fusion & Conflict Isolation\n" +
     "The 100-zone cross-modal late fusion ledger achieves sub-pixel co-registration (0.00 px RMSE residual). It corroborates structural urban density across central Mumbai while isolating a single 5.2 ha conflict zone at the Sewri intertidal transition, demonstrating how fusing complementary optical and microwave physics provides an uncompromised, falsifiable operational picture.",
   confidence: 0.91,
-  evidenceRegionCount: 8,
+  evidenceRegionCount: 12,
 };
 
 const CHANGE_DETECTION_SCRIPT: AssistantScript = {
@@ -153,12 +157,12 @@ const CHANGE_DETECTION_SCRIPT: AssistantScript = {
     { id: "s5", label: "Running index engine (NDBI)", detail: "Index Engine v1.4.0 · threshold > 0.05", durationMs: 3_140, modelId: "index-engine" },
     { id: "s6", label: "Segmenting built-up class", detail: "1,933.2 ha isolated across Byculla & Mazgaon", durationMs: 2_260, modelId: "segformer-landcover" },
     { id: "s7", label: "Quantifying change area", detail: "18.4% of 10,510 ha observed ground · EPSG:32643", durationMs: 410, modelId: null },
-    { id: "s8", label: "Validating evidence", detail: "5,143 regions passed sanity checks · Largest 401.1 ha", durationMs: 300, modelId: null },
+    { id: "s8", label: "Validating evidence", detail: "12 construction bboxes & 5,143 regions verified", durationMs: 300, modelId: null },
   ],
   answer:
-    "Optical built-up analysis (NDBI > 0.05) covers 1,933.2 hectares of the Mumbai Coastal Belt: 18.4% of the 10,510.2 hectares observed, spanning 5,143 discrete urban clusters.\n\nThe largest contiguous urban region encompasses 401.1 hectares centered over the Byculla and Mazgaon Docklands corridor with a mean NDBI of 0.14. Radar backscatter (Sentinel-1A) corroborates high structural density throughout the industrial corridor with strong double-bounce returns from container terminals and vertical warehouse walls.\n\nConfidence is 91%. All 8 georeferenced evidence items and 100 cross-modal agreement zones can be inspected in the Evidence Explorer.",
+    "Optical built-up analysis (NDBI > 0.05) covers 1,933.2 hectares of the Mumbai Coastal Belt: 18.4% of the 10,510.2 hectares observed, spanning 5,143 discrete urban clusters.\n\nIn addition, 12 discrete construction infrastructure assets were localized as bounding boxes, including heavy container gantry cranes at Nhava Sheva Berth 4, logistics warehousing platforms, elevated viaduct pylons, and reclamation wharves with 0.88–0.94 confidence.\n\nThe largest contiguous urban region encompasses 401.1 hectares centered over the Byculla and Mazgaon Docklands corridor with a mean NDBI of 0.14. Radar backscatter (Sentinel-1A) corroborates high structural density throughout the industrial corridor with strong double-bounce returns from container terminals and vertical warehouse walls, alongside a 104.7 ha groundwater/intertidal moisture shift.\n\nConfidence is 91%. All 8 georeferenced evidence items and 100 cross-modal agreement zones can be inspected in the Evidence Explorer.",
   confidence: 0.91,
-  evidenceRegionCount: 8,
+  evidenceRegionCount: 12,
 };
 
 const VEGETATION_SCRIPT: AssistantScript = {
