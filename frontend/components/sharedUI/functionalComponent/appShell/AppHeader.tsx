@@ -12,6 +12,7 @@
 "use client";
 
 import { Search } from "lucide-react";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { BrandLogo } from "@/components/sharedUI/dumbComponent/BrandLogo";
@@ -21,6 +22,7 @@ import { SHELL_COPY } from "@/lib/constants/app";
 import { COMMAND_IDS } from "@/lib/constants/commands";
 import { dispatchCommand } from "@/lib/command-bus";
 import { cn } from "@/lib/utils";
+import { VoiceActivationButton } from "@/features/voice/components/voice-activation-button";
 
 import { useSystemHealth } from "@/hooks/use-system-health";
 
@@ -31,6 +33,8 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ actionsSlot, className }: AppHeaderProps) {
+  const pathname = usePathname();
+  const isLandingPage = !pathname || pathname === "/" || !pathname.includes("/investigation");
   const { data: health } = useSystemHealth();
 
   const isHealthy = health?.status === "healthy";
@@ -72,6 +76,7 @@ export function AppHeader({ actionsSlot, className }: AppHeaderProps) {
             {label}
           </span>
         </span>
+        {isLandingPage ? <VoiceActivationButton /> : null}
         {actionsSlot}
       </div>
     </header>

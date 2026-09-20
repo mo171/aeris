@@ -39,6 +39,7 @@ import type { Mission } from "../types/mission.types";
 import { AssistantPanel } from "./assistantPanel/AssistantPanel";
 import { DataContextPanel } from "./dataPanel/DataContextPanel";
 import { GlobeControls } from "./globe/GlobeControls";
+import { VoiceControlBar } from "@/features/voice/components/voice-control-bar";
 
 export function MissionCommandScreen() {
   const isDataPanelOpen = useUiStore((state) => state.isDataPanelOpen);
@@ -149,7 +150,8 @@ export function MissionCommandScreen() {
           The free space between the panels. The globe's own controls live here rather than being anchored
           to the viewport, so they can never end up underneath a panel at any panel width.
         */}
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1 flex flex-col justify-end items-center pointer-events-none">
+          <VoiceControlBar className="mb-14 z-20 pointer-events-auto" />
           <GlobeControls />
         </div>
 

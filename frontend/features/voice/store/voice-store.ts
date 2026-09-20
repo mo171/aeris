@@ -25,26 +25,35 @@ export interface VoiceStoreState {
   activeUtteranceId: string | null;
   transcript: string;
   isFinalTranscript: boolean;
+  lastAerisReply: string;
+  activeActionSummary: string | null;
   audioLevel: number;
   errorMessage: string | null;
+  isMuted: boolean;
 
   // Actions
   setConnectionStatus: (status: ConnectionStatus, errorMessage?: string | null) => void;
   setVoiceState: (state: VoiceState) => void;
   setActiveUtteranceId: (id: string | null) => void;
   setTranscript: (transcript: string, isFinal?: boolean) => void;
+  setLastAerisReply: (reply: string) => void;
+  setActiveActionSummary: (summary: string | null) => void;
   setAudioLevel: (level: number) => void;
+  setIsMuted: (isMuted: boolean) => void;
   reset: () => void;
 }
 
 const initialState = {
-  connectionStatus: "disconnected" as ConnectionStatus,
+  connectionStatus: "disconnected" as ConnectionStatus, // Usually off by default; user clicks VOICE UPLINK to enable
   voiceState: "idle" as VoiceState,
   activeUtteranceId: null,
   transcript: "",
   isFinalTranscript: false,
+  lastAerisReply: "",
+  activeActionSummary: null,
   audioLevel: 0,
   errorMessage: null,
+  isMuted: false,
 };
 
 export const useVoiceStore = create<VoiceStoreState>((set) => ({
@@ -67,7 +76,13 @@ export const useVoiceStore = create<VoiceStoreState>((set) => ({
   setTranscript: (transcript, isFinal = false) =>
     set({ transcript, isFinalTranscript: isFinal }),
 
+  setLastAerisReply: (lastAerisReply) => set({ lastAerisReply }),
+
+  setActiveActionSummary: (activeActionSummary) => set({ activeActionSummary }),
+
   setAudioLevel: (audioLevel) => set({ audioLevel }),
+
+  setIsMuted: (isMuted) => set({ isMuted }),
 
   reset: () => set(initialState),
 }));

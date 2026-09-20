@@ -1,13 +1,12 @@
-// features/voice/components/voice-activation-button.tsx — aerospace voice uplink activator.
+// features/voice/components/voice-activation-button.tsx — VOICE UPLINK activator.
 //
-// what  : Activates bidirectional voice communication with AERIS: unlocks browser AudioContext,
-//         prompts mic permission, establishes WebSocket uplink, and plays the audio chime.
+// what  : Identity strip button indicating VOICE UPLINK status. OFF by default, activated on user click
+//         to unlock browser audio and enable Ctrl+P voice command mode.
 // where : Mounted in the top header / identity strip of the workspace.
-// how   : Connects to useVoiceSession, reflecting current link state with tactile telemetry styling.
 
 "use client";
 
-import { AlertCircle, Loader2, Mic, MicOff, Radio } from "lucide-react";
+import { Loader2, Radio } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,15 +18,9 @@ interface VoiceActivationButtonProps {
 }
 
 export function VoiceActivationButton({ className }: VoiceActivationButtonProps) {
-  const { connectionStatus, connect, disconnect } = useVoiceSession();
+  const { connectionStatus, voiceState, connect, disconnect } = useVoiceSession();
 
-  const handleClick = () => {
-    if (connectionStatus === "connected") {
-      disconnect();
-    } else if (connectionStatus === "disconnected" || connectionStatus === "error") {
-      void connect();
-    }
-  };
+  const isListening = voiceState === "listening";
 
   if (connectionStatus === "connected") {
     return (
@@ -37,23 +30,31 @@ export function VoiceActivationButton({ className }: VoiceActivationButtonProps)
             type="button"
             size="sm"
             variant="outline"
-            onClick={handleClick}
+            onClick={disconnect}
             className={cn(
-              "group relative h-8 gap-2 border-aeris-teal/40 bg-aeris-teal/10 px-2.5 font-mono text-xs text-aeris-teal hover:border-aeris-teal/70 hover:bg-aeris-teal/20 transition-all duration-fast",
+              "group relative h-8 gap-2 border-aeris-teal/50 bg-aeris-teal/15 px-2.5 font-mono text-xs text-aeris-teal hover:border-aeris-teal/70 hover:bg-aeris-teal/25 transition-all duration-fast shadow-[0_0_10px_rgba(0,229,255,0.2)]",
+              isListening && "border-aeris-teal bg-aeris-teal/30 text-aeris-teal shadow-[0_0_15px_rgba(0,229,255,0.4)]",
               className,
             )}
-            aria-label="Voice uplink active. Click to disconnect."
+            aria-label="Voice Uplink active. Click to turn off."
           >
             <span className="relative flex size-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-aeris-teal opacity-75" />
+              <span
+                className={cn(
+                  "absolute inline-flex h-full w-full rounded-full bg-aeris-teal opacity-75",
+                  isListening ? "animate-ping" : "animate-pulse",
+                )}
+              />
               <span className="relative inline-flex size-2 rounded-full bg-aeris-teal" />
             </span>
             <Radio className="size-3.5 text-aeris-teal transition-transform group-hover:scale-110" />
-            <span className="tracking-wide">VOICE UPLINK</span>
+            <span className="tracking-wide">
+              {isListening ? "LISTENING..." : "VOICE UPLINK"}
+            </span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="font-mono text-xs">
-          AERIS voice link active. Hold <kbd className="rounded bg-muted px-1 text-[10px]">Ctrl+P</kbd> to talk. Click to disconnect.
+          Voice command mode activated. Hold <kbd className="rounded bg-muted px-1 text-[10px]">Ctrl+P</kbd> to talk. Click to turn off.
         </TooltipContent>
       </Tooltip>
     );
@@ -70,40 +71,15 @@ export function VoiceActivationButton({ className }: VoiceActivationButtonProps)
           "h-8 gap-2 border-aeris-amber/50 bg-aeris-amber/10 px-2.5 font-mono text-xs text-aeris-amber",
           className,
         )}
-        aria-label="Establishing voice uplink..."
+        aria-label="Activating Voice Uplink..."
       >
         <Loader2 className="size-3.5 animate-spin text-aeris-amber" />
-        <span className="tracking-wide">LINKING...</span>
+        <span className="tracking-wide">CONNECTING...</span>
       </Button>
     );
   }
 
-  if (connectionStatus === "error") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleClick}
-            className={cn(
-              "h-8 gap-2 border-aeris-red/50 bg-aeris-red/10 px-2.5 font-mono text-xs text-aeris-red hover:bg-aeris-red/20",
-              className,
-            )}
-            aria-label="Voice uplink error. Click to retry."
-          >
-            <AlertCircle className="size-3.5" />
-            <span className="tracking-wide">LINK RETRY</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="font-mono text-xs text-destructive">
-          Microphone access denied or connection lost. Click to retry.
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-
+  // Disconnected / Off by default
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -111,19 +87,19 @@ export function VoiceActivationButton({ className }: VoiceActivationButtonProps)
           type="button"
           size="sm"
           variant="outline"
-          onClick={handleClick}
+          onClick={() => void connect()}
           className={cn(
-            "group h-8 gap-2 border-border/80 bg-surface-2/80 px-2.5 font-mono text-xs text-muted-foreground hover:border-aeris-teal/50 hover:bg-aeris-teal/10 hover:text-foreground transition-all duration-fast",
+            "group h-8 gap-2 border-border/80 bg-surface-2/60 px-2.5 font-mono text-xs text-muted-foreground hover:border-aeris-teal/60 hover:text-aeris-teal hover:bg-aeris-teal/10 transition-all",
             className,
           )}
-          aria-label="Activate AERIS Voice"
+          aria-label="Voice Uplink is off. Click to activate."
         >
-          <Mic className="size-3.5 text-muted-foreground transition-colors group-hover:text-aeris-teal" />
+          <Radio className="size-3.5 opacity-60 group-hover:opacity-100" />
           <span className="tracking-wide">VOICE UPLINK</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="font-mono text-xs">
-        Activate AERIS real-time voice streaming uplink
+        Click to activate Voice Uplink and enable <kbd className="rounded bg-muted px-1 text-[10px]">Ctrl+P</kbd> voice commands.
       </TooltipContent>
     </Tooltip>
   );
