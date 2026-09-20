@@ -246,8 +246,9 @@ class VoiceSession:
             except Exception as error:  # noqa: BLE001 — speech errors don't kill the session
                 logger.warning("provisional speech failed: %s", error)
         else:
-            logger.info("question outside active run: %r -> dispatching ui-command", transcript)
+            logger.info("question outside active run: %r -> dispatching ui-command and authoring speech", transcript)
             run_id = new_identifier(IdentifierPrefix.RUN)
+            utterance_id = new_identifier(IdentifierPrefix.UTTERANCE)
             if hasattr(self._player, "send_json"):
                 await self._player.send_json({
                     "type": "ui-command",
@@ -256,13 +257,24 @@ class VoiceSession:
                     "params": {"query": transcript},
                     "reason": f"Voice query: {transcript}",
                 })
-            speech = AuthoredSpeech(
-                text=f"Initiating analysis for {transcript}.",
-                run_id=run_id,
-                utterance_id=new_identifier(IdentifierPrefix.UTTERANCE),
-                kind=SpeechKind.PROVISIONAL,
-            )
-            await self._speak(speech)
+            try:
+                request = SpeechRequest(
+                    run_id=run_id,
+                    utterance_id=utterance_id,
+                    question=transcript,
+                    context=f"Operator requested analysis: {transcript}",
+                )
+                authored = await author_provisional_speech(request, model=self._model)
+                await self._speak(authored)
+            except Exception as error:  # noqa: BLE001
+                logger.warning("provisional speech authoring failed: %s; falling back to dynamic phrasing", error)
+                speech = AuthoredSpeech(
+                    text=f"Understood. Starting analysis on {transcript}.",
+                    run_id=run_id,
+                    utterance_id=utterance_id,
+                    kind=SpeechKind.PROVISIONAL,
+                )
+                await self._speak(speech)
 
     async def _handle_command(self, decision: VoiceTurnDecision, transcript: str) -> None:
         """Handle operator voice command driving the UI (fly camera, toggle layer, focus evidence)."""

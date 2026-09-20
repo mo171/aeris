@@ -191,6 +191,10 @@ BACKEND_ONLY_VOCABULARIES: Final[dict[str, str]] = {
     "tasks.EventName": "Internal. Inngest event names are between the backend and Inngest.",
     "voice.VoiceSessionState": "Internal. A terminal session state machine; the frontend sees discrete speech/command events.",
     "failures.FailureCode": "Internal to agent execution and orchestration; failure recovery signals between harness components.",
+    "presets.BandPreset": (
+        "Internal. Server-side band selection and stretch presets mapped to TiTiler query parameters "
+        "(api-contract.md §8 rule 5: browser never does band math)."
+    ),
 }
 
 # Frontend vocabularies the backend has not met yet, each with the sub-phase that will meet it. This is a

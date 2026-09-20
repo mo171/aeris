@@ -36,9 +36,12 @@ async def create_investigation(request: InvestigationCreateRequest) -> Investiga
 
 
 @router.get("", response_model=InvestigationList)
-async def list_investigations(limit: int = Query(default=50, ge=1, le=100)) -> InvestigationList:
-    """List recent investigations."""
-    return await investigations_controller.list_investigations(limit=limit)
+async def list_investigations(
+    limit: int = Query(default=50, ge=1, le=100),
+    project_id: str | None = Query(default=None, alias="projectId"),
+) -> InvestigationList:
+    """List recent investigations, optionally filtered by project."""
+    return await investigations_controller.list_investigations(limit=limit, project_id=project_id)
 
 
 @router.get("/{investigation_id}", response_model=Investigation)

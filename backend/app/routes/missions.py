@@ -22,9 +22,10 @@ async def create_mission(request: MissionCreateRequest) -> Mission:
 async def list_missions(
     cursor: str | None = Query(None, description="Next page cursor"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    project_id: str | None = Query(None, alias="projectId", description="Filter by project ID"),
 ) -> CursorPage[Mission]:
     """Retrieve cursor-paginated standing missions."""
-    return await mission_controller.list_missions(cursor=cursor, limit=limit)
+    return await mission_controller.list_missions(cursor=cursor, limit=limit, project_id=project_id)
 
 
 @router.get("/{mission_id}", response_model=Mission)

@@ -23,7 +23,7 @@ export function useMonitorThis(investigation: Investigation | undefined): Monito
   const queryClient = useQueryClient();
 
   const { mutate, isPending, data } = useMutation({
-    mutationFn: (request: { projectId: string; name: string; cadence: string; templateVersionId: string }) =>
+    mutationFn: (request: { projectId: string; name: string; cadence: string; templateVersionId: string; investigationId?: string }) =>
       createMission(request),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.missions.all });
@@ -36,7 +36,13 @@ export function useMonitorThis(investigation: Investigation | undefined): Monito
       if (!investigation) {
         return;
       }
-      mutate({ projectId: investigation.projectId, name, cadence, templateVersionId });
+      mutate({
+        projectId: investigation.projectId,
+        name,
+        cadence,
+        templateVersionId,
+        investigationId: investigation.id,
+      });
     },
     [investigation, mutate],
   );

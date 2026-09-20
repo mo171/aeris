@@ -71,9 +71,9 @@ async def get_investigation_by_id(investigation_id: str) -> Investigation:
     return await investigation_service.get_investigation(investigation_id)
 
 
-async def list_investigations(limit: int = 50) -> InvestigationList:
-    """List recent investigations."""
-    return await investigation_service.list_investigations(limit=limit)
+async def list_investigations(limit: int = 50, project_id: str | None = None) -> InvestigationList:
+    """List recent investigations, optionally filtered by project."""
+    return await investigation_service.list_investigations(limit=limit, project_id=project_id)
 
 
 async def patch_investigation(

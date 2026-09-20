@@ -38,6 +38,21 @@ export async function fetchMissionPage(
   return parseApiResponse(missionPageSchema, response.data, "the mission list");
 }
 
+export async function fetchProjectMissions(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<MissionPage> {
+  const response = await apiClient.get(REST_API.missions.list, {
+    signal,
+    params: {
+      projectId,
+      limit: 50,
+    },
+  });
+
+  return parseApiResponse(missionPageSchema, response.data, "the project mission list");
+}
+
 /** Saves a finished investigation as a mission over the same area. */
 export async function createMission(
   request: MissionCreateRequest,

@@ -258,3 +258,55 @@ async def test_region_suggestions_endpoint():
         assert len(data["suggestions"]) >= 1
         validator_for(ANALYSIS_MODULE, "regionSuggestionCollectionSchema").validate(data)
 
+
+@pytest.mark.asyncio
+async def test_project_investigations_filtering_and_mission_promotion():
+    """Verify investigations and missions can be filtered by projectId and promoted from an investigation."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Get a scene
+        scenes_resp = await client.get("/api/v1/imagery?limit=1")
+        scene_id = scenes_resp.json()["items"][0]["id"]
+
+        test_project_id = "prj_test_custom_scope"
+
+        # 2. Create investigation with specific project_id
+        create_resp = await client.post(
+            "/api/v1/investigations",
+            json={
+                "projectId": test_project_id,
+                "sceneIds": [scene_id],
+                "seedQuery": "Verify project scoping",
+            },
+        )
+        assert create_resp.status_code in (200, 201)
+        inv_id = create_resp.json()["investigationId"]
+
+        # 3. Query investigations filtered by projectId
+        list_resp = await client.get(f"/api/v1/investigations?projectId={test_project_id}")
+        assert list_resp.status_code == 200
+        inv_items = list_resp.json()["items"]
+        assert len(inv_items) >= 1
+        assert any(item["id"] == inv_id for item in inv_items)
+
+        # 4. Promote investigation to a standing mission
+        promo_resp = await client.post(
+            "/api/v1/missions",
+            json={
+                "name": "Standing Watch Over Scoped Area",
+                "cadence": "daily",
+                "projectId": test_project_id,
+                "investigationId": inv_id,
+            },
+        )
+        assert promo_resp.status_code in (200, 201)
+        mission_data = promo_resp.json()
+        assert mission_data["projectId"] == test_project_id
+        assert mission_data["name"] == "Standing Watch Over Scoped Area"
+        mission_id = mission_data["id"]
+
+        # 5. Query missions filtered by projectId
+        msn_list_resp = await client.get(f"/api/v1/missions?projectId={test_project_id}")
+        assert msn_list_resp.status_code == 200
+        msn_items = msn_list_resp.json()["items"]
+        assert any(m["id"] == mission_id for m in msn_items)
+

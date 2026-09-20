@@ -202,24 +202,7 @@ async def compose_answer(state: ProbeState) -> dict[str, object]:
         )
     )
 
-    # 4. Spoken audio synthesis
-    utterance_id = new_identifier(IdentifierPrefix.UTTERANCE)
-    spoken_summary = answer_text.split(". ")[0] + "." if ". " in answer_text else answer_text
-    speech_registry.register_utterance(utterance_id, spoken_summary)
-    emit(
-        SpeechEvent(
-            run_id=run_id,
-            utterance_id=utterance_id,
-            kind=SpeechKind.GROUNDED,
-            text=spoken_summary,
-            audio_url=f"/api/v1/speech/{utterance_id}.wav",
-            claim_ids=[],
-            interruptible=True,
-            provisional=False,
-        )
-    )
-
-    # 5. Emit dynamic claim backed by actual scene facts
+    # 4. Emit dynamic claim backed by actual scene facts
     claim_id = new_identifier(IdentifierPrefix.CLAIM)
     metric_list = [
         SchemaClaimMetric(
@@ -237,6 +220,13 @@ async def compose_answer(state: ProbeState) -> dict[str, object]:
             precision=2,
         ),
     ]
+    step_id = None
+    try:
+        from app.services.pipeline.node import current_trace_step_id
+        step_id = current_trace_step_id()
+    except Exception:
+        step_id = new_identifier(IdentifierPrefix.TRACE_STEP)
+
     sample_claim = SchemaClaim(
         id=claim_id,
         run_id=run_id,
@@ -247,28 +237,66 @@ async def compose_answer(state: ProbeState) -> dict[str, object]:
         evidence_ids=[],
         model_id=ModelId.INDEX_ENGINE,
         model_version="1.4.0",
-        trace_step_id="stp_01M2YN64YPE1YW49NHZK1051DB",
+        trace_step_id=step_id,
         is_primary=True,
     )
     emit(ClaimEvent(run_id=run_id, claim=sample_claim))
 
+    # 5. Spoken audio synthesis (grounded on the claim)
+    utterance_id = new_identifier(IdentifierPrefix.UTTERANCE)
+    spoken_summary = answer_text.split(". ")[0] + "." if ". " in answer_text else answer_text
+    speech_registry.register_utterance(utterance_id, spoken_summary)
+    emit(
+        SpeechEvent(
+            run_id=run_id,
+            utterance_id=utterance_id,
+            kind=SpeechKind.GROUNDED,
+            text=spoken_summary,
+            audio_url=f"/api/v1/speech/{utterance_id}.wav",
+            claim_ids=[claim_id],
+            interruptible=True,
+            provisional=False,
+        )
+    )
+
     try:
+        from app.db.models.run import Run as DbRun
+        from app.db.models.trace_step import TraceStep as DbTraceStep
+        from app.constants.statuses import TraceStepState
         async with database.get_session() as session:
-            db_claim = DbClaim(
-                id=claim_id,
-                run_id=run_id,
-                text=sample_claim.text,
-                kind=ClaimKind.QUANTITATIVE,
-                confidence=0.94,
-                metrics=[m.model_dump(by_alias=True) for m in metric_list],
-                evidence_ids=[],
-                model_id=ModelId.INDEX_ENGINE,
-                model_version="1.4.0",
-                trace_step_id="stp_01M2YN64YPE1YW49NHZK1051DB",
-                is_primary=True,
-            )
-            session.add(db_claim)
-            await session.commit()
+            run_in_db = await session.get(DbRun, run_id)
+            if run_in_db:
+                step_in_db = await session.get(DbTraceStep, step_id)
+                if not step_in_db:
+                    step_in_db = DbTraceStep(
+                        id=step_id,
+                        run_id=run_id,
+                        sequence=20,
+                        stage_code=PipelineStage.S20,
+                        state=TraceStepState.COMPLETED,
+                        detail=f"Synthesized evidence claims over {scene_name}",
+                    )
+                    session.add(step_in_db)
+                    await session.flush()
+
+                db_claim = DbClaim(
+                    id=claim_id,
+                    run_id=run_id,
+                    text=sample_claim.text,
+                    kind=ClaimKind.QUANTITATIVE,
+                    confidence=0.94,
+                    metrics=[m.model_dump(by_alias=True) for m in metric_list],
+                    evidence_ids=[],
+                    model_id=ModelId.INDEX_ENGINE,
+                    model_version="1.4.0",
+                    trace_step_id=step_id,
+                    is_primary=True,
+                )
+                session.add(db_claim)
+                await session.commit()
+                logger.info("Successfully persisted claim %s to DB for run %s", claim_id, run_id)
+            else:
+                logger.debug("Ad-hoc run %s not registered in runs table; skipping relational claim persistence", run_id)
     except Exception as e:
         logger.warning("Failed persisting probe claim to DB: %s", e)
 

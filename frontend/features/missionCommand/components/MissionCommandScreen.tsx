@@ -110,7 +110,7 @@ export function MissionCommandScreen() {
     if (selectedSceneIds.length === 0) {
       return;
     }
-    launch({ projectId: "default-project", sceneIds: selectedSceneIds, seedQuery: null, missionId: null });
+    launch({ projectId: "prj_sih2026_demo", sceneIds: selectedSceneIds, seedQuery: null, missionId: null });
   }, [launch]);
 
   // Registered after the callbacks exist so the stage can route a marker click straight into them.

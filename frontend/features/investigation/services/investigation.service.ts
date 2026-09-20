@@ -52,8 +52,14 @@ export async function fetchInvestigation(
   return parseApiResponse(investigationSchema, response.data, "the investigation endpoint");
 }
 
-export async function fetchInvestigations(signal?: AbortSignal): Promise<InvestigationSummary[]> {
-  const response = await apiClient.get(REST_API.investigations.create, { signal });
+export async function fetchInvestigations(
+  signal?: AbortSignal,
+  projectId?: string,
+): Promise<InvestigationSummary[]> {
+  const response = await apiClient.get(REST_API.investigations.create, {
+    signal,
+    params: projectId ? { projectId } : undefined,
+  });
   const list = parseApiResponse(
     investigationListSchema,
     response.data,
@@ -61,6 +67,13 @@ export async function fetchInvestigations(signal?: AbortSignal): Promise<Investi
   );
 
   return list.items;
+}
+
+export async function fetchProjectInvestigations(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<InvestigationSummary[]> {
+  return fetchInvestigations(signal, projectId);
 }
 
 /**

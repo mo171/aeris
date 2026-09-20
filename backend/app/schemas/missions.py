@@ -23,11 +23,13 @@ MissionAnalysisKind = Literal[
 
 class MissionCreateRequest(CamelCaseModel):
     name: str = Field(min_length=1)
-    analysis_kind: MissionAnalysisKind
-    area_of_interest_name: str = Field(min_length=1)
-    centroid: GeoPoint
+    analysis_kind: MissionAnalysisKind = Field(default="change-detection")
+    area_of_interest_name: str | None = None
+    centroid: GeoPoint | None = None
     cadence: str = Field(default="weekly")
     project_id: str | None = None
+    investigation_id: str | None = None
+    template_version_id: str | None = None
 
 
 

@@ -120,19 +120,23 @@ async def create_investigation(request: InvestigationCreateRequest) -> Investiga
         inv_id = new_identifier(IdentifierPrefix.INVESTIGATION)
         trace_id = new_identifier(IdentifierPrefix.TRACE)
 
-        # Ensure project exists if referenced
+        # Ensure project exists if referenced and update activity timestamp
         if request.project_id:
             proj_stmt = select(Project).where(Project.id == request.project_id)
             proj_res = await session.execute(proj_stmt)
-            if proj_res.scalar_one_or_none() is None:
+            proj = proj_res.scalar_one_or_none()
+            if proj is None:
                 session.add(
                     Project(
                         id=request.project_id,
                         name="Default Project" if request.project_id == "prj_default" else f"Project {request.project_id}",
                         description="Auto-initialized project workspace",
+                        last_activity_at=datetime.now(UTC),
                     )
                 )
-                await session.flush()
+            else:
+                proj.last_activity_at = datetime.now(UTC)
+            await session.flush()
 
         db_inv = DbInvestigation(
             id=inv_id,
@@ -288,10 +292,13 @@ async def get_investigation(investigation_id: str) -> Investigation:
         )
 
 
-async def list_investigations(limit: int = 50) -> InvestigationList:
-    """List investigations ordered by recency."""
+async def list_investigations(limit: int = 50, project_id: str | None = None) -> InvestigationList:
+    """List investigations ordered by recency, optionally filtered by project."""
     async with database.get_session() as session:
-        stmt = select(DbInvestigation).order_by(DbInvestigation.updated_at.desc()).limit(limit)
+        stmt = select(DbInvestigation).order_by(DbInvestigation.updated_at.desc())
+        if project_id:
+            stmt = stmt.where(DbInvestigation.project_id == project_id)
+        stmt = stmt.limit(limit)
         result = await session.execute(stmt)
         rows = list(result.scalars().all())
 

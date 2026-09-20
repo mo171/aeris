@@ -8,13 +8,13 @@
 
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { QUERY_KEYS } from "@/lib/constants/query-keys";
 
-import { fetchMissionPage, MISSION_PAGE_SIZE } from "../services/mission.service";
-import type { Mission } from "../types/mission.types";
+import { fetchMissionPage, fetchProjectMissions, MISSION_PAGE_SIZE } from "../services/mission.service";
+import type { Mission, MissionPage } from "../types/mission.types";
 
 const MISSION_STALE_TIME_MS = 60_000;
 
@@ -65,4 +65,12 @@ export function useActiveMissions(): ActiveMissionsResult {
     error: query.error,
     refetch: () => void query.refetch(),
   };
+}
+
+export function useProjectMissions(projectId: string) {
+  return useQuery<MissionPage, Error>({
+    queryKey: QUERY_KEYS.missions.byProject(projectId),
+    queryFn: ({ signal }) => fetchProjectMissions(projectId, signal),
+    enabled: Boolean(projectId),
+  });
 }

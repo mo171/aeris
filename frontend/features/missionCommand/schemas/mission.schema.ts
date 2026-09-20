@@ -54,6 +54,7 @@ export const missionCreateRequestSchema = z.object({
   templateVersionId: z.string().min(1),
   name: z.string().min(1, "Give the mission a name."),
   cadence: z.string().min(1),
+  investigationId: z.string().optional(),
 });
 
 export const globeMarkerSchema = z.object({

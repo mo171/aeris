@@ -11,11 +11,13 @@ from geoalchemy2.shape import to_shape
 from sqlalchemy import and_, func, or_, select
 
 from app.constants.statuses import MissionStatus, RunStatus
+from app.db.models.investigation import Investigation as DbInvestigation
 from app.db.models.mission import Mission as DbMission
+from app.db.models.project import Project
 from app.db.models.run import Run as DbRun
 from app.db.models.scene import Scene
 from app.lib import database
-from app.lib.exceptions import ResourceNotFoundError
+from app.lib.exceptions import InvalidRequestError, ResourceNotFoundError
 from app.lib.responses import CursorPage
 from app.schemas.geo import GeoPoint
 from app.schemas.missions import Mission, MissionCreateRequest
@@ -63,11 +65,16 @@ def _db_mission_to_wire(
     )
 
 
-async def list_missions(cursor: str | None = None, limit: int = 20) -> CursorPage[Mission]:
-    """Retrieve cursor-paginated missions from database."""
+async def list_missions(
+    cursor: str | None = None, limit: int = 20, project_id: str | None = None
+) -> CursorPage[Mission]:
+    """Retrieve cursor-paginated missions from database, optionally filtered by project."""
     try:
         async with database.get_session() as session:
-            query = select(DbMission).order_by(DbMission.status_rank.asc(), DbMission.updated_at.desc(), DbMission.id.desc()).limit(limit + 1)
+            query = select(DbMission)
+            if project_id:
+                query = query.where(DbMission.project_id == project_id)
+            query = query.order_by(DbMission.status_rank.asc(), DbMission.updated_at.desc(), DbMission.id.desc()).limit(limit + 1)
             if cursor:
                 cursor_mission = await session.get(DbMission, cursor)
                 if cursor_mission is not None:
@@ -150,21 +157,58 @@ async def get_mission_by_id(mission_id: str) -> Mission:
     raise ResourceNotFoundError(f"Mission '{mission_id}' does not exist.", details={"missionId": mission_id})
 
 async def create_mission(request: MissionCreateRequest) -> Mission:
-    """Create a new mission."""
-    # Create a simple bounding box around the centroid for the AOI
-    pt = Point(request.centroid.longitude, request.centroid.latitude)
-    # 0.1 degrees is roughly 11km at equator
-    delta = 0.1
-    minx, miny, maxx, maxy = pt.x - delta, pt.y - delta, pt.x + delta, pt.y + delta
-    poly = Polygon([(minx, miny), (maxx, miny), (maxx, maxy), (minx, maxy), (minx, miny)])
-
+    """Create a new mission, either standalone or promoted from an investigation."""
     async with database.get_session() as session:
+        poly = None
+        centroid_geom = None
+        proj_id = request.project_id
+
+        if request.investigation_id:
+            inv_stmt = select(DbInvestigation).where(DbInvestigation.id == request.investigation_id)
+            inv_res = await session.execute(inv_stmt)
+            db_inv = inv_res.scalar_one_or_none()
+            if db_inv is None:
+                raise ResourceNotFoundError(
+                    f"Source investigation '{request.investigation_id}' does not exist.",
+                    details={"investigationId": request.investigation_id},
+                )
+            poly = db_inv.area_of_interest
+            centroid_geom = db_inv.centroid
+            if not proj_id:
+                proj_id = db_inv.project_id
+
+        if poly is None:
+            if request.centroid is None:
+                raise InvalidRequestError("Either investigation_id or centroid must be provided to create a mission.")
+            pt = Point(request.centroid.longitude, request.centroid.latitude)
+            delta = 0.1
+            minx, miny, maxx, maxy = pt.x - delta, pt.y - delta, pt.x + delta, pt.y + delta
+            poly = from_shape(Polygon([(minx, miny), (maxx, miny), (maxx, maxy), (minx, maxy), (minx, miny)]), srid=4326)
+            centroid_geom = from_shape(pt, srid=4326)
+
+        final_proj_id = proj_id or "prj_default"
+
+        # Ensure project exists
+        proj = await session.get(Project, final_proj_id)
+        if proj is None:
+            session.add(
+                Project(
+                    id=final_proj_id,
+                    name="Default Project" if final_proj_id == "prj_default" else f"Project {final_proj_id}",
+                    description="Auto-initialized project workspace",
+                    last_activity_at=datetime.now(UTC),
+                )
+            )
+        else:
+            proj.last_activity_at = datetime.now(UTC)
+
         db_m = DbMission(
             name=request.name,
             status=MissionStatus.ACTIVE,
-            centroid=from_shape(pt, srid=4326),
-            area_of_interest=from_shape(poly, srid=4326),
-            project_id=request.project_id,
+            centroid=centroid_geom,
+            area_of_interest=poly,
+            project_id=final_proj_id,
+            investigation_id=request.investigation_id,
         )
         session.add(db_m)
         await session.commit()

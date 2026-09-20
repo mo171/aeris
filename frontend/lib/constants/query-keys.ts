@@ -21,6 +21,7 @@ export const QUERY_KEYS = {
     all: ["missions"] as const,
     active: () => ["missions", "active"] as const,
     detail: (missionId: string) => ["missions", "detail", missionId] as const,
+    byProject: (projectId: string) => ["missions", "by-project", projectId] as const,
   },
   globe: {
     all: ["globe"] as const,
@@ -33,6 +34,7 @@ export const QUERY_KEYS = {
   },
   investigations: {
     all: ["investigations"] as const,
+    byProject: (projectId: string) => ["investigations", "by-project", projectId] as const,
     detail: (investigationId: string) => ["investigations", "detail", investigationId] as const,
     evidence: (investigationId: string) => ["investigations", "evidence", investigationId] as const,
     plan: (investigationId: string, fromClaimId: string) =>
