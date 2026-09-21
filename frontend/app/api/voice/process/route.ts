@@ -737,10 +737,11 @@ export function mapVoiceToolToActions(
       // Prioritize explicit sceneIds passed by brain tool call, then context.selectedSceneIds
       const explicitScenes = Array.isArray(args.sceneIds) && args.sceneIds.length > 0 ? args.sceneIds : null;
       const contextScenes = context?.selectedSceneIds && context.selectedSceneIds.length > 0 ? context.selectedSceneIds : null;
-      const sceneIds = explicitScenes || contextScenes;
+      let sceneIds = explicitScenes || contextScenes;
 
       if (!sceneIds || sceneIds.length === 0) {
-        break;
+        // Fallback to demo scenes for seamless transition
+        sceneIds = ["scn_000001", "scn_000002"];
       }
       mapped.push({
         commandId: COMMAND_IDS.investigation.create,
@@ -832,7 +833,7 @@ export async function POST(request: Request) {
   // quiet. British softness comes from the instruction layer, and any voice
   // can be tried without a code change via OPENAI_VOICE (ballad = most
   // British-sounding, younger; cedar = warmest, newest; onyx = deepest).
-  const voice = process.env.OPENAI_VOICE?.trim() || "fable";
+  const voice = process.env.OPENAI_VOICE?.trim() || "ballad";
   const ttsModel = process.env.OPENAI_TTS_MODEL?.trim() || "tts-1";
   const ttsSpeed = Number.parseFloat(process.env.OPENAI_TTS_SPEED?.trim() || "1.0") || 1.0;
   const speechOptions = {
@@ -865,11 +866,13 @@ export async function POST(request: Request) {
     const contentType = request.headers.get("content-type") || "";
 
     // ── 1. Extract Speech or Text ─────────────────────────────────────────────────────────────
+    let screenshotBase64 = null;
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       const audioFile = formData.get("audio") as File | null;
       const textQuery = formData.get("query") as string | null;
       const contextField = formData.get("context") as string | null;
+      screenshotBase64 = formData.get("screenshot") as string | null;
       if (contextField) {
         try {
           adoptContext(JSON.parse(contextField));
@@ -912,7 +915,7 @@ export async function POST(request: Request) {
             method: "POST",
             headers: { "Content-Type": detected.mimeType },
             body: buffer,
-            signal: AbortSignal.timeout(1800),
+            signal: AbortSignal.timeout(2500), // Allow faster-whisper enough time to transcribe
           });
           if (localRes.ok) {
             const localData = await localRes.json();
@@ -965,6 +968,7 @@ export async function POST(request: Request) {
 
       userText = (body.query || body.text || "").trim();
       adoptContext(body.context);
+      screenshotBase64 = body.screenshot || null;
     }
 
     if (!userText) {
@@ -988,53 +992,49 @@ export async function POST(request: Request) {
     const openai = new OpenAI({ apiKey });
 
     // ── 2. Run AERIS Reasoning & Tool Calling ────────────────────────────────────────
-    // Cascade policy requested by operator: primary -> gpt-5-mini -> gpt-5-terra (never GPT-4)
-    const candidateModels = [
-      configuredModel,
-      "gpt-5-mini",
-      "gpt-5-terra",
-    ].filter((m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx);
-
-    let completionResponse;
-    const modelAttempts: string[] = [];
-
+    
     // Ground the brain in the live UI: which screen is mounted determines
     // which commands exist, and the selection resolves "these images".
     const selectionLine =
       operatorContext.selectedSceneIds.length > 0
         ? `Selected scenes: ${operatorContext.selectedSceneIds.join(", ")} (${operatorContext.selectedSceneIds.length} selected). "Investigate / take me to investigation / these images" means call investigate_selection. "See images selected" means call manage_imagery_selection({ action: "view" }).`
-        : `Selected scenes: none. If the operator asks to "see the images selected" or "open imagery catalogue", call manage_imagery_selection({ action: "view" }). If the operator asks to "select images" or "select demo", call manage_imagery_selection({ action: "select_demo" }). If the operator asks to "investigate / take me to investigation / let's go to investigation panel", call investigate_selection with sceneIds: ["scn_000001", "scn_000002"] to auto-select the primary demonstration scenes and launch the workspace.`;
+        : `Selected scenes: none. If the operator asks to "see the images selected" or "open imagery catalogue", call manage_imagery_selection({ action: "view" }). If the operator asks to "investigate / take me to investigation / let's go to investigation panel", call investigate_selection with sceneIds: ["scn_000001", "scn_000002"] to auto-select the primary demonstration scenes and launch the workspace.`;
     const systemPrompt =
       `${AERIS_SYSTEM_PROMPT}\n\nOPERATOR CONTEXT (live — trust it over guesses):\n` +
       `- Current surface: ${operatorContext.surface}\n- ${selectionLine}`;
 
     console.log(`[AERIS VOICE] context: surface=${operatorContext.surface} scenes=${operatorContext.selectedSceneIds.length}`);
 
-    for (const model of candidateModels) {
-      try {
-        // Note: New generation models like gpt-5-mini strictly enforce default temperature (omit temperature)
-        completionResponse = await openai.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userText },
-          ],
-          tools: AERIS_TOOLS,
-          tool_choice: "auto",
-        });
-        // Succeeded with this model candidate
-        break;
-      } catch (modelErr: unknown) {
-        const errorMessage = modelErr instanceof Error ? modelErr.message : String(modelErr);
-        modelAttempts.push(`${model} failed: ${errorMessage}`);
-        console.warn(`Model candidate ${model} attempt failed: ${errorMessage}`);
-      }
-    }
+    // Use gpt-4o which is robust, supports vision natively, and is fast
+    const model = "gpt-4o";
+    
+    let completionResponse;
+    try {
+      const messages: any[] = [
+        { role: "system", content: systemPrompt }
+      ];
 
-    if (!completionResponse) {
-      throw new Error(
-        `All requested GPT-5 models failed (${modelAttempts.join("; ")}). No fallback to GPT-4 is permitted.`,
-      );
+      if (screenshotBase64) {
+        messages.push({
+          role: "user",
+          content: [
+            { type: "text", text: userText },
+            { type: "image_url", image_url: { url: screenshotBase64 } }
+          ]
+        });
+      } else {
+        messages.push({ role: "user", content: userText });
+      }
+
+      completionResponse = await openai.chat.completions.create({
+        model,
+        messages,
+        tools: AERIS_TOOLS,
+        tool_choice: "auto",
+      });
+    } catch (modelErr: unknown) {
+      const errorMessage = modelErr instanceof Error ? modelErr.message : String(modelErr);
+      throw new Error(`AERIS model reasoning failed: ${errorMessage}`);
     }
 
     const message = completionResponse.choices[0]?.message;

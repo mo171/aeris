@@ -66,7 +66,7 @@ export const GLOBE_APPEARANCE = {
   /** Shown where no imagery tile has loaded yet, so gaps read as space rather than as a rendering fault. */
   baseColor: AERIS_COLOR_HEX.black,
   /** Day/night terminator driven by real sun position. A genuine detail, not a filter. */
-  enableSunLighting: true,
+  enableSunLighting: false,
   showGroundAtmosphere: true,
   showSkyAtmosphere: true,
 

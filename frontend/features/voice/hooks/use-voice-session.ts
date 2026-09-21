@@ -540,58 +540,69 @@ class AerisSessionManager {
     let filename = "speech.wav";
     let mimeType = "audio/wav";
 
-    // 3. Prefer PCM WAV encoding (16kHz mono 16-bit PCM)
-    if (this.pcmChunks.length > 0 && this.audioContext) {
-      const totalLen = this.pcmChunks.reduce((acc, c) => acc + c.length, 0);
-      const merged = new Float32Array(totalLen);
-      let offset = 0;
-      for (const chunk of this.pcmChunks) {
-        merged.set(chunk, offset);
-        offset += chunk.length;
-      }
-      this.pcmChunks = [];
+      // 3. Prefer PCM WAV encoding (16kHz mono 16-bit PCM)
+      if (this.pcmChunks.length > 0 && this.audioContext) {
+        const totalLen = this.pcmChunks.reduce((acc, c) => acc + c.length, 0);
+        const merged = new Float32Array(totalLen);
+        let offset = 0;
+        for (const chunk of this.pcmChunks) {
+          merged.set(chunk, offset);
+          offset += chunk.length;
+        }
+        this.pcmChunks = [];
 
-      // Resample to Whisper's native 16kHz
-      const resampled = resampleAudio(merged, this.audioContext.sampleRate, 16000);
-      audioBlob = encodeWav(resampled, 16000);
-      filename = "speech.wav";
-      mimeType = "audio/wav";
-    } else if (mediaBlob && mediaBlob.size >= 500) {
-      audioBlob = mediaBlob;
-      const isMp4 = mediaBlob.type.includes("mp4");
-      filename = isMp4 ? "speech.mp4" : "speech.webm";
-      mimeType = isMp4 ? "audio/mp4" : "audio/webm";
-    }
-
-    try {
-      if (!audioBlob || audioBlob.size < 500) {
-        // Audio was too short or silent
-        store.setVoiceState("idle");
-        return;
+        // Resample to Whisper's native 16kHz
+        const resampled = resampleAudio(merged, this.audioContext.sampleRate, 16000);
+        audioBlob = encodeWav(resampled, 16000);
+        filename = "speech.wav";
+        mimeType = "audio/wav";
+      } else if (mediaBlob && mediaBlob.size >= 500) {
+        audioBlob = mediaBlob;
+        const isMp4 = mediaBlob.type.includes("mp4");
+        filename = isMp4 ? "speech.mp4" : "speech.webm";
+        mimeType = isMp4 ? "audio/mp4" : "audio/webm";
       }
 
-      store.setVoiceState("thinking");
+      try {
+        if (!audioBlob || audioBlob.size < 500) {
+          // Audio was too short or silent
+          store.setVoiceState("idle");
+          return;
+        }
 
-      const audioFile = new File([audioBlob], filename, { type: mimeType });
+        store.setVoiceState("thinking");
 
-      const operatorContext = collectOperatorContext();
-      console.log("[AERIS VOICE] operator context:", operatorContext);
-      const formData = new FormData();
-      formData.append("audio", audioFile, filename);
-      formData.append("context", JSON.stringify(operatorContext));
+        const audioFile = new File([audioBlob], filename, { type: mimeType });
 
-      const response = await fetch("/api/voice/process", {
-        method: "POST",
-        body: formData,
-      });
+        const operatorContext = collectOperatorContext();
+        console.log("[AERIS VOICE] operator context:", operatorContext);
+        const formData = new FormData();
+        formData.append("audio", audioFile, filename);
+        formData.append("context", JSON.stringify(operatorContext));
 
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server responded with status ${response.status}`);
-      }
+        // Attempt to capture a frontend snapshot for the AI Vision model
+        try {
+          const html2canvas = (await import("html2canvas")).default;
+          const canvas = await html2canvas(document.body, { scale: 0.5 });
+          const imageBase64 = canvas.toDataURL("image/jpeg", 0.5);
+          formData.append("screenshot", imageBase64);
+          console.log("[AERIS VOICE] Added frontend snapshot to payload");
+        } catch (screenshotErr) {
+          console.warn("[AERIS VOICE] Failed to capture snapshot:", screenshotErr);
+        }
 
-      const data: ProcessVoiceResponse = await response.json();
-      await this.handleProcessResponse(data, "voice");
+        const response = await fetch("/api/voice/process", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson.error || `Server responded with status ${response.status}`);
+        }
+
+        const data: ProcessVoiceResponse = await response.json();
+        await this.handleProcessResponse(data, "voice");
     } catch (err: unknown) {
       console.error("AERIS request failed:", err);
       const message = err instanceof Error ? err.message : "AERIS uplink failure";

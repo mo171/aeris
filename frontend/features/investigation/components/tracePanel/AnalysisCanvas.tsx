@@ -4,8 +4,19 @@ import { useInvestigationStore } from "../../store/investigation-store";
 import type { AnalysisRun, AnalysisTraceStep } from "../../types/analysis.types";
 import type { InvestigationSceneSlot } from "../../types/investigation.types";
 import { formatDurationMs } from "@/lib/formatters";
-import { ChevronDown, ChevronRight, Activity, Clock, Layers, FileJson, Settings2, Sliders, Zap } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Activity,
+  Clock,
+  Layers,
+  FileJson,
+  Settings2,
+  SlidersHorizontal,
+  RotateCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface AnalysisCanvasProps {
   run: AnalysisRun | null;
@@ -61,15 +72,15 @@ function StepParametersCard({
 
   return (
     <div
-      className="mt-3 p-3.5 bg-slate-950/80 rounded-lg border border-indigo-500/30 shadow-inner flex flex-col gap-3"
+      className="mt-3 p-3 bg-surface-2/60 rounded-md border border-border/80 flex flex-col gap-3"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-indigo-300 flex items-center gap-1.5 font-mono">
-          <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-          Tunable Parameters &amp; Checkpoint
+      <div className="flex items-center justify-between border-b border-border/60 pb-2">
+        <span className="text-[10px] uppercase tracking-widest font-mono font-medium text-muted-foreground flex items-center gap-1.5">
+          <SlidersHorizontal className="size-3 text-muted-foreground" />
+          Checkpoint Parameters
         </span>
-        <span className="text-[10px] font-mono text-zinc-500">
+        <span className="text-[10px] font-mono text-muted-foreground/80 bg-surface-3/80 border border-border/50 px-1.5 py-0.5 rounded">
           Stage {step.stageCode}
         </span>
       </div>
@@ -77,9 +88,11 @@ function StepParametersCard({
       {isFusion && (
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-400">Confidence Threshold</span>
-              <span className="font-mono text-indigo-300 font-bold">{confidenceThreshold.toFixed(2)}</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground text-[11px] font-mono">Confidence Threshold</span>
+              <span className="font-mono text-xs text-foreground bg-surface-3 border border-border/60 px-1.5 py-0.5 rounded font-medium">
+                {confidenceThreshold.toFixed(2)}
+              </span>
             </div>
             <input
               type="range"
@@ -88,15 +101,19 @@ function StepParametersCard({
               step="0.01"
               value={confidenceThreshold}
               onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              className="w-full h-1 bg-surface-4 rounded-full appearance-none cursor-pointer accent-foreground hover:accent-aeris-teal transition-colors"
             />
-            <span className="text-[10px] text-zinc-500">Lower to detect weaker crane &amp; reclamation signatures</span>
+            <span className="text-[10px] text-muted-foreground/70 leading-tight">
+              Lower to detect weaker crane &amp; reclamation signatures
+            </span>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-400">SAR Weight Ratio</span>
-              <span className="font-mono text-indigo-300 font-bold">{sarWeightRatio.toFixed(2)}</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground text-[11px] font-mono">SAR Weight Ratio</span>
+              <span className="font-mono text-xs text-foreground bg-surface-3 border border-border/60 px-1.5 py-0.5 rounded font-medium">
+                {sarWeightRatio.toFixed(2)}
+              </span>
             </div>
             <input
               type="range"
@@ -105,9 +122,11 @@ function StepParametersCard({
               step="0.05"
               value={sarWeightRatio}
               onChange={(e) => setSarWeightRatio(parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              className="w-full h-1 bg-surface-4 rounded-full appearance-none cursor-pointer accent-foreground hover:accent-aeris-teal transition-colors"
             />
-            <span className="text-[10px] text-zinc-500">Favors radar backscatter over optical reflectance</span>
+            <span className="text-[10px] text-muted-foreground/70 leading-tight">
+              Favors radar backscatter over optical reflectance
+            </span>
           </div>
         </div>
       )}
@@ -115,9 +134,11 @@ function StepParametersCard({
       {isSar && (
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-400">Backscatter Cutoff</span>
-              <span className="font-mono text-indigo-300 font-bold">{decibelCutoff} dB</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground text-[11px] font-mono">Backscatter Cutoff</span>
+              <span className="font-mono text-xs text-foreground bg-surface-3 border border-border/60 px-1.5 py-0.5 rounded font-medium">
+                {decibelCutoff} dB
+              </span>
             </div>
             <input
               type="range"
@@ -126,15 +147,15 @@ function StepParametersCard({
               step="1"
               value={decibelCutoff}
               onChange={(e) => setDecibelCutoff(parseInt(e.target.value, 10))}
-              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              className="w-full h-1 bg-surface-4 rounded-full appearance-none cursor-pointer accent-foreground hover:accent-aeris-teal transition-colors"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <span className="text-zinc-400 text-xs">Lee Speckle Filter Window</span>
+            <span className="text-muted-foreground text-[11px] font-mono">Lee Speckle Filter Window</span>
             <select
               value={filterWindow}
               onChange={(e) => setFilterWindow(e.target.value)}
-              className="bg-zinc-900 border border-zinc-700 text-xs rounded px-2 py-1 text-zinc-200"
+              className="bg-surface-3 border border-border text-xs rounded px-2 py-1 text-foreground font-mono focus:outline-none focus:border-aeris-teal/50"
             >
               <option value="3x3">3x3 (Fine Edge Preservation)</option>
               <option value="5x5">5x5 (Standard Coherence)</option>
@@ -146,9 +167,11 @@ function StepParametersCard({
 
       {!isFusion && !isSar && (
         <div className="flex flex-col gap-1.5">
-          <div className="flex justify-between text-xs">
-            <span className="text-zinc-400">Sensitivity Threshold</span>
-            <span className="font-mono text-indigo-300 font-bold">{confidenceThreshold.toFixed(2)}</span>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-muted-foreground text-[11px] font-mono">Sensitivity Threshold</span>
+            <span className="font-mono text-xs text-foreground bg-surface-3 border border-border/60 px-1.5 py-0.5 rounded font-medium">
+              {confidenceThreshold.toFixed(2)}
+            </span>
           </div>
           <input
             type="range"
@@ -157,19 +180,20 @@ function StepParametersCard({
             step="0.01"
             value={confidenceThreshold}
             onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            className="w-full h-1 bg-surface-4 rounded-full appearance-none cursor-pointer accent-foreground hover:accent-aeris-teal transition-colors"
           />
         </div>
       )}
 
       <Button
+        variant="outline"
         size="sm"
         disabled={isSubmitting || step.state === "running"}
         onClick={handleRerun}
-        className="w-full mt-1 bg-gradient-to-r from-teal-500 via-indigo-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white font-mono text-xs font-semibold shadow-md flex items-center justify-center gap-2 h-8 transition-all"
+        className="w-full mt-1 border-border/90 bg-surface-3/60 hover:bg-surface-4 hover:border-aeris-teal/40 text-foreground font-mono text-xs font-medium flex items-center justify-center gap-2 h-8 rounded-md transition-colors"
       >
-        <Zap className={`w-3.5 h-3.5 text-amber-300 ${isSubmitting ? "animate-spin" : "animate-pulse"}`} />
-        {isSubmitting ? "Re-executing Downstream Pipeline..." : "⚡ Re-run Pipeline from this Step"}
+        <RotateCw className={cn("size-3.5 text-muted-foreground transition-transform", isSubmitting && "animate-spin text-aeris-teal")} />
+        <span>{isSubmitting ? "Re-executing pipeline..." : `Branch Execution from Stage ${step.stageCode}`}</span>
       </Button>
     </div>
   );
@@ -235,25 +259,25 @@ export function AnalysisCanvas({ run, onRerunStep }: AnalysisCanvasProps) {
             )}
 
             <div className="grid grid-cols-2 gap-4 mt-2">
-              <div className="flex flex-col gap-3 p-3 bg-[#09090b] rounded-md border border-zinc-800">
+              <div className="flex flex-col gap-3 p-3 bg-surface-2/60 rounded-md border border-border">
                 <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1"><Activity className="w-3 h-3"/> State</span>
-                  <span className="font-mono capitalize" style={{ color: color }}>{step.state}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5 font-mono"><Activity className="w-3 h-3"/> State</span>
+                  <span className="font-mono text-xs font-semibold capitalize" style={{ color: color }}>{step.state}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1"><Clock className="w-3 h-3"/> Latency</span>
-                  <span className="font-mono">{step.durationMs ? formatDurationMs(step.durationMs) : '—'}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5 font-mono"><Clock className="w-3 h-3"/> Latency</span>
+                  <span className="font-mono text-xs text-foreground">{step.durationMs ? formatDurationMs(step.durationMs) : '—'}</span>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 p-3 bg-[#09090b] rounded-md border border-zinc-800">
+              <div className="flex flex-col gap-3 p-3 bg-surface-2/60 rounded-md border border-border">
                 <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1"><Layers className="w-3 h-3"/> Artefact / Output</span>
-                  <span className="font-mono text-zinc-300 break-all">{step.artefactLayerId || (step.outputs && step.outputs.length > 0 ? `${step.outputs.length} outputs generated` : 'None')}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5 font-mono"><Layers className="w-3 h-3"/> Artefact / Output</span>
+                  <span className="font-mono text-xs text-foreground break-all">{step.artefactLayerId || (step.outputs && step.outputs.length > 0 ? `${step.outputs.length} outputs generated` : 'None')}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1"><Settings2 className="w-3 h-3"/> Operation</span>
-                  <span className="font-mono text-zinc-300">{step.operationId || 'System Pipeline'}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5 font-mono"><Settings2 className="w-3 h-3"/> Operation</span>
+                  <span className="font-mono text-xs text-foreground">{step.operationId || 'System Pipeline'}</span>
                 </div>
               </div>
             </div>
@@ -261,12 +285,12 @@ export function AnalysisCanvas({ run, onRerunStep }: AnalysisCanvasProps) {
             <StepParametersCard step={step} onRerunStep={onRerunStep} />
 
             {(step.inputs && step.inputs.length > 0) && (
-              <div className="mt-2 p-3 bg-[#09090b] rounded-md border border-zinc-800">
-                <span className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1 mb-2"><FileJson className="w-3 h-3"/> Inputs Referenced</span>
+              <div className="mt-2 p-3 bg-surface-2/60 rounded-md border border-border">
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5 mb-2 font-mono"><FileJson className="w-3 h-3"/> Inputs Referenced</span>
                 <ul className="flex flex-wrap gap-2">
                   {step.inputs.map((input, idx) => (
-                    <li key={idx} className="text-xs font-mono bg-zinc-900 border border-zinc-700 px-2 py-0.5 rounded text-zinc-400">
-                      {input.kind}: {input.id}
+                    <li key={idx} className="text-xs font-mono bg-surface-3 border border-border/70 px-2 py-0.5 rounded text-muted-foreground">
+                      {input.kind}: <span className="text-foreground">{input.id}</span>
                     </li>
                   ))}
                 </ul>
@@ -279,11 +303,11 @@ export function AnalysisCanvas({ run, onRerunStep }: AnalysisCanvasProps) {
   }, [onRerunStep, run]);
 
   if (!run || !run.traceSteps || run.traceSteps.length === 0) {
-    return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No analysis trace available.</div>;
+    return <div className="flex h-full items-center justify-center text-xs text-muted-foreground font-mono">No analysis trace available.</div>;
   }
 
   return (
-    <div className="h-full w-full bg-[#09090b] overflow-y-auto overflow-x-hidden p-6" onClick={() => setSelectedNodeId(null)}>
+    <div className="h-full w-full bg-background overflow-y-auto overflow-x-hidden p-6" onClick={() => setSelectedNodeId(null)}>
       <GitGraphCanvas nodes={nodes} className="max-w-4xl mx-auto" />
     </div>
   );

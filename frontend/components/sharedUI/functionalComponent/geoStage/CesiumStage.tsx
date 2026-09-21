@@ -1130,8 +1130,8 @@ function configureSceneAppearance(viewer: Viewer): void {
   scene.atmosphere.hueShift = GLOBE_APPEARANCE.atmosphereHueShift;
   scene.atmosphere.saturationShift = GLOBE_APPEARANCE.atmosphereSaturationShift;
   scene.atmosphere.brightnessShift = GLOBE_APPEARANCE.atmosphereBrightnessShift;
-  // Lets the atmosphere respond to the sun position instead of glowing uniformly all the way round.
-  scene.atmosphere.dynamicLighting = DynamicAtmosphereLightingType.SUNLIGHT;
+  // Disabled so the atmosphere stays uniformly illuminated across the entire globe.
+  scene.atmosphere.dynamicLighting = DynamicAtmosphereLightingType.NONE;
 
   scene.backgroundColor = Color.fromCssColorString(AERIS_COLOR_HEX.void);
   scene.fog.enabled = true;

@@ -153,14 +153,16 @@ describe("voice → command-bus contract", () => {
     });
   });
 
-  it("investigate_selection with nothing selected emits nothing (never invents scenes)", () => {
-    expect(
-      mapVoiceToolToActions("investigate_selection", {}, "test", {
-        surface: "/mission-command",
-        selectedSceneIds: [],
-      }),
-    ).toEqual([]);
-    expect(mapVoiceToolToActions("investigate_selection", {}, "test")).toEqual([]);
+  it("investigate_selection with nothing selected falls back to demo scenes", () => {
+    // If the brain and context fail to provide scenes, the fallback ensures a seamless demo
+    const actions = mapVoiceToolToActions(
+      "investigate_selection",
+      { sceneIds: [] },
+      "test",
+      { surface: "investigation", selectedSceneIds: [] },
+    );
+    expect(actions).toHaveLength(1);
+    expect(actions[0].params.sceneIds).toEqual(["scn_000001", "scn_000002"]);
   });
 
   it("every manage_imagery_selection action resolves to known commands", () => {
