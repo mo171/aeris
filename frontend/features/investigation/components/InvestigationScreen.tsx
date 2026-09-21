@@ -25,7 +25,7 @@
 
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { PanelContainer } from "@/components/sharedUI/functionalComponent/appShell/PanelContainer";
@@ -103,6 +103,35 @@ export function InvestigationScreen({ investigationId }: InvestigationScreenProp
   const [isAutoFetchingSar, setIsAutoFetchingSar] = useState(false);
   const [compareVersionAId, setCompareVersionAId] = useState<string | null>(null);
   const [compareVersionBId, setCompareVersionBId] = useState<string | null>(null);
+
+  // Announce Gulf Coast Refineries with Archie voice when investigation area changes
+  useEffect(() => {
+    if (!investigation) return;
+    if (investigation.areaOfInterestName !== "Gulf Coast Refineries, United States") return;
+
+    const announceGulfRefineries = async () => {
+      try {
+        const response = await fetch("/api/voice/process", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: "Taking you to the Gulf Coast Refineries. Analyzing dual-sensor satellite imagery of the industrial complex.",
+          }),
+        });
+        const data = await response.json();
+        if (data.success && data.audioBase64) {
+          const audio = new Audio(`data:audio/mp3;base64,${data.audioBase64}`);
+          audio.play().catch((e) => console.log("[AERIS] Audio playback blocked or failed:", e));
+        }
+      } catch (error) {
+        console.error("[AERIS VOICE] Failed to announce Gulf Coast Refineries:", error);
+      }
+    };
+
+    announceGulfRefineries();
+  }, [investigation?.areaOfInterestName]);
 
   // Which catalogue products are actually on the scene, so the overlay browser can mark them rather than
   // listing every capability with no indication of which ones the operator is already looking at.

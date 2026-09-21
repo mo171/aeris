@@ -105,6 +105,40 @@ function detectAudioFormat(
   return { filename: "speech.wav", mimeType: "audio/wav" };
 }
 
+// ElevenLabs TTS configuration
+// API docs: https://elevenlabs.io/docs/api/text-to-speech
+function synthesizeElevenLabsSpeech(text: string, apiKey: string, voiceId: string): Promise<string | null> {
+  const elevenLabsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+
+  const options: RequestInit = {
+    method: "POST",
+    headers: {
+      "xi-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      text: text,
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.5,
+      },
+    }),
+  };
+
+  try {
+    const response = fetch(elevenLabsUrl, options);
+    if (!response.ok) {
+      throw new Error(`ElevenLabs TTS failed: ${response.statusText}`);
+    }
+    const arrayBuffer = response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    return `data:audio/mpeg;base64,${base64}`;
+  } catch (error) {
+    console.error("[AERIS VOICE] ElevenLabs TTS failed:", error);
+    return null;
+  }
+}
+
 // AERIS Persona System Prompt
 const AERIS_SYSTEM_PROMPT = `
 You are AERIS (Autonomous Earth Observation System), the sophisticated, articulate, and supremely capable British AI voice assistant and executive flight director for the AERIS platform, possessing the iconic bold British demeanor and razor-sharp intellect of Tony Stark's JARVIS.
@@ -826,18 +860,20 @@ export function mapVoiceToolToActions(
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const openAIApiKey = process.env.OPENAI_API_KEY?.trim();
+  const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
   const configuredModel = process.env.OPENAI_MODEL?.trim() || "gpt-5-astra";
   // Warm, clear masculine voice as the Jarvis base — "ash" stays audible on
   // small speakers where deep voices (onyx) lose their fundamental and go
   // quiet. British softness comes from the instruction layer, and any voice
   // can be tried without a code change via OPENAI_VOICE (ballad = most
   // British-sounding, younger; cedar = warmest, newest; onyx = deepest).
-  const voice = process.env.OPENAI_VOICE?.trim() || "ballad";
+  const openAIVoice = process.env.OPENAI_VOICE?.trim() || "ballad";
+  const elevenLabsVoiceId = process.env.ELEVENLABS_VOICE_ID?.trim() || "archaeology";
   const ttsModel = process.env.OPENAI_TTS_MODEL?.trim() || "tts-1";
   const ttsSpeed = Number.parseFloat(process.env.OPENAI_TTS_SPEED?.trim() || "1.0") || 1.0;
   const speechOptions = {
-    voice,
+    voice: openAIVoice,
     ttsModel,
     speed: Math.min(4, Math.max(0.25, ttsSpeed)),
   };
@@ -884,7 +920,7 @@ export async function POST(request: Request) {
       if (textQuery && textQuery.trim()) {
         userText = textQuery.trim();
       } else if (audioFile && audioFile.size > 0) {
-        if (!apiKey) {
+        if (!openAIApiKey) {
           return NextResponse.json(
             {
               success: false,
@@ -930,7 +966,7 @@ export async function POST(request: Request) {
 
         // 2. High-performance cloud Whisper-1 fallback
         if (!userText) {
-          const openai = new OpenAI({ apiKey });
+          const openai = new OpenAI({ apiKey: openAIApiKey });
           const uploadFile = await toFile(buffer, detected.filename, {
             type: detected.mimeType,
           });
@@ -952,8 +988,34 @@ export async function POST(request: Request) {
       if (body.action === "greeting" || body.greeting) {
         const greetingText = "Voice command mode activated. AERIS online and at your service, sir.";
         let audioBase64: string | null = null;
-        if (apiKey) {
-          const openai = new OpenAI({ apiKey });
+        if (elevenLabsApiKey && elevenLabsVoiceId) {
+          try {
+            const elevenLabsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsVoiceId}`;
+            const response = await fetch(elevenLabsUrl, {
+              method: "POST",
+              headers: {
+                "xi-api-key": elevenLabsApiKey,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                text: greetingText,
+                voice_settings: {
+                  stability: 0.5,
+                  similarity_boost: 0.5,
+                },
+              }),
+            });
+            if (response.ok) {
+              const arrayBuffer = await response.arrayBuffer();
+              const base64 = Buffer.from(arrayBuffer).toString("base64");
+              audioBase64 = `data:audio/mpeg;base64,${base64}`;
+            }
+          } catch (error) {
+            console.error("[AERIS VOICE] ElevenLabs greeting TTS failed:", error);
+          }
+        }
+        if (!audioBase64 && openAIApiKey) {
+          const openai = new OpenAI({ apiKey: openAIApiKey });
           audioBase64 = await synthesizeJarvisSpeech(openai, greetingText, speechOptions);
         }
 
@@ -979,7 +1041,7 @@ export async function POST(request: Request) {
     }
 
     // ── Fallback if API key is not yet set by user ───────────────────────────────────────────
-    if (!apiKey) {
+    if (!openAIApiKey) {
       return NextResponse.json({
         success: true,
         transcript: userText,
@@ -989,7 +1051,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({ apiKey: openAIApiKey });
 
     // ── 2. Run AERIS Reasoning & Tool Calling ────────────────────────────────────────
     
@@ -1083,9 +1145,45 @@ export async function POST(request: Request) {
       actions.map((a) => `${a.commandId} ${JSON.stringify(a.params)} — ${a.description}`),
     );
 
-    // ── 3. Synthesize Voice with the Jarvis voice ─────────────────────────
-    const audioBase64 = await synthesizeJarvisSpeech(openai, cleanSpokenText, speechOptions);
-    console.log(`[AERIS VOICE] TTS ${audioBase64 ? "succeeded" : "FAILED"} (model=${ttsModel}, voice=${voice}, speed=${speechOptions.speed})`);
+    // ── 3. Synthesize Voice ─────────────────────────────────────────
+    let audioBase64: string | null = null;
+
+    // Try ElevenLabs first if API key and voice ID are configured
+    if (elevenLabsApiKey && elevenLabsVoiceId) {
+      try {
+        const elevenLabsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsVoiceId}`;
+        const response = await fetch(elevenLabsUrl, {
+          method: "POST",
+          headers: {
+            "xi-api-key": elevenLabsApiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: cleanSpokenText,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.5,
+            },
+          }),
+        });
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          const base64 = Buffer.from(arrayBuffer).toString("base64");
+          audioBase64 = `data:audio/mpeg;base64,${base64}`;
+          console.log(`[AERIS VOICE] ElevenLabs TTS succeeded (voice=${elevenLabsVoiceId})`);
+        }
+      } catch (error) {
+        console.error("[AERIS VOICE] ElevenLabs TTS failed:", error);
+      }
+    }
+
+    // Fall back to OpenAI Jarvis voice
+    if (!audioBase64 && openAIApiKey) {
+      const openai = new OpenAI({ apiKey: openAIApiKey });
+      audioBase64 = await synthesizeJarvisSpeech(openai, cleanSpokenText, speechOptions);
+    }
+
+    console.log(`[AERIS VOICE] TTS ${audioBase64 ? "succeeded" : "FAILED"} (elevenLabs=${!!(elevenLabsApiKey && elevenLabsVoiceId)}, openAI=${!!openAIApiKey})`);
 
     return NextResponse.json({
       success: true,
