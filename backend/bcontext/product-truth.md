@@ -58,6 +58,18 @@ do not exist on Mission Command and vice versa. Cross-surface intents ("investig
 first-class tools (`investigate_selection` → `investigation.create`), never approximated with panel toggles,
 and the on-screen Investigate button dispatches that same command rather than calling the launcher directly.
 
+Voice conversation lives in chat, never in floating popovers or toasts: each turn is recorded as
+operator/aeris messages in the surface chat model (the assistant transcript on Mission Command via its
+published controls, the voice thread rendered by the Chat tab on Investigation). Spoken turns additionally
+play audio; nothing spoken persists on the canvas as text.
+
+Two hard rules keep the three layers (registry, voice route, backend mirror) from drifting. First, the
+backend `UiCommand` mirror must equal the frontend `COMMAND_IDS` set exactly — the mirror test fails the
+build otherwise — so a new command is added in both files in the same change, while the backend agent's
+allowed subset (`AGENT_UI_COMMANDS`) only grows deliberately. Second, no voice- or agent-reachable command
+may use a `z.void()` schema: machine callers always send a params object, and void rejects every one of
+them as invalid-params; deterministic no-arg commands use `z.object({}).optional()` instead.
+
 ### 1.1.1 How the Agent Harness feels to us (Phase 1.14)
 
 AERIS is an autonomous scientific operator, not just an LLM router. The distinction is in the **ReAct loop** interacting with the **scientific firewall**.

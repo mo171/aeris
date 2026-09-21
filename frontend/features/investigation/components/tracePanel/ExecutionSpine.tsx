@@ -31,7 +31,6 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 import { useInvestigationStore } from "../../store/investigation-store";
@@ -44,6 +43,9 @@ import type { InvestigationSceneSlot } from "../../types/investigation.types";
 import type { InvestigationVersion } from "../../types/version.types";
 import { VersionCanvas } from "./VersionCanvas";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { WorkflowCanvas } from "@/components/sharedUI/workflowCanvas";
+import { buildWorkflowGraph } from "../../lib/workflow-graph";
+import { useMemo } from "react";
 
 interface ExecutionSpineProps {
   run: AnalysisRun | null;
@@ -51,12 +53,21 @@ interface ExecutionSpineProps {
   claimsById: Record<string, Claim>;
   sceneSlots: readonly InvestigationSceneSlot[];
   versions: InvestigationVersion[];
+  onRerunStep?: (stepId: string, parameterOverrides: Record<string, any>) => void;
 }
 
-export function ExecutionSpine({ run, layersById, claimsById, sceneSlots, versions }: ExecutionSpineProps) {
+export function ExecutionSpine({
+  run,
+  layersById,
+  claimsById,
+  sceneSlots,
+  versions,
+  onRerunStep,
+}: ExecutionSpineProps) {
   const isExpanded = useInvestigationStore((state) => state.isTraceExpanded);
   const traceView = useInvestigationStore((state) => state.traceView);
   const setTraceView = useInvestigationStore((state) => state.setTraceView);
+  const setSelectedNodeId = useInvestigationStore((state) => state.setSelectedNodeId);
   const toggleTraceExpanded = useInvestigationStore((state) => state.toggleTraceExpanded);
   const artefactLayerId = useInvestigationStore((state) => state.artefactLayerId);
 
@@ -72,101 +83,84 @@ export function ExecutionSpine({ run, layersById, claimsById, sceneSlots, versio
     );
   };
 
+  const workflowGraph = useMemo(() => {
+    return buildWorkflowGraph({
+      steps: run?.traceSteps ?? [],
+      layersById,
+      claimsById,
+      sceneSlots,
+    });
+  }, [run?.traceSteps, layersById, claimsById, sceneSlots]);
+
   return (
-    <section
-      style={{
-        height: isExpanded
-          ? INVESTIGATION_LAYOUT.traceExpandedHeightPx
-          : INVESTIGATION_LAYOUT.traceCollapsedHeightPx,
-      }}
-      className="pointer-events-auto flex flex-col overflow-hidden rounded-md border border-border bg-surface-2/80 backdrop-blur-md transition-[height] duration-base ease-expo"
-    >
-      <header className="flex h-[34px] shrink-0 items-center gap-3 px-2">
-        <button
-          type="button"
-          onClick={() => toggleTraceExpanded()}
-          aria-expanded={isExpanded}
-          className="flex items-center gap-1.5 rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-        >
-          <ChevronUp
-            className={cn(
-              "size-3 text-muted-foreground transition-transform duration-base ease-expo",
-              isExpanded && "rotate-180",
-            )}
-            aria-hidden="true"
-          />
-          <span className="aeris-technical">Trace</span>
-        </button>
+    <>
+      <section
+        style={{
+          height: isExpanded
+            ? INVESTIGATION_LAYOUT.traceExpandedHeightPx
+            : INVESTIGATION_LAYOUT.traceCollapsedHeightPx,
+        }}
+        className="pointer-events-auto flex flex-col overflow-hidden rounded-md border border-border bg-surface-2/80 backdrop-blur-md transition-[height] duration-base ease-expo"
+      >
+        <header className="flex h-[34px] shrink-0 items-center gap-3 px-2">
+          <button
+            type="button"
+            onClick={() => toggleTraceExpanded()}
+            aria-expanded={isExpanded}
+            className="flex items-center gap-1.5 rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <ChevronUp
+              className={cn(
+                "size-3 text-muted-foreground transition-transform duration-base ease-expo",
+                isExpanded && "rotate-180",
+              )}
+              aria-hidden="true"
+            />
+            <span className="aeris-technical">Trace</span>
+          </button>
 
-        {steps.length === 0 ? (
-          <span className="font-mono text-[10px] text-muted-foreground/60">
-            No analysis has run yet
-          </span>
-        ) : (
-          <>
-            {!isExpanded ? (
-              <ol className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                {steps.map((step) => (
-                  <li key={step.id}>
-                    <TraceStepNode
-                      step={step}
-                      variant="pip"
-                      isArtefactActive={artefactLayerId === step.artefactLayerId}
-                      onPeekArtefact={handleArtefactPeek}
-                    />
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <span className="min-w-0 flex-1" />
-            )}
-
-            <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-              {completedCount}/{steps.length}
-              {run?.totalDurationMs != null ? ` · ${formatDurationMs(run.totalDurationMs)}` : ""}
+          {steps.length === 0 ? (
+            <span className="font-mono text-[10px] text-muted-foreground/60">
+              No analysis has run yet
             </span>
-          </>
-        )}
-      </header>
+          ) : (
+            <>
+              {!isExpanded ? (
+                <ol className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {steps.map((step) => (
+                    <li key={step.id}>
+                      <TraceStepNode
+                        step={step}
+                        variant="pip"
+                        isArtefactActive={artefactLayerId === step.artefactLayerId}
+                        onPeekArtefact={handleArtefactPeek}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <span className="min-w-0 flex-1" />
+              )}
 
-      {isExpanded ? (
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                {completedCount}/{steps.length}
+                {run?.totalDurationMs != null ? ` · ${formatDurationMs(run.totalDurationMs)}` : ""}
+              </span>
+            </>
+          )}
+        </header>
+
+        {isExpanded ? (
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             <div className="flex justify-end mb-2">
-              <Dialog open={traceView === "canvas"} onOpenChange={(open) => setTraceView(open ? "canvas" : "rows")}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                  >
-                    View Analysis Canvas
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="!max-w-[95vw] w-[1600px] h-[90vh] flex flex-col overflow-hidden p-0 border-border bg-slate-950">
-                  <DialogTitle className="sr-only">Analysis Canvas</DialogTitle>
-                  <Tabs defaultValue="trace" className="flex-1 flex flex-col min-h-0 h-full">
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 p-1 rounded-lg backdrop-blur-md border border-slate-700/50 shadow-2xl">
-                      <TabsList className="bg-transparent gap-1">
-                        <TabsTrigger value="trace" className="rounded-md px-6 py-2 data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">Analysis Trace</TabsTrigger>
-                        <TabsTrigger value="versions" className="rounded-md px-6 py-2 data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">Version History</TabsTrigger>
-                      </TabsList>
-                    </div>
-                    
-                    <TabsContent value="trace" className="flex-1 min-h-0 w-full h-full m-0 data-[state=inactive]:hidden outline-none">
-                      <AnalysisCanvas
-                        run={run}
-                        layersById={layersById}
-                        claimsById={claimsById}
-                        sceneSlots={sceneSlots}
-                      />
-                    </TabsContent>
-                    
-                    <TabsContent value="versions" className="flex-1 min-h-0 w-full h-full m-0 data-[state=inactive]:hidden outline-none">
-                      <VersionCanvas versions={versions} />
-                    </TabsContent>
-                  </Tabs>
-                </DialogContent>
-              </Dialog>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setTraceView("canvas")}
+              >
+                View Analysis Canvas
+              </Button>
             </div>
             <ol className="flex flex-col gap-0.5">
               {steps.map((step) => (
@@ -193,7 +187,45 @@ export function ExecutionSpine({ run, layersById, claimsById, sceneSlots, versio
               </Button>
             ) : null}
           </div>
-      ) : null}
-    </section>
+        ) : null}
+      </section>
+
+      <Dialog open={traceView === "canvas"} onOpenChange={(open) => setTraceView(open ? "canvas" : "rows")}>
+        <DialogContent className="!max-w-[95vw] w-[1600px] h-[90vh] flex flex-col overflow-hidden p-0 border-border bg-slate-950">
+          <DialogTitle className="sr-only">Analysis Canvas &amp; Workflow</DialogTitle>
+          <Tabs defaultValue="workflow" className="flex-1 flex flex-col min-h-0 h-full">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 p-1 rounded-lg backdrop-blur-md border border-slate-700/60 shadow-2xl">
+              <TabsList className="bg-transparent gap-1">
+                <TabsTrigger value="workflow" className="rounded-md px-5 py-1.5 text-xs data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">DAG Topology</TabsTrigger>
+                <TabsTrigger value="trace" className="rounded-md px-5 py-1.5 text-xs data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">Analysis Trace</TabsTrigger>
+                <TabsTrigger value="versions" className="rounded-md px-5 py-1.5 text-xs data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">Version History</TabsTrigger>
+              </TabsList>
+            </div>
+            
+            <TabsContent value="workflow" className="flex-1 min-h-0 w-full h-full m-0 data-[state=inactive]:hidden outline-none">
+              <WorkflowCanvas
+                graph={workflowGraph}
+                onNodeSelect={(nodeId) => setSelectedNodeId(nodeId)}
+                className="w-full h-full"
+              />
+            </TabsContent>
+
+            <TabsContent value="trace" className="flex-1 min-h-0 w-full h-full m-0 data-[state=inactive]:hidden outline-none">
+              <AnalysisCanvas
+                run={run}
+                layersById={layersById}
+                claimsById={claimsById}
+                sceneSlots={sceneSlots}
+                onRerunStep={onRerunStep}
+              />
+            </TabsContent>
+            
+            <TabsContent value="versions" className="flex-1 min-h-0 w-full h-full m-0 data-[state=inactive]:hidden outline-none">
+              <VersionCanvas versions={versions} />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

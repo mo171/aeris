@@ -57,8 +57,10 @@ export function buildWorkflowGraph({
   };
 
   const addEdge = (source: string, target: string) => {
+    if (!source || !target) return;
     const id = `edge-${source}-to-${target}`;
     if (edges.some((e) => e.id === id)) return;
+    if (!nodes.some((n) => n.id === source) || !nodes.some((n) => n.id === target)) return;
     edges.push({ id, source, target });
     g.setEdge(source, target);
   };
@@ -73,7 +75,7 @@ export function buildWorkflowGraph({
     addNode(step.id, "operation", step);
 
     // Inputs -> Step
-    step.inputs.forEach((input: any) => {
+    (step.inputs || []).forEach((input: any) => {
       // Ensure the input node exists if it's a scene or layer not explicitly in the inputs list
       if (input.kind === "scene") {
         const scene = sceneSlots.find((s) => s.sceneId === input.id);
@@ -82,15 +84,11 @@ export function buildWorkflowGraph({
         const layer = layersById[input.id];
         if (layer) addNode(layer.id, "layer", layer);
       }
-      
-      // We don't always add regions/figures here unless they are in a Map, 
-      // but they are valid inputs. If they don't exist in dagre they might cause edge issues.
-      // Assuming upstream nodes are added by their respective trace steps or maps.
       addEdge(input.id, step.id);
     });
 
     // Step -> Outputs
-    step.outputs.forEach((output: any) => {
+    (step.outputs || []).forEach((output: any) => {
       if (output.kind === "layer") {
         const layer = layersById[output.id];
         if (layer) addNode(layer.id, "layer", layer);
@@ -102,14 +100,15 @@ export function buildWorkflowGraph({
     });
 
     // Step -> Step dependencies (ordering / sequence execution)
-    // S12 dependsOn S10, for example. 
-    step.dependsOn.forEach((upstreamId: string) => {
+    (step.dependsOn || []).forEach((upstreamId: string) => {
       addEdge(upstreamId, step.id);
     });
   });
 
-  // Run dagre layout
-  dagre.layout(g);
+  // Run dagre layout only if nodes are present
+  if (nodes.length > 0) {
+    dagre.layout(g);
+  }
 
   // Apply positions
   const positionedNodes = nodes.map((node) => {

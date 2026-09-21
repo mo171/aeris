@@ -132,7 +132,11 @@ def test_registered_capabilities_are_agent_allowed_and_frontend_declared() -> No
     for capability in UI_CAPABILITIES:
         assert capability.command_id.value in source
     assert "paramsSchema: z.object({ evidenceId: z.string().min(1) }).optional()" in definitions
-    assert "paramsSchema: z.object({}).optional()" in definitions
+    # Trace/report take deterministic agent flags but still accept the empty
+    # object the backend resolvers send; resetView accepts empty for the same
+    # reason on the voice path.
+    assert "paramsSchema: z.object({ expanded: z.boolean().optional() }).optional()" in definitions
+    assert "paramsSchema: z.object({ open: z.boolean().optional() }).optional()" in definitions
     assert "paramsSchema: z.object({}).optional()" in definitions
     assert "id: COMMAND_IDS.globe.flyTo" in definitions
     assert "latitude: z.number().min(-90).max(90)" in definitions

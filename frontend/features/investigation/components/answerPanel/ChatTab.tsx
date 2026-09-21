@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   CheckCircle2,
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { formatRelativeTime } from "@/lib/formatters";
 import { TypewriterText } from "@/components/sharedUI/dumbComponent/TypewriterText";
 import { cn } from "@/lib/utils";
+import { useVoiceStore, type VoiceChatMessage } from "@/features/voice/store/voice-store";
 
 import type { AnalysisRun } from "../../types/analysis.types";
 import type { Claim, EvidenceItem } from "../../types/evidence.types";
@@ -39,6 +40,49 @@ const QUICK_PROMPTS = [
   "Measure target sector bounding area and coordinates",
 ];
 
+/**
+ * One voice turn rendered in the run thread's own visual language: operator
+ * on the right, AERIS on the left, with a voice caption so spoken turns are
+ * distinguishable from typed analysis runs at a glance.
+ */
+function VoiceChatBubble({ message }: { message: VoiceChatMessage }) {
+  if (message.role === "operator") {
+    return (
+      <div className="flex justify-end gap-2 items-start pl-6">
+        <div className="max-w-[85%] rounded-lg bg-primary/15 border border-primary/25 px-3 py-2 text-foreground space-y-1">
+          <div className="flex items-center justify-between gap-3 text-[10px] text-primary font-medium">
+            <span>Operator · Voice</span>
+            <span className="text-muted-foreground/70 font-mono">
+              {formatRelativeTime(message.createdAt)}
+            </span>
+          </div>
+          <p className="text-xs leading-relaxed font-sans">{message.text}</p>
+        </div>
+        <div className="size-6 rounded-full bg-surface-3 border border-border-soft flex items-center justify-center shrink-0 text-muted-foreground">
+          <User className="size-3.5" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-start gap-2 items-start pr-4">
+      <div className="size-6 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center shrink-0 text-cyan-400">
+        <Bot className="size-3.5" />
+      </div>
+      <div className="flex-1 max-w-[90%] rounded-lg bg-surface-2/60 border border-border-soft px-3.5 py-2.5 space-y-1">
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="font-semibold text-cyan-300">AERIS · Voice</span>
+          <span className="text-muted-foreground/70 font-mono">
+            {formatRelativeTime(message.createdAt)}
+          </span>
+        </div>
+        <p className="text-foreground leading-relaxed text-xs">{message.text}</p>
+      </div>
+    </div>
+  );
+}
+
 export function ChatTab({
   runs,
   isRunning,
@@ -52,12 +96,25 @@ export function ChatTab({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom whenever runs change or stream tokens
+  // Voice turns land in the same thread, ordered with runs by wall time.
+  const voiceMessages = useVoiceStore((state) => state.messages);
+  const timeline = useMemo(() => {
+    const at = (iso: string) => {
+      const parsed = Date.parse(iso);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    return [
+      ...runs.map((run) => ({ at: at(run.startedAt), run })),
+      ...voiceMessages.map((voice) => ({ at: at(voice.createdAt), voice })),
+    ].sort((left, right) => left.at - right.at);
+  }, [runs, voiceMessages]);
+
+  // Auto-scroll to bottom whenever runs, voice turns, or stream tokens change
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-  }, [runs, isRunning]);
+  }, [runs, isRunning, voiceMessages]);
 
   const handleSend = () => {
     const trimmed = draft.trim();
@@ -96,8 +153,12 @@ export function ChatTab({
           </div>
         </div>
 
-        {/* Conversation Turns (from runs) */}
-        {runs.map((run) => {
+        {/* Conversation Turns (analysis runs and voice exchanges, in order) */}
+        {timeline.map((item) => {
+          if ("voice" in item) {
+            return <VoiceChatBubble key={item.voice.id} message={item.voice} />;
+          }
+          const run = item.run;
           const runClaims = run.claimIds
             .map((id) => claimsById[id])
             .filter((c): c is Claim => Boolean(c));

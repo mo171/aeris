@@ -38,4 +38,6 @@ export interface AssistantPanelControls {
   stop: () => void;
   clear: () => void;
   focusComposer: () => void;
+  /** Records an external (voice) turn in the transcript as a finished message. */
+  appendMessage: (role: "operator" | "aeris", content: string) => void;
 }

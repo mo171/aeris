@@ -43,6 +43,7 @@ const SUGGESTIONS_STALE_TIME_MS = 10 * 60_000;
 
 type TranscriptAction =
   | { type: "append-operator-message"; message: AssistantMessage }
+  | { type: "append-completed-message"; role: "operator" | "aeris"; content: string }
   | { type: "start-assistant-message"; messageId: string; createdAt: string }
   | { type: "upsert-trace-step"; messageId: string; step: ExecutionTraceStep }
   | { type: "append-text"; messageId: string; text: string }
@@ -55,6 +56,9 @@ type TranscriptAction =
   | { type: "fail-message"; messageId: string; reason: string }
   | { type: "clear" };
 
+/** Monotonic suffix so two messages appended in the same millisecond stay unique. */
+let externalMessageCounter = 0;
+
 function transcriptReducer(
   messages: AssistantMessage[],
   action: TranscriptAction,
@@ -62,6 +66,24 @@ function transcriptReducer(
   switch (action.type) {
     case "append-operator-message":
       return [...messages, action.message];
+
+    // External turns (voice) land here as finished messages: the voice layer
+    // owns synthesis, the transcript owns the record. One thread, never two.
+    case "append-completed-message":
+      externalMessageCounter += 1;
+      return [
+        ...messages,
+        {
+          id: `ext_${Date.now().toString(36)}_${externalMessageCounter}`,
+          role: action.role,
+          content: action.content,
+          createdAt: new Date().toISOString(),
+          status: "complete",
+          trace: [],
+          confidence: null,
+          evidenceRegionCount: 0,
+        },
+      ];
 
     case "start-assistant-message":
       return [
@@ -133,6 +155,7 @@ interface AssistantSessionResult {
   ask: (prompt: string) => void;
   stop: () => void;
   clear: () => void;
+  appendMessage: (role: "operator" | "aeris", content: string) => void;
 }
 
 export function useAssistantSession(): AssistantSessionResult {
@@ -316,6 +339,12 @@ export function useAssistantSession(): AssistantSessionResult {
     dispatch({ type: "clear" });
   }, [stopFlushTimer]);
 
+  const appendMessage = useCallback((role: "operator" | "aeris", content: string) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    dispatch({ type: "append-completed-message", role, content: trimmed });
+  }, []);
+
   // A panel unmounting mid-answer must not leave a timer or an open stream behind.
   useEffect(() => {
     return () => {
@@ -333,5 +362,6 @@ export function useAssistantSession(): AssistantSessionResult {
     ask,
     stop,
     clear,
+    appendMessage,
   };
 }

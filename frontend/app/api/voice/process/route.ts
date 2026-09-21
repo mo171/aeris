@@ -118,10 +118,29 @@ PERSONALITY & DEMEANOR:
   Example: "Adjusting the split comparator to eighty percent to highlight the reclamation boundary, sir."
   Example: "Certainly, sir. Navigating to the Sewri mudflats and spotlighting the moisture flux anomaly."
   Example: "Running autonomous cross-modal late fusion now, sir. Telemetry will update on the canvas."
+  Example: "Opening the visual analysis canvas and spotlighting Step 12, Cross-Modal Fusion, sir."
+  Example: "Adjusting fusion confidence threshold to zero-point-seven-two and branching pipeline execution from Step 12, sir."
 
 ACTION CAPABILITIES:
 You have direct controls over the AERIS user interface. When the user asks to see, zoom, toggle, analyze, compare, view, open, show, hide, or close anything on the platform, ALWAYS invoke the corresponding tool(s) — a spoken acknowledgement ALONE is a failure; the UI must visibly change. Do not make the user click with their mouse—you are AERIS, you control the system for them.
 Panel requests always go through switch_panel: "investigation panel" means panel inputs; "layers", "toolbox", "analysis", "evidence", "chat", "trace", "report" map to the same-named panel; "answer panel" means analysis. "Close/hide" means visible false.
+
+PIPELINE WORKFLOW & DAG MASTERY:
+- The visual analysis canvas represents the end-to-end analytical Directed Acyclic Graph (DAG) for satellite Earth Observation.
+- Core pipeline stages:
+  * S01/S02: Multi-sensor ingestion (Sentinel-2 Bottom-of-Atmosphere optical reflectance and Sentinel-1 SAR C-band radar).
+  * S05: SAR radiometric calibration, terrain correction, and Lee speckle filtering.
+  * S10: Multi-spectral indexing (NDVI mangrove canopy, MNDWI intertidal water, NDBI urban footprint).
+  * S12: Cross-modal late fusion — correlates radar dielectric backscatter with optical spectral indices to detect structural shifts through clouds.
+  * S16: Probabilistic claim verification — validates detected changes against spatial ground truth with confidence scoring.
+- When asked to "explain the canvas", "explain the workflow", "what does this craft/graph mean", or "explain the steps":
+  Invoke explain_workflow, open the canvas, and deliver a brilliant, articulate British overview of the analytical DAG.
+- When asked to "open the canvas", "show the workflow", or "view the DAG":
+  Invoke toggle_canvas({ open: true }).
+- When asked to "inspect step 12", "open node 12", "show cross-modal fusion node", or "inspect node":
+  Invoke inspect_pipeline_node({ nodeId: "S12_CROSS_MODAL_FUSION" }).
+- When asked to "rerun from step 12", "change threshold and rerun", or "lower the confidence threshold to 0.72":
+  Invoke rerun_pipeline_step({ stepId: "S12_CROSS_MODAL_FUSION", parameters: { confidenceThreshold: 0.72 } }). Confirm with authentic British poise that the pipeline has been branched with a new version snapshot.
 `.trim();
 
 // Tools defined for OpenAI function calling. Exported so the contract test
@@ -295,14 +314,130 @@ export const AERIS_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "investigate_selection",
+      name: "manage_imagery_selection",
       description:
-        "Creates an investigation from the operator's currently selected imagery and takes them into the investigation workspace. " +
-        "Use when they say investigate, take me to investigation, or look deeper into these/the selected images. " +
-        "Only call this when the context lists selected scenes; with none selected, ask the operator to select imagery first instead.",
+        "Controls scene selection and reveals the imagery catalogue on Mission Command. " +
+        "Use action 'view' when the operator asks to see or inspect selected imagery or open the catalogue. " +
+        "Use action 'select_demo' to select the primary Mumbai demonstration scenes. " +
+        "Use action 'select' with specific sceneIds to select them. " +
+        "Use action 'clear' to clear selected imagery.",
       parameters: {
         type: "object",
-        properties: {},
+        properties: {
+          action: {
+            type: "string",
+            enum: ["view", "select_demo", "select", "clear"],
+            description: "The imagery selection action to execute.",
+          },
+          sceneIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Specific scene identifiers when action is 'select'.",
+          },
+        },
+        required: ["action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "investigate_selection",
+      description:
+        "Creates an investigation from imagery and launches the 3D descent into the Investigation Workspace. " +
+        "Always call this when the operator says: investigate, take me to investigation, let's go to investigation, " +
+        "or open investigation workspace/panel. If no scenes are currently selected in context, " +
+        "supply sceneIds with the default demo scenes to launch the workspace seamlessly.",
+      parameters: {
+        type: "object",
+        properties: {
+          sceneIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional explicit scene IDs to investigate.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "toggle_canvas",
+      description:
+        "Opens or closes the visual Analysis Canvas and Version History modal. " +
+        "Always call this when the operator asks to open, view, show, or close the canvas, DAG, or workflow graph.",
+      parameters: {
+        type: "object",
+        properties: {
+          open: {
+            type: "boolean",
+            description: "True to open/show the canvas modal, false to close it. Defaults to true.",
+          },
+          view: {
+            type: "string",
+            enum: ["trace", "workflow", "versions"],
+            description: "Which tab to display: 'workflow' (DAG node topology), 'trace' (execution timeline), or 'versions' (version history).",
+          },
+        },
+        required: ["open"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "explain_workflow",
+      description:
+        "Explains what the analytical visual canvas (DAG) means, detailing how Sentinel-1 SAR and Sentinel-2 optical inputs are calibrated, cloud-masked, and fused via cross-modal late fusion to yield verified claims. Automatically opens the visual canvas so the operator can view the pipeline steps.",
+      parameters: {
+        type: "object",
+        properties: {
+          focusStep: {
+            type: "string",
+            description: "Optional step or stage to spotlight specifically (e.g., 'S12_CROSS_MODAL_FUSION', 'S05_PREPROCESS_SAR', 'S16_CLAIM_VERIFICATION').",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "inspect_pipeline_node",
+      description:
+        "Opens the analysis canvas and focuses/inspects a specific analytical pipeline node (e.g. S12_CROSS_MODAL_FUSION, S05_PREPROCESS_SAR, S16_CLAIM_VERIFICATION) to view its parameters, tensor telemetry, and rationale.",
+      parameters: {
+        type: "object",
+        properties: {
+          nodeId: {
+            type: "string",
+            description: "The stage code or node ID to inspect (e.g., 'S12_CROSS_MODAL_FUSION', 'S05_PREPROCESS_SAR', 'S10_SPECTRAL_INDICES', 'S16_CLAIM_VERIFICATION', 'step-1', 'step-2').",
+          },
+        },
+        required: ["nodeId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "rerun_pipeline_step",
+      description:
+        "Adjusts parameters on an analytical step (e.g., confidenceThreshold, sensitivity, filterWindow) and triggers a branch re-run from that step. Preserves upstream DAG stages, re-executes downstream stages, and commits a new version snapshot.",
+      parameters: {
+        type: "object",
+        properties: {
+          stepId: {
+            type: "string",
+            description: "The stage code or step ID from which to rerun (e.g., 'S12_CROSS_MODAL_FUSION', 'S05_PREPROCESS_SAR', 'step-2').",
+          },
+          parameters: {
+            type: "object",
+            description: "Key-value map of parameter overrides (e.g. { confidenceThreshold: 0.72, sarWeightRatio: 0.75 }).",
+          },
+        },
+        required: ["stepId"],
       },
     },
   },
@@ -314,34 +449,46 @@ export interface UiAction {
   description: string;
 }
 
-// Deep, calm British Jarvis-style delivery applied to every utterance when the
-// configured TTS model supports style instructions (gpt-4o-mini-tts does).
+// Bold, articulate, resonant British Jarvis-style delivery applied to every utterance.
+// Captures Paul Bettany's iconic JARVIS: confident, distinguished, crisp, and authoritative.
 const JARVIS_VOICE_INSTRUCTIONS =
-  "Speak with a deep, calm, authoritative British accent in the manner of an aerospace AI butler. " +
-  "Measured pace, crisp consonants, low steady pitch. Never rushed, never breathy.";
+  "Speak with a bold, resonant, articulate British accent with deep confidence and impeccable poise, exactly like Tony Stark's JARVIS. Natural cadence, punchy, authoritative, and crystal clear.";
+
+interface JarvisSpeechOptions {
+  voice: string;
+  ttsModel: string;
+  /** 0.25–4.0; slightly under 1.0 aids clarity. */
+  speed: number;
+}
 
 /**
  * Synthesizes speech with the configured Jarvis voice. Tries the modern
- * instruction-aware model first so the British accent is deliberate rather
+ * instruction-aware model first so the British softness is deliberate rather
  * than incidental, and falls back to tts-1-hd (no instructions support) so a
  * model rollout never leaves AERIS mute.
  */
 async function synthesizeJarvisSpeech(
   openai: OpenAI,
   text: string,
-  voice: string,
-  ttsModel: string,
+  options: JarvisSpeechOptions,
 ): Promise<string | null> {
+  const { voice, ttsModel, speed } = options;
   const attempts: Array<Record<string, unknown>> = [];
   if (ttsModel !== "tts-1-hd") {
-    attempts.push({ model: ttsModel, voice, input: text, instructions: JARVIS_VOICE_INSTRUCTIONS });
+    attempts.push({
+      model: ttsModel,
+      voice,
+      input: text,
+      instructions: JARVIS_VOICE_INSTRUCTIONS,
+      speed,
+    });
   }
-  attempts.push({ model: "tts-1-hd", voice, input: text });
+  attempts.push({ model: "tts-1-hd", voice, input: text, speed });
 
   for (const params of attempts) {
     try {
       const speechResponse = await openai.audio.speech.create({
-        ...(params as { model: "tts-1-hd"; voice: "onyx"; input: string }),
+        ...(params as { model: "tts-1-hd"; voice: "ash"; input: string; speed: number }),
         response_format: "mp3",
       });
       const audioBuffer = Buffer.from(await speechResponse.arrayBuffer());
@@ -509,15 +656,19 @@ export function mapVoiceToolToActions(
           description: `${showHide} the execution trace`,
         });
       } else if (panel === "inputs" || panel === "layers" || panel === "toolbox") {
-        mapped.push({
-          commandId: COMMAND_IDS.investigation.setLeftTab,
-          params: { tab: panel },
-          description: `${showHide} the ${panel} tab`,
-        });
+        // On Mission Command (/), the left panel is Data & Context; setLeftTab only exists inside InvestigationScreen
+        const isOnMissionCommand = context?.surface === "/" || context?.surface === "mission-command";
+        if (!isOnMissionCommand || panel !== "inputs") {
+          mapped.push({
+            commandId: COMMAND_IDS.investigation.setLeftTab,
+            params: { tab: panel },
+            description: `${showHide} the ${panel} tab`,
+          });
+        }
         mapped.push({
           commandId: COMMAND_IDS.interface.toggleDataPanel,
           params: { open: visible },
-          description: `${showHide} the investigation panel`,
+          description: `${showHide} the ${isOnMissionCommand ? "Data & Context" : "investigation"} panel`,
         });
       } else {
         mapped.push({
@@ -534,11 +685,61 @@ export function mapVoiceToolToActions(
       break;
     }
 
+    case "manage_imagery_selection": {
+      const action = args.action || "view";
+      if (action === "clear") {
+        mapped.push({
+          commandId: COMMAND_IDS.imagery.clearSelection,
+          params: {},
+          description: "Clearing scene selection",
+        });
+      } else if (action === "select_demo") {
+        mapped.push({
+          commandId: COMMAND_IDS.interface.toggleDataPanel,
+          params: { open: true },
+          description: "Opening Data & Context panel",
+        });
+        mapped.push({
+          commandId: COMMAND_IDS.imagery.select,
+          params: { sceneId: "scn_000001" },
+          description: "Selecting primary Sentinel-2 optical scene",
+        });
+        mapped.push({
+          commandId: COMMAND_IDS.imagery.select,
+          params: { sceneId: "scn_000002" },
+          description: "Selecting Sentinel-1 SAR radar scene",
+        });
+      } else if (action === "select" && Array.isArray(args.sceneIds) && args.sceneIds.length > 0) {
+        mapped.push({
+          commandId: COMMAND_IDS.interface.toggleDataPanel,
+          params: { open: true },
+          description: "Opening Data & Context panel",
+        });
+        for (const sceneId of args.sceneIds) {
+          mapped.push({
+            commandId: COMMAND_IDS.imagery.select,
+            params: { sceneId },
+            description: `Selecting scene ${sceneId}`,
+          });
+        }
+      } else {
+        // "view" or default
+        mapped.push({
+          commandId: COMMAND_IDS.interface.toggleDataPanel,
+          params: { open: true },
+          description: "Revealing the imagery catalogue and selected scenes",
+        });
+      }
+      break;
+    }
+
     case "investigate_selection": {
-      // The prompt forbids this call with an empty selection; the guard here
-      // is the second layer — the mapper never invents scene ids.
-      const sceneIds = context?.selectedSceneIds ?? [];
-      if (sceneIds.length === 0) {
+      // Prioritize explicit sceneIds passed by brain tool call, then context.selectedSceneIds
+      const explicitScenes = Array.isArray(args.sceneIds) && args.sceneIds.length > 0 ? args.sceneIds : null;
+      const contextScenes = context?.selectedSceneIds && context.selectedSceneIds.length > 0 ? context.selectedSceneIds : null;
+      const sceneIds = explicitScenes || contextScenes;
+
+      if (!sceneIds || sceneIds.length === 0) {
         break;
       }
       mapped.push({
@@ -549,7 +750,7 @@ export function mapVoiceToolToActions(
           seedQuery: userText || null,
           missionId: null,
         },
-        description: `Opening investigation over ${sceneIds.length} selected scene${sceneIds.length === 1 ? "" : "s"}`,
+        description: `Opening investigation over ${sceneIds.length} scene${sceneIds.length === 1 ? "" : "s"}`,
       });
       break;
     }
@@ -565,6 +766,59 @@ export function mapVoiceToolToActions(
       });
       break;
     }
+
+    case "toggle_canvas": {
+      const open = args.open ?? true;
+      const view = args.view;
+      mapped.push({
+        commandId: COMMAND_IDS.investigation.toggleCanvas,
+        params: view ? { open, view } : { open },
+        description: `${open ? "Opening" : "Closing"} the Analysis Canvas`,
+      });
+      break;
+    }
+
+    case "explain_workflow": {
+      mapped.push({
+        commandId: COMMAND_IDS.investigation.toggleCanvas,
+        params: { open: true, view: "trace" },
+        description: "Opening the Analysis Canvas to visual workflow",
+      });
+      if (args.focusStep) {
+        mapped.push({
+          commandId: COMMAND_IDS.investigation.focusNode,
+          params: { nodeId: args.focusStep },
+          description: `Spotlighting stage ${args.focusStep}`,
+        });
+      }
+      break;
+    }
+
+    case "inspect_pipeline_node": {
+      const nodeId = args.nodeId || "S12_CROSS_MODAL_FUSION";
+      mapped.push({
+        commandId: COMMAND_IDS.investigation.toggleCanvas,
+        params: { open: true },
+        description: "Opening the Analysis Canvas",
+      });
+      mapped.push({
+        commandId: COMMAND_IDS.investigation.focusNode,
+        params: { nodeId },
+        description: `Inspecting pipeline node ${nodeId}`,
+      });
+      break;
+    }
+
+    case "rerun_pipeline_step": {
+      const stepId = args.stepId || "S12_CROSS_MODAL_FUSION";
+      const parameterOverrides = args.parameters || { confidenceThreshold: 0.72 };
+      mapped.push({
+        commandId: COMMAND_IDS.investigation.rerunStep,
+        params: { stepId, parameterOverrides },
+        description: `Branching pipeline execution from ${stepId}`,
+      });
+      break;
+    }
   }
 
   return mapped;
@@ -573,10 +827,19 @@ export function mapVoiceToolToActions(
 export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   const configuredModel = process.env.OPENAI_MODEL?.trim() || "gpt-5-astra";
-  // Deep, authoritative masculine voice — the closest OpenAI stock voice to a
-  // Jarvis-like British delivery. ("fable" is the thin default; do not revert.)
-  const voice = process.env.OPENAI_VOICE?.trim() || "onyx";
-  const ttsModel = process.env.OPENAI_TTS_MODEL?.trim() || "gpt-4o-mini-tts";
+  // Warm, clear masculine voice as the Jarvis base — "ash" stays audible on
+  // small speakers where deep voices (onyx) lose their fundamental and go
+  // quiet. British softness comes from the instruction layer, and any voice
+  // can be tried without a code change via OPENAI_VOICE (ballad = most
+  // British-sounding, younger; cedar = warmest, newest; onyx = deepest).
+  const voice = process.env.OPENAI_VOICE?.trim() || "fable";
+  const ttsModel = process.env.OPENAI_TTS_MODEL?.trim() || "tts-1";
+  const ttsSpeed = Number.parseFloat(process.env.OPENAI_TTS_SPEED?.trim() || "1.0") || 1.0;
+  const speechOptions = {
+    voice,
+    ttsModel,
+    speed: Math.min(4, Math.max(0.25, ttsSpeed)),
+  };
 
   let userText = "";
 
@@ -642,20 +905,43 @@ export async function POST(request: Request) {
         // Accurately detect format from magic bytes & container headers
         const detected = detectAudioFormat(buffer, audioFile.name, audioFile.type);
 
-        const openai = new OpenAI({ apiKey });
-        const uploadFile = await toFile(buffer, detected.filename, {
-          type: detected.mimeType,
-        });
+        // 1. Ultra-low-latency local Faster-Whisper backend check
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        try {
+          const localRes = await fetch(`${backendUrl}/api/v1/voice/transcribe`, {
+            method: "POST",
+            headers: { "Content-Type": detected.mimeType },
+            body: buffer,
+            signal: AbortSignal.timeout(1800),
+          });
+          if (localRes.ok) {
+            const localData = await localRes.json();
+            if (localData.success && localData.text && localData.text.trim()) {
+              userText = localData.text.trim();
+              console.log(`[AERIS VOICE] Local Faster-Whisper transcribed in fast path: "${userText}"`);
+            }
+          }
+        } catch {
+          // Local backend offline or timed out; fall through to OpenAI Whisper
+        }
 
-        // High-performance transcription via Whisper
-        const transcription = await openai.audio.transcriptions.create({
-          file: uploadFile,
-          model: "whisper-1",
-          language: "en",
-          prompt: "AERIS satellite earth observation, Sentinel-1 SAR backscatter, Sentinel-2 NDVI, Mazgaon Docks, Sewri mudflats, Mumbai",
-        });
+        // 2. High-performance cloud Whisper-1 fallback
+        if (!userText) {
+          const openai = new OpenAI({ apiKey });
+          const uploadFile = await toFile(buffer, detected.filename, {
+            type: detected.mimeType,
+          });
 
-        userText = transcription.text.trim();
+          const transcription = await openai.audio.transcriptions.create({
+            file: uploadFile,
+            model: "whisper-1",
+            language: "en",
+            prompt: "AERIS satellite earth observation, Sentinel-1 SAR backscatter, Sentinel-2 NDVI, Mazgaon Docks, Sewri mudflats, Mumbai",
+          });
+
+          userText = transcription.text.trim();
+          console.log(`[AERIS VOICE] OpenAI Whisper-1 transcribed: "${userText}"`);
+        }
       }
     } else {
       const body = await request.json();
@@ -665,7 +951,7 @@ export async function POST(request: Request) {
         let audioBase64: string | null = null;
         if (apiKey) {
           const openai = new OpenAI({ apiKey });
-          audioBase64 = await synthesizeJarvisSpeech(openai, greetingText, voice, ttsModel);
+          audioBase64 = await synthesizeJarvisSpeech(openai, greetingText, speechOptions);
         }
 
         return NextResponse.json({
@@ -716,8 +1002,8 @@ export async function POST(request: Request) {
     // which commands exist, and the selection resolves "these images".
     const selectionLine =
       operatorContext.selectedSceneIds.length > 0
-        ? `Selected scenes: ${operatorContext.selectedSceneIds.join(", ")} (${operatorContext.selectedSceneIds.length} selected). "Investigate / take me to investigation / these images" means call investigate_selection.`
-        : "Selected scenes: none. If the operator asks to investigate, do NOT call investigate_selection — tell them to select imagery first.";
+        ? `Selected scenes: ${operatorContext.selectedSceneIds.join(", ")} (${operatorContext.selectedSceneIds.length} selected). "Investigate / take me to investigation / these images" means call investigate_selection. "See images selected" means call manage_imagery_selection({ action: "view" }).`
+        : `Selected scenes: none. If the operator asks to "see the images selected" or "open imagery catalogue", call manage_imagery_selection({ action: "view" }). If the operator asks to "select images" or "select demo", call manage_imagery_selection({ action: "select_demo" }). If the operator asks to "investigate / take me to investigation / let's go to investigation panel", call investigate_selection with sceneIds: ["scn_000001", "scn_000002"] to auto-select the primary demonstration scenes and launch the workspace.`;
     const systemPrompt =
       `${AERIS_SYSTEM_PROMPT}\n\nOPERATOR CONTEXT (live — trust it over guesses):\n` +
       `- Current surface: ${operatorContext.surface}\n- ${selectionLine}`;
@@ -798,8 +1084,8 @@ export async function POST(request: Request) {
     );
 
     // ── 3. Synthesize Voice with the Jarvis voice ─────────────────────────
-    const audioBase64 = await synthesizeJarvisSpeech(openai, cleanSpokenText, voice, ttsModel);
-    console.log(`[AERIS VOICE] TTS ${audioBase64 ? "succeeded" : "FAILED"} (model=${ttsModel}, voice=${voice})`);
+    const audioBase64 = await synthesizeJarvisSpeech(openai, cleanSpokenText, speechOptions);
+    console.log(`[AERIS VOICE] TTS ${audioBase64 ? "succeeded" : "FAILED"} (model=${ttsModel}, voice=${voice}, speed=${speechOptions.speed})`);
 
     return NextResponse.json({
       success: true,

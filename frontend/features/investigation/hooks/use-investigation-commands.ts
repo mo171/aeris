@@ -729,7 +729,9 @@ export function useInvestigationCommands({
         description: "Return the camera to the framing of the whole area of interest.",
         group: "investigation",
         icon: Target,
-        paramsSchema: z.void(),
+        // Optional object, not void: agent/voice callers always send a params
+        // object (possibly empty), and void would reject every one of them.
+        paramsSchema: z.object({}).optional(),
         handler: () => {
           if (areaOfInterest) {
             stage()?.camera.flyToBoundingBox(areaOfInterest, {
@@ -804,6 +806,41 @@ export function useInvestigationCommands({
         isPaletteVisible: false,
         handler: ({ versionId }) => {
           if (restoreVersion) restoreVersion(versionId);
+        },
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.toggleCanvas,
+        title: "Toggle Analysis Canvas",
+        description: "Opens or closes the visual DAG and trace canvas modal.",
+        group: "investigation",
+        keywords: ["canvas", "dag", "graph", "trace", "workflow"],
+        icon: Crosshair,
+        paramsSchema: z
+          .object({
+            open: z.boolean().optional(),
+            view: z.enum(["trace", "workflow", "versions"]).optional(),
+          })
+          .optional(),
+        isPaletteVisible: false,
+        handler: (params) => {
+          const current = store().traceView;
+          const shouldOpen = params?.open ?? (current !== "canvas");
+          store().setTraceView(shouldOpen ? "canvas" : "rows");
+        },
+      }),
+
+      defineCommand({
+        id: COMMAND_IDS.investigation.selectNode,
+        title: "Select canvas node",
+        description: "Selects a node on the canvas.",
+        group: "investigation",
+        paramsSchema: z.object({
+          nodeId: z.string().nullable().optional(),
+        }),
+        isPaletteVisible: false,
+        handler: ({ nodeId }) => {
+          store().setSelectedNodeId(nodeId ?? null);
         },
       }),
 

@@ -19,6 +19,22 @@ export type VoiceState =
   | "speaking"
   | "standby";
 
+/**
+ * One turn of voice conversation, kept as chat data — never as a floating
+ * popover. Rendered by the surface chat UIs (ChatTab, assistant transcript
+ * fallback) so the whole exchange lives in exactly one thread.
+ */
+export interface VoiceChatMessage {
+  id: string;
+  role: "operator" | "aeris";
+  text: string;
+  createdAt: string;
+  origin: "voice" | "text";
+}
+
+/** The thread never grows without bound: a voice log is a session record, not storage. */
+const MAX_VOICE_MESSAGES = 100;
+
 export interface VoiceStoreState {
   connectionStatus: ConnectionStatus;
   voiceState: VoiceState;
@@ -27,6 +43,7 @@ export interface VoiceStoreState {
   isFinalTranscript: boolean;
   lastAerisReply: string;
   activeActionSummary: string | null;
+  messages: VoiceChatMessage[];
   audioLevel: number;
   errorMessage: string | null;
   isMuted: boolean;
@@ -38,6 +55,8 @@ export interface VoiceStoreState {
   setTranscript: (transcript: string, isFinal?: boolean) => void;
   setLastAerisReply: (reply: string) => void;
   setActiveActionSummary: (summary: string | null) => void;
+  appendVoiceMessage: (role: VoiceChatMessage["role"], text: string, origin: VoiceChatMessage["origin"]) => void;
+  clearVoiceMessages: () => void;
   setAudioLevel: (level: number) => void;
   setIsMuted: (isMuted: boolean) => void;
   reset: () => void;
@@ -51,6 +70,7 @@ const initialState = {
   isFinalTranscript: false,
   lastAerisReply: "",
   activeActionSummary: null,
+  messages: [] as VoiceChatMessage[],
   audioLevel: 0,
   errorMessage: null,
   isMuted: false,
@@ -79,6 +99,22 @@ export const useVoiceStore = create<VoiceStoreState>((set) => ({
   setLastAerisReply: (lastAerisReply) => set({ lastAerisReply }),
 
   setActiveActionSummary: (activeActionSummary) => set({ activeActionSummary }),
+
+  appendVoiceMessage: (role, text, origin) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: `vmsg_${Date.now().toString(36)}_${state.messages.length}`,
+          role,
+          text,
+          createdAt: new Date().toISOString(),
+          origin,
+        },
+      ].slice(-MAX_VOICE_MESSAGES),
+    })),
+
+  clearVoiceMessages: () => set({ messages: [] }),
 
   setAudioLevel: (audioLevel) => set({ audioLevel }),
 

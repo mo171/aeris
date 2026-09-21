@@ -86,4 +86,22 @@ describe("POST /api/voice/process (AERIS Voice AI Agent)", () => {
     expect(data.success).toBe(false);
     expect(data.error).toContain("Audio recording was too brief or silent");
   });
+
+  it("handles 'see the images that are selected' query gracefully", async () => {
+    // With no API key, returns standby
+    const request = new Request("http://localhost:3000/api/voice/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: "see the images that are selected",
+        context: { surface: "/", selectedSceneIds: [] },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.success).toBe(true);
+    expect(data.transcript).toBe("see the images that are selected");
+  });
 });

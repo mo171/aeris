@@ -130,6 +130,9 @@ describe("voice → command-bus contract", () => {
     const actions = mapVoiceToolToActions("reset_view", {}, "test");
     expectKnownCommands(actions);
     expect(actions[0]?.commandId).toBe(COMMAND_IDS.investigation.resetView);
+    // The registry schema accepts the empty object — a void schema would
+    // reject every one of these dispatches as invalid-params.
+    expect(actions[0]?.params).toEqual({});
   });
 
   it("investigate_selection opens a workspace over the live selection", () => {
@@ -158,5 +161,53 @@ describe("voice → command-bus contract", () => {
       }),
     ).toEqual([]);
     expect(mapVoiceToolToActions("investigate_selection", {}, "test")).toEqual([]);
+  });
+
+  it("every manage_imagery_selection action resolves to known commands", () => {
+    for (const action of enumOf(findTool("manage_imagery_selection"), "action")) {
+      const args = action === "select" ? { action, sceneIds: ["scn_000001"] } : { action };
+      expectKnownCommands(mapVoiceToolToActions("manage_imagery_selection", args, "test"));
+    }
+  });
+
+  it("toggle_canvas opens and closes the analysis canvas", () => {
+    const openActions = mapVoiceToolToActions("toggle_canvas", { open: true }, "open canvas");
+    expectKnownCommands(openActions);
+    expect(openActions[0]?.commandId).toBe(COMMAND_IDS.investigation.toggleCanvas);
+    expect(openActions[0]?.params).toEqual({ open: true });
+
+    const closeActions = mapVoiceToolToActions("toggle_canvas", { open: false }, "close canvas");
+    expectKnownCommands(closeActions);
+    expect(closeActions[0]?.commandId).toBe(COMMAND_IDS.investigation.toggleCanvas);
+    expect(closeActions[0]?.params).toEqual({ open: false });
+  });
+
+  it("explain_workflow opens the canvas and optionally spotlights a step", () => {
+    const actions = mapVoiceToolToActions("explain_workflow", { focusStep: "S12_CROSS_MODAL_FUSION" }, "explain workflow");
+    expectKnownCommands(actions);
+    expect(actions[0]?.commandId).toBe(COMMAND_IDS.investigation.toggleCanvas);
+    expect(actions[1]?.commandId).toBe(COMMAND_IDS.investigation.focusNode);
+    expect(actions[1]?.params).toEqual({ nodeId: "S12_CROSS_MODAL_FUSION" });
+  });
+
+  it("inspect_pipeline_node opens the canvas and spotlights the targeted node", () => {
+    const actions = mapVoiceToolToActions("inspect_pipeline_node", { nodeId: "S05_PREPROCESS_SAR" }, "inspect node 5");
+    expectKnownCommands(actions);
+    expect(actions[0]?.commandId).toBe(COMMAND_IDS.investigation.toggleCanvas);
+    expect(actions[1]?.commandId).toBe(COMMAND_IDS.investigation.focusNode);
+    expect(actions[1]?.params).toEqual({ nodeId: "S05_PREPROCESS_SAR" });
+  });
+
+  it("rerun_pipeline_step issues rerunStep command with parameters", () => {
+    const actions = mapVoiceToolToActions("rerun_pipeline_step", {
+      stepId: "S12_CROSS_MODAL_FUSION",
+      parameters: { confidenceThreshold: 0.72 },
+    }, "rerun from step 12");
+    expectKnownCommands(actions);
+    expect(actions[0]?.commandId).toBe(COMMAND_IDS.investigation.rerunStep);
+    expect(actions[0]?.params).toEqual({
+      stepId: "S12_CROSS_MODAL_FUSION",
+      parameterOverrides: { confidenceThreshold: 0.72 },
+    });
   });
 });

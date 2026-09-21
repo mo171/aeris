@@ -34,7 +34,7 @@ import { SuggestedQueries } from "./SuggestedQueries";
 const BOTTOM_STICK_THRESHOLD_PX = 64;
 
 export function AssistantPanel() {
-  const { messages, suggestions, isStreaming, ask, stop, clear } = useAssistantSession();
+  const { messages, suggestions, isStreaming, ask, stop, clear, appendMessage } = useAssistantSession();
   const [draftPrompt, setDraftPrompt] = useState("");
 
   const selectedSceneIds = useMissionCommandStore((state) => state.selectedSceneIds);
@@ -61,11 +61,12 @@ export function AssistantPanel() {
       stop,
       clear,
       focusComposer: () => composerRef.current?.focus(),
+      appendMessage,
     });
     return () => {
       setAssistantControls(null);
     };
-  }, [clear, setAssistantControls, stop, submitPrompt]);
+  }, [appendMessage, clear, setAssistantControls, stop, submitPrompt]);
 
   const handleTranscriptScroll = useCallback(() => {
     const container = transcriptRef.current;

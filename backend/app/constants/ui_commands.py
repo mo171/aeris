@@ -71,6 +71,8 @@ class UiCommand(StrEnum):
     INVESTIGATION_TOGGLE_PRESENT_MODE = "investigation.togglePresentMode"
     INVESTIGATION_TOGGLE_TRACE = "investigation.toggleTrace"
     INVESTIGATION_OPEN_REPORT = "investigation.openReport"
+    INVESTIGATION_SET_LEFT_TAB = "investigation.setLeftTab"
+    INVESTIGATION_SET_RIGHT_TAB = "investigation.setRightTab"
     INVESTIGATION_SAVE_AS_MISSION = "investigation.saveAsMission"
     INVESTIGATION_SAVE_CAMERA_VIEW = "investigation.saveCameraView"
     INVESTIGATION_RESET_VIEW = "investigation.resetView"

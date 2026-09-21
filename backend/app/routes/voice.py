@@ -8,10 +8,13 @@ back to the browser client over a single multiplexed WebSocket connection at /ap
 import asyncio
 import json
 import logging
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketState
 
 from app.constants.voice import VOICE_VAD_WINDOW_SAMPLES, VoiceSessionState
@@ -88,10 +91,36 @@ def set_voice_session_factory(
     _SESSION_FACTORY = factory
 
 
-def reset_voice_session_factory() -> None:
-    """Reset session factory to default implementation."""
-    global _SESSION_FACTORY
-    _SESSION_FACTORY = create_voice_session
+_shared_transcriber = WhisperTranscriber(model_name="tiny.en", compute_type="int8")
+
+
+@router.post("/transcribe")
+async def transcribe_audio(request: Request) -> JSONResponse:
+    """Ultra-low-latency local Whisper transcription for raw audio bytes."""
+    try:
+        content = await request.body()
+        if len(content) < 300:
+            return JSONResponse({"success": False, "error": "Audio payload too small"}, status_code=400)
+
+        # Detect wav vs webm from magic bytes
+        suffix = ".webm" if content.startswith(b"\x1a\x45\xdf\xa3") else ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        try:
+            transcript = await _shared_transcriber.transcribe_file(tmp_path)
+            return JSONResponse({
+                "success": True,
+                "text": transcript.text,
+                "language": transcript.language,
+            })
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+    except Exception as e:
+        logger.exception("Local faster-whisper transcription failed")
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
 @router.websocket("/ws")

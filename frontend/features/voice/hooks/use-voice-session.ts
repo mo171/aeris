@@ -119,6 +119,9 @@ function resampleAudio(audioData: Float32Array, origRate: number, targetRate = 1
   return result;
 }
 
+/** Where a turn came from, recorded on each chat message. */
+type TurnOrigin = "voice" | "text";
+
 class AerisSessionManager {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
@@ -132,6 +135,25 @@ class AerisSessionManager {
   private currentAudioElement: HTMLAudioElement | null = null;
   private isPttActive: boolean = false;
   private isListenersBound: boolean = false;
+  private speechRecognizer: any = null;
+  private realTimeTranscript: string = "";
+
+  /**
+   * Records one side of a turn in chat — the only place conversation text
+   * lives. Prefers the assistant transcript when its panel is mounted
+   * (Mission Command); otherwise the voice thread, which the investigation
+   * Chat tab renders. Floating popovers and toasts are never used.
+   */
+  private appendToChat(role: "operator" | "aeris", text: string, origin: TurnOrigin): void {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const controls = useMissionCommandStore.getState().assistantControls;
+    if (controls) {
+      controls.appendMessage(role, trimmed);
+    } else {
+      useVoiceStore.getState().appendVoiceMessage(role, trimmed, origin);
+    }
+  }
 
   bindGlobalListeners() {
     if (this.isListenersBound || typeof window === "undefined") return;
@@ -231,8 +253,7 @@ class AerisSessionManager {
 
   private async playActivationGreeting(): Promise<void> {
     const store = useVoiceStore.getState();
-    const greetingText = "Voice command mode activated. AERIS online and at your service, sir.";
-    store.setLastAerisReply(greetingText);
+    // Voice-only: the greeting is spoken, never rendered as text.
     store.setVoiceState("speaking");
 
     if (store.isMuted) {
@@ -246,6 +267,7 @@ class AerisSessionManager {
     const playUrl = async (url: string): Promise<boolean> => {
       try {
         const audio = new Audio(url);
+        audio.volume = 1.0;
         this.currentAudioElement = audio;
         const done = new Promise<boolean>((resolve) => {
           audio.onended = () => resolve(true);
@@ -258,6 +280,15 @@ class AerisSessionManager {
       }
     };
 
+    // The spoken greeting opens the chat thread too, so the conversation
+    // starts in exactly one place.
+    const recordGreeting = () =>
+      this.appendToChat(
+        "aeris",
+        "Voice command mode activated. AERIS online and at your service, sir.",
+        "voice",
+      );
+
     try {
       const res = await fetch("/api/voice/process", {
         method: "POST",
@@ -269,6 +300,7 @@ class AerisSessionManager {
         if (data.audioBase64 && (await playUrl(data.audioBase64))) {
           this.currentAudioElement = null;
           store.setVoiceState("idle");
+          recordGreeting();
           return;
         }
       }
@@ -276,6 +308,7 @@ class AerisSessionManager {
 
     if (await playUrl("/audio/greeting.mp3")) {
       this.currentAudioElement = null;
+      recordGreeting();
     } else {
       this.currentAudioElement = null;
       console.warn("Could not play greeting audio.");
@@ -385,6 +418,36 @@ class AerisSessionManager {
       };
 
       recorder.start();
+
+      // 3. Initiate real-time browser speech recognition in parallel for instant 0ms response
+      this.realTimeTranscript = "";
+      if (typeof window !== "undefined") {
+        const SpeechRec =
+          (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRec) {
+          try {
+            const recognizer = new SpeechRec();
+            recognizer.continuous = true;
+            recognizer.interimResults = true;
+            recognizer.lang = "en-US";
+            recognizer.onresult = (event: any) => {
+              let text = "";
+              for (let i = 0; i < event.results.length; i++) {
+                text += event.results[i][0].transcript;
+              }
+              if (text.trim()) {
+                this.realTimeTranscript = text.trim();
+                store.setTranscript(this.realTimeTranscript, false);
+              }
+            };
+            recognizer.onerror = () => {};
+            recognizer.start();
+            this.speechRecognizer = recognizer;
+          } catch (recErr) {
+            console.debug("Web Speech API not available:", recErr);
+          }
+        }
+      }
     } catch (err) {
       console.error("Microphone capture failed:", err);
       store.setVoiceState("idle");
@@ -454,6 +517,23 @@ class AerisSessionManager {
       mediaBlob = await recPromise;
     }
 
+    // Stop real-time browser speech recognition if active
+    if (this.speechRecognizer) {
+      try {
+        this.speechRecognizer.stop();
+      } catch {}
+      this.speechRecognizer = null;
+    }
+
+    // Fast-path: If real-time Web Speech captured the transcript instantly, dispatch text query directly (0ms latency!)
+    if (this.realTimeTranscript.trim().length > 0) {
+      const fastTranscript = this.realTimeTranscript.trim();
+      this.realTimeTranscript = "";
+      console.log(`[AERIS VOICE] Fast-path browser speech transcript (0ms): "${fastTranscript}"`);
+      await this.sendTextQuery(fastTranscript);
+      return;
+    }
+
     store.setVoiceState("transcribing");
 
     let audioBlob: Blob | null = null;
@@ -511,7 +591,7 @@ class AerisSessionManager {
       }
 
       const data: ProcessVoiceResponse = await response.json();
-      await this.handleProcessResponse(data);
+      await this.handleProcessResponse(data, "voice");
     } catch (err: unknown) {
       console.error("AERIS request failed:", err);
       const message = err instanceof Error ? err.message : "AERIS uplink failure";
@@ -544,7 +624,7 @@ class AerisSessionManager {
       }
 
       const data: ProcessVoiceResponse = await response.json();
-      await this.handleProcessResponse(data);
+      await this.handleProcessResponse(data, "text");
     } catch (err: unknown) {
       console.error("AERIS text query failed:", err);
       const message = err instanceof Error ? err.message : "AERIS query failure";
@@ -553,14 +633,17 @@ class AerisSessionManager {
     }
   }
 
-  private async handleProcessResponse(data: ProcessVoiceResponse): Promise<void> {
+  private async handleProcessResponse(data: ProcessVoiceResponse, origin: TurnOrigin): Promise<void> {
     const store = useVoiceStore.getState();
 
+    // The whole exchange belongs to chat: operator line, then AERIS line.
+    // Spoken turns additionally play the reply as audio; nothing renders
+    // as a popover or toast on the canvas.
     if (data.transcript) {
-      store.setTranscript(data.transcript, true);
+      this.appendToChat("operator", data.transcript, origin);
     }
     if (data.reply) {
-      store.setLastAerisReply(data.reply);
+      this.appendToChat("aeris", data.reply, origin);
     }
 
     // Execute UI commands returned by AERIS through the command bus, and
@@ -600,7 +683,6 @@ class AerisSessionManager {
         }
       }
       store.setActiveActionSummary(actionSummaries.join(" • "));
-      toast.info(`AERIS: ${actionSummaries.join(", ")}`);
     }
 
     // Play synthesized Jarvis audio if available and not muted
@@ -611,6 +693,7 @@ class AerisSessionManager {
       store.setVoiceState("speaking");
       try {
         const audio = new Audio(data.audioBase64);
+        audio.volume = 1.0;
         this.currentAudioElement = audio;
 
         audio.onended = () => {
@@ -655,6 +738,13 @@ class AerisSessionManager {
         this.mediaRecorder.stop();
       } catch {}
     }
+    if (this.speechRecognizer) {
+      try {
+        this.speechRecognizer.stop();
+      } catch {}
+      this.speechRecognizer = null;
+    }
+    this.realTimeTranscript = "";
     this.pcmChunks = [];
     if (this.animFrameId) {
       cancelAnimationFrame(this.animFrameId);

@@ -56,6 +56,20 @@ class WhisperTranscriber:
         )
         return Transcript(normalize_transcript(text), language, tuple(segments))
 
+    async def transcribe_file(self, path: str | Path) -> Transcript:
+        """Transcribe an audio file on disk (wav/webm/mp4 — faster-whisper decodes it).
+
+        Returns the RAW text with casing intact: this feeds the reasoning model,
+        where "Mazgaon Docks" outranks "mazgaon docks". Casefolded
+        normalization is only for turn classification, never for the agent.
+        """
+        model = await self._get_model()
+        language = self.language or self._configured_language()
+        text, detected, segments = await asyncio.to_thread(
+            self._transcribe_blocking, model, str(path), language
+        )
+        return Transcript(text.strip(), detected or language, tuple(segments))
+
     async def _get_model(self) -> Any:
         if self._model is not None:
             return self._model
@@ -103,7 +117,7 @@ class WhisperTranscriber:
 
     @staticmethod
     def _transcribe_blocking(
-        model: Any, waveform: np.ndarray, language: str | None
+        model: Any, waveform: np.ndarray | str, language: str | None
     ) -> tuple[str, str | None, list[TranscriptSegment]]:
         result = model.transcribe(
             waveform,
