@@ -107,7 +107,7 @@ function detectAudioFormat(
 
 // ElevenLabs TTS configuration
 // API docs: https://elevenlabs.io/docs/api/text-to-speech
-function synthesizeElevenLabsSpeech(text: string, apiKey: string, voiceId: string): Promise<string | null> {
+async function synthesizeElevenLabsSpeech(text: string, apiKey: string, voiceId: string): Promise<string | null> {
   const elevenLabsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
 
   const options: RequestInit = {
@@ -126,11 +126,11 @@ function synthesizeElevenLabsSpeech(text: string, apiKey: string, voiceId: strin
   };
 
   try {
-    const response = fetch(elevenLabsUrl, options);
+    const response = await fetch(elevenLabsUrl, options);
     if (!response.ok) {
       throw new Error(`ElevenLabs TTS failed: ${response.statusText}`);
     }
-    const arrayBuffer = response.arrayBuffer();
+    const arrayBuffer = await response.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
     return `data:audio/mpeg;base64,${base64}`;
   } catch (error) {
