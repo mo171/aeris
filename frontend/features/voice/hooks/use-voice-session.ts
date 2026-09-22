@@ -1,7 +1,7 @@
 // features/voice/hooks/use-voice-session.ts — AERIS Voice AI Session Manager.
 //
 // what  : Full hands-free voice control via Ctrl+P push-to-talk, MediaRecorder audio capture,
-//         Next.js API route orchestration with OpenAI Whisper/GPT-5/TTS, and direct UI command execution.
+//         Next.js API orchestration with OpenAI Whisper/GPT-5, local Kokoro TTS, and UI command execution.
 // persona : Authentic British aerospace AI assistant (polite, witty, articulate).
 // where : Mounted by InvestigationScreen, VoiceActivationButton, and VoiceControlBar.
 
@@ -10,6 +10,8 @@
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
+import { KokoroSpeechClient } from "@/lib/audio/kokoro-client";
+import { SpeechStreamPlayer } from "@/lib/audio/speech-stream-player";
 import { dispatchUiCommandEvent } from "@/lib/streaming/ui-command-bridge";
 import { useMissionCommandStore } from "@/features/missionCommand/store/mission-command-store";
 import { useVoiceStore } from "../store/voice-store";
@@ -137,6 +139,9 @@ class AerisSessionManager {
   private isListenersBound: boolean = false;
   private speechRecognizer: any = null;
   private realTimeTranscript: string = "";
+  private readonly kokoro = new KokoroSpeechClient();
+  private readonly speechPlayer = new SpeechStreamPlayer();
+  private speechTurn = 0;
 
   /**
    * Records one side of a turn in chat — the only place conversation text
@@ -168,6 +173,12 @@ class AerisSessionManager {
 
     window.addEventListener("keydown", this.handleKeyDown);
     window.addEventListener("keyup", this.handleKeyUp);
+
+    // Model preparation is network/CPU work and can start before audio is
+    // unlocked. By the time the operator enables voice, George is usually ready.
+    void this.kokoro.prepare().catch((error: unknown) => {
+      console.error("[AERIS VOICE] Local Kokoro preparation failed:", error);
+    });
   }
 
   private handleKeyDown = (e: KeyboardEvent) => {
@@ -232,6 +243,7 @@ class AerisSessionManager {
       if (this.audioContext.state === "suspended") {
         await this.audioContext.resume();
       }
+      await this.speechPlayer.resume();
 
       // 3. Play futuristic activation chime
       this.playChime();
@@ -261,9 +273,7 @@ class AerisSessionManager {
       return;
     }
 
-    // Dynamic Jarvis TTS first so the greeting always uses the configured
-    // voice; the pre-rendered file is only a fallback (it was baked with the
-    // old thin voice) and for offline use.
+    // The pre-rendered file remains an explicit offline fallback only.
     const playUrl = async (url: string): Promise<boolean> => {
       try {
         const audio = new Audio(url);
@@ -289,22 +299,27 @@ class AerisSessionManager {
         "voice",
       );
 
+    const greeting = "Voice command mode activated. AERIS online and at your service, sir.";
+    const turn = ++this.speechTurn;
     try {
-      const res = await fetch("/api/voice/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "greeting" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.audioBase64 && (await playUrl(data.audioBase64))) {
-          this.currentAudioElement = null;
-          store.setVoiceState("idle");
-          recordGreeting();
-          return;
-        }
+      const audio = await this.kokoro.synthesize(greeting);
+      if (turn !== this.speechTurn || store.isMuted) {
+        if (store.isMuted) store.setVoiceState("idle");
+        return;
       }
-    } catch {}
+      console.info(
+        `[AERIS VOICE] provider=kokoro voice=bm_george synthesisMs=${audio.synthesisMs.toFixed(0)}`,
+      );
+      await this.speechPlayer.enqueueFloat32(audio.samples, audio.sampleRate);
+      if (turn === this.speechTurn) {
+        store.setVoiceState("idle");
+        recordGreeting();
+      }
+      return;
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      console.error("[AERIS VOICE] George greeting failed; using offline greeting:", error);
+    }
 
     if (await playUrl("/audio/greeting.mp3")) {
       this.currentAudioElement = null;
@@ -696,31 +711,42 @@ class AerisSessionManager {
       store.setActiveActionSummary(actionSummaries.join(" • "));
     }
 
-    // Play synthesized Jarvis audio if available and not muted
-    console.log(
-      `[AERIS VOICE] audio ${data.audioBase64 ? "present" : "MISSING"} (muted=${store.isMuted})`,
-    );
-    if (data.audioBase64 && !store.isMuted) {
+    // Synthesize locally after text/actions are already visible and applied.
+    if (data.reply && !store.isMuted) {
+      const turn = ++this.speechTurn;
       store.setVoiceState("speaking");
       try {
-        const audio = new Audio(data.audioBase64);
-        audio.volume = 1.0;
-        this.currentAudioElement = audio;
-
-        audio.onended = () => {
-          this.currentAudioElement = null;
-          store.setVoiceState("idle");
-        };
-
-        audio.onerror = () => {
-          this.currentAudioElement = null;
-          store.setVoiceState("idle");
-        };
-
-        await audio.play();
-      } catch (audioErr) {
-        console.warn("Audio playback auto-play was blocked or failed:", audioErr);
-        store.setVoiceState("idle");
+        const playbackStartedAt = performance.now();
+        const audio = await this.kokoro.synthesize(data.reply);
+        if (turn !== this.speechTurn || store.isMuted) {
+          if (store.isMuted) store.setVoiceState("idle");
+          return;
+        }
+        console.info(
+          `[AERIS VOICE] provider=kokoro voice=bm_george synthesisMs=${audio.synthesisMs.toFixed(0)} playbackScheduleMs=${(performance.now() - playbackStartedAt).toFixed(0)}`,
+        );
+        await this.speechPlayer.enqueueFloat32(audio.samples, audio.sampleRate);
+        if (turn === this.speechTurn) store.setVoiceState("idle");
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("[AERIS VOICE] Local George synthesis failed:", error);
+        // Cloud audio is an explicit emergency fallback while the route still
+        // supplies it. Task 4 removes it from the normal response path.
+        if (data.audioBase64) {
+          try {
+            const fallback = new Audio(data.audioBase64);
+            this.currentAudioElement = fallback;
+            fallback.onended = () => {
+              this.currentAudioElement = null;
+              store.setVoiceState("idle");
+            };
+            await fallback.play();
+            return;
+          } catch (fallbackError: unknown) {
+            console.error("[AERIS VOICE] Emergency cloud audio failed:", fallbackError);
+          }
+        }
+        if (turn === this.speechTurn) store.setVoiceState("idle");
       }
     } else {
       store.setVoiceState("idle");
@@ -728,6 +754,9 @@ class AerisSessionManager {
   }
 
   interrupt(): void {
+    this.speechTurn += 1;
+    this.kokoro.cancel();
+    this.speechPlayer.abort();
     if (this.currentAudioElement) {
       this.currentAudioElement.pause();
       this.currentAudioElement = null;
@@ -774,8 +803,11 @@ class AerisSessionManager {
     const store = useVoiceStore.getState();
     const next = !store.isMuted;
     store.setIsMuted(next);
-    if (next && this.currentAudioElement) {
-      this.currentAudioElement.pause();
+    if (next) {
+      this.kokoro.cancel();
+      this.speechPlayer.abort();
+      if (this.currentAudioElement) this.currentAudioElement.pause();
+      store.setVoiceState("idle");
     }
     toast.info(next ? "AERIS voice narration muted" : "AERIS voice narration unmuted");
   }

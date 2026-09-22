@@ -117,6 +117,17 @@ describe("SpeechStreamPlayer", () => {
     expect(channelData[4]).toBeCloseTo(-16384 / 32768, 3);
   });
 
+  it("schedules Kokoro Float32 samples directly at 24 kHz", () => {
+    const samples = new Float32Array([0, 0.25, -0.5, 1]);
+
+    player.enqueueFloat32(samples, 24_000);
+
+    expect(mockCtx.createBuffer).toHaveBeenCalledWith(1, 4, 24_000);
+    const createdBuffer = vi.mocked(mockCtx.createBuffer).mock.results[0]?.value as MockAudioBuffer;
+    expect(Array.from(createdBuffer.getChannelData(0))).toEqual(Array.from(samples));
+    expect(player.getNextPlayTime()).toBeCloseTo(10 + 4 / 24_000, 6);
+  });
+
   it("aborts playback immediately, stops all active sources, and resets nextPlayTime", () => {
     const pcmData = new Int16Array(2400);
     player.enqueueChunk(pcmData.buffer);

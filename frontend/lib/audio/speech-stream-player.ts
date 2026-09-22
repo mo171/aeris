@@ -63,20 +63,19 @@ export class SpeechStreamPlayer {
       channelData[i] = sample < 0 ? sample / 0x8000 : sample / 0x7fff;
     }
 
-    const now = ctx.currentTime;
-    const startTime = Math.max(now, this.nextPlayTime);
-    this.nextPlayTime = startTime + audioBuffer.duration;
+    void this.schedule(audioBuffer);
+  }
 
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-    source.start(startTime);
+  /**
+   * Enqueues Kokoro's native Float32 waveform without encoding or resampling.
+   */
+  enqueueFloat32(samples: Float32Array, sampleRate = this.sampleRate): Promise<void> {
+    if (samples.length === 0) return Promise.resolve();
 
-    this.activeSources.add(source);
-
-    source.onended = () => {
-      this.activeSources.delete(source);
-    };
+    const ctx = this.getAudioContext();
+    const audioBuffer = ctx.createBuffer(1, samples.length, sampleRate);
+    audioBuffer.getChannelData(0).set(samples);
+    return this.schedule(audioBuffer);
   }
 
   /**
@@ -174,5 +173,25 @@ export class SpeechStreamPlayer {
       await this.ctx.close();
       this.ctx = null;
     }
+  }
+
+  private schedule(audioBuffer: AudioBuffer): Promise<void> {
+    const ctx = this.getAudioContext();
+    const now = ctx.currentTime;
+    const startTime = Math.max(now, this.nextPlayTime);
+    this.nextPlayTime = startTime + audioBuffer.duration;
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(ctx.destination);
+    source.start(startTime);
+    this.activeSources.add(source);
+
+    return new Promise((resolve) => {
+      source.onended = () => {
+        this.activeSources.delete(source);
+        resolve();
+      };
+    });
   }
 }
