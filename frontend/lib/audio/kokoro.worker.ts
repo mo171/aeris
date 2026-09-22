@@ -84,7 +84,8 @@ async function synthesize(requestId: number, text: string): Promise<void> {
 scope.addEventListener("message", (event: MessageEvent<KokoroWorkerRequest>) => {
   const message = event.data;
   if (message.type === "prepare") {
-    void prepareModel();
+    // prepareModel reports its own structured error to the client.
+    void prepareModel().catch(() => undefined);
     return;
   }
   if (message.type === "cancel") {
