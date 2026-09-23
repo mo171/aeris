@@ -1,15 +1,146 @@
+# ==============================================================================
+# Git Ignore - AERIS (Autonomous Earth Reasoning & Intelligence System)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Secrets (.env.example is committed, .env never is)
+# ------------------------------------------------------------------------------
 .env
-__pychache__
-.claude
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# ------------------------------------------------------------------------------
+# 2. Python & Virtual Environments
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Testing & Linting caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.nox/
+.tox/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# ------------------------------------------------------------------------------
+# 3. Node & Frontend (Next.js)
+# ------------------------------------------------------------------------------
+node_modules/
+.pnp
+.pnp.*
+.next/
+out/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Cesium generated runtime assets (built during postinstall)
+public/cesium/
+frontend/public/cesium/
+
+# ------------------------------------------------------------------------------
+# 4. Data, Models, Runs & Large Geospatial Files
+# ------------------------------------------------------------------------------
+backend/runs/
+backend/data/
+data/
+runs/
+*.sqlite
+*.sqlite3
+*.db
+
+# Model weights & Checkpoints
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+
+# ------------------------------------------------------------------------------
+# 5. OS & Editor Artifacts
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------------------------
+# 6. Temporary Dumps, Scratch & Developer Hand-off Notes
+# ------------------------------------------------------------------------------
+*.log
+*.tmp
+*.bak
+scratch/
+*-output*
+brag-output*
+dummy.*
+backend-has*.md
+frontend-req*.md
+*changes*.md
+implementation*.md
+
+# ------------------------------------------------------------------------------
+# 7. Agent & AI Workflow Metaconfiguration (Local Assistant & Worktrees)
+# ------------------------------------------------------------------------------
 .agent/
+.claude/
 .gemini/
 .gitnexus/
+.worktrees/
 adapters/
 AGENTS.md
 CLAUDE.md
 PROJECT_RULES.md
 SUPERPOWER-STYLE.md
-.next
-.vscode
-.worktrees/
-
