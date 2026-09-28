@@ -8,6 +8,7 @@
 //         while sharing the same shell components. Fonts are loaded through next/font so they are
 //         self-hosted and produce no layout shift on first paint.
 
+// entry point of the application, the root layout is a Next.js special file that wraps every route in the app. It is
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 
